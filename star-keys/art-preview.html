@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Star Keys art preview</title>
+    <style>
+      body { background: #15131f; color: #ddd; font: 12px/1.4 system-ui, sans-serif; margin: 12px; }
+      canvas { image-rendering: pixelated; display: block; margin: 4px 0 14px; }
+      h2 { font-size: 13px; margin: 10px 0 0; color: #ffb36b; }
+      label { margin-right: 10px; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <label><input type="checkbox" id="pause" /> pause</label>
+      <label>section <select id="sec"><option>all</option><option>hero</option><option>worlds</option><option>platforms</option><option>threats</option><option>escapes</option><option>icons</option></select></label>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/art-preview.ts"></script>
+  </body>
+</html>

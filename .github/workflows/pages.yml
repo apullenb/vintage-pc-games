@@ -23,9 +23,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: groundhogs/package-lock.json
+          cache-dependency-path: |
+            groundhogs/package-lock.json
+            star-keys/package-lock.json
       - name: Test and build Groundhogs
         working-directory: groundhogs
+        run: |
+          npm ci
+          npx vitest run
+          npm run build
+      - name: Test and build Star Keys
+        working-directory: star-keys
         run: |
           npm ci
           npx vitest run
@@ -35,6 +43,7 @@ jobs:
           mkdir -p _site
           cp -r site/. _site/
           cp -r groundhogs/dist _site/groundhogs
+          cp -r star-keys/dist _site/star-keys
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
