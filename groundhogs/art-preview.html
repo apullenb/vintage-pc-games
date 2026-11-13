@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Groundhogs art preview</title>
+    <style>
+      body { background: #1b1b22; color: #ddd; font: 12px/1.4 system-ui, sans-serif; margin: 12px; }
+      canvas { image-rendering: pixelated; display: block; margin: 4px 0 14px; }
+      h2 { font-size: 13px; margin: 8px 0 0; color: #f3d48a; }
+      label { margin-right: 10px; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <label>scene theme <select id="theme"><option>meadow</option><option>dusk</option><option>winter</option><option>burrow</option></select></label>
+      <label><input type="checkbox" id="pause" /> pause</label>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/art-preview.ts"></script>
+  </body>
+</html>
