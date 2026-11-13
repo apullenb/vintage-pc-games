@@ -53,18 +53,24 @@ function fuzz(levelIdx: number, seed: number): Game {
   return game;
 }
 
+// Small chunks so no single synchronous test starves the vitest worker RPC on slow CI.
+const CHUNK = 5;
+
 describe('invariant fuzz', () => {
   LEVELS.forEach((lv, i) => {
-    it(`${lv.id}: ${SEEDS} random playthroughs keep physics invariants`, () => {
-      for (let seed = 1; seed <= SEEDS; seed++) {
-        let game: Game;
-        try {
-          game = fuzz(i, seed);
-        } catch (e) {
-          throw new Error(`seed ${seed}: ${(e as Error).message}`);
+    for (let first = 1; first <= SEEDS; first += CHUNK) {
+      const last = Math.min(SEEDS, first + CHUNK - 1);
+      it(`${lv.id}: seeds ${first}-${last} keep physics invariants`, () => {
+        for (let seed = first; seed <= last; seed++) {
+          let game: Game;
+          try {
+            game = fuzz(i, seed);
+          } catch (e) {
+            throw new Error(`seed ${seed}: ${(e as Error).message}`);
+          }
+          expect(game.status, `seed ${seed}`).not.toBe('playing');
         }
-        expect(game.status, `seed ${seed}`).not.toBe('playing');
-      }
-    }, 120_000);
+      }, 60_000);
+    }
   });
 });
