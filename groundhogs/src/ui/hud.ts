@@ -3,7 +3,7 @@ import type { GameAPI, Groundhog, LevelDef, SkillId } from '../types';
 import { SKILLS, SKILL_LABELS } from '../types';
 import { LEVELS, skillIconCanvas } from './assets';
 import { Bag, fmtTime, h, pct, pixelSvg, setText } from './dom';
-import { FS_ICONS, fullscreenSupported, isFullscreen, toggleFullscreen } from './fullscreen';
+import { FS_ICONS, fullscreenButtonWanted, isFullscreen, toggleFullscreen } from './fullscreen';
 import { hogLabel } from './names';
 import { isTouchDevice } from './scale';
 
@@ -152,7 +152,7 @@ export class Hud {
     mapWell.title = 'Map: click or drag to look around';
     mapWell.append(minimap);
 
-    if (fullscreenSupported()) {
+    if (fullscreenButtonWanted()) {
       this.fsBtn = this.tool('ctl fs', FS_ICONS.enter, 'Fullscreen', () => toggleFullscreen());
     }
 

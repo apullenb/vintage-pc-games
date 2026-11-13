@@ -5,7 +5,7 @@ import { art, ceilingAbove, createGame, LEVELS, skillIconCanvas } from './assets
 import { play as sfx } from './audio';
 import { Bag, button, fmtTime, h, pct, pixelSvg } from './dom';
 import type { Nav, PlayResult } from './nav';
-import { FS_ICONS, fullscreenSupported, toggleFullscreen } from './fullscreen';
+import { FS_ICONS, fullscreenButtonWanted, toggleFullscreen } from './fullscreen';
 import { bestPct, isCompleted, isUnlocked } from './save';
 import { canvasRes, currentScale, isTouchDevice, onLayoutChange } from './scale';
 
@@ -162,7 +162,7 @@ export function showTitle(root: HTMLElement, nav: Nav): () => void {
     nav.select();
   });
   panel.append(play, levels);
-  if (fullscreenSupported()) {
+  if (fullscreenButtonWanted()) {
     const fs = button('btn big fs-btn', '', () => toggleFullscreen());
     fs.title = 'Fullscreen';
     fs.innerHTML = pixelSvg(FS_ICONS.enter);
