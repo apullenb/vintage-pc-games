@@ -25,6 +25,9 @@ const ARM_MS = 1500; // window for the confirming second press
 const TOUCH_R = 12; // touch pick radius, logical px
 const TAP_SLOP = 10; // CSS px a finger may move and still count as a tap
 const FLASH_MS = 450; // bracket shown on a tapped groundhog
+const DOUBLE_TAP_MS = 300; // empty-ground double-tap toggles zoom
+const DOUBLE_TAP_PX = 24;
+const ZOOM = 2; // magnified view shows half the width/height
 // compact (phone) layout, in UI units: status, skills row, side column
 const C_STATUS = 14;
 const C_SKILLS_H = 32;
@@ -39,12 +42,15 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
   const bg = art.renderBackground(level.theme, level.width, VIEW_H);
   const terrainView = art.createTerrainView(game.terrain, level.theme);
   terrainView.update(game.terrain.takeDirty());
-  const maxCam = Math.max(0, level.width - VIEW_W);
-  const clampCam = (x: number): number => Math.min(maxCam, Math.max(0, x));
+  const maxCam1 = Math.max(0, level.width - VIEW_W); // 1x camera limit (scene buffer)
+  let zoom = 1;
+  const clampCam = (x: number): number => Math.min(Math.max(0, level.width - VIEW_W / zoom), Math.max(0, x));
+  const clampCamY = (y: number): number => Math.min(VIEW_H - VIEW_H / zoom, Math.max(0, y));
 
   // ---- state ----
   const firstEntrance = level.entrances[0];
   let camX = clampCam(level.startX ?? (firstEntrance ? firstEntrance.x - VIEW_W / 2 : 0));
+  let camY = 0; // >0 only when zoomed
   let paused = false;
   let fast = false;
   let nuked = false;
@@ -52,9 +58,10 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
   let armedAt = 0;
   let selected: SkillId | null = SKILLS.find((s) => (game.skillsLeft[s] ?? 0) > 0) ?? null;
   const mouse = { x: -1, y: -1, present: false };
-  const keys = { left: false, right: false };
-  let drag: { clientX: number; cam: number } | null = null;
-  let touch: { id: number; x0: number; y0: number; cam: number; moved: boolean } | null = null;
+  const keys = { left: false, right: false, up: false, down: false };
+  let drag: { clientX: number; clientY: number; cam: number; camY: number } | null = null;
+  let touch: { id: number; x0: number; y0: number; t0: number; cam: number; camY: number; moved: boolean } | null = null;
+  let lastEmptyTap: { t: number; x: number; y: number } | null = null;
   let flash: { g: Groundhog; until: number } | null = null;
   let res = 1; // canvas backing-store factor
   let mapDrag = false;
@@ -74,6 +81,12 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
   stage.append(canvas, banner);
   const ctx = canvas.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
+  // logical-res scene buffer; the visible part is blitted (2x when zoomed) onto the view
+  const scene = h('canvas');
+  scene.width = VIEW_W;
+  scene.height = VIEW_H;
+  const sctx = scene.getContext('2d')!;
+  sctx.imageSmoothingEnabled = false;
 
   const minimap = new Minimap(level.width);
   const hud = new Hud(level, minimap.canvas, {
@@ -85,6 +98,7 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
     restart: () => nav.play(levelIndex),
     menu: () => requestMenu(),
     mute: () => toggleMute(),
+    zoom: () => toggleZoom(insideView() ? mouse.x : VIEW_W / 2, insideView() ? mouse.y : VIEW_H / 2),
   });
   el.append(stage, hud.status, hud.toolbar, hud.side, hud.skillbar);
   root.append(el);
@@ -187,6 +201,22 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
   function requestMenu(): void {
     if (game.status !== 'playing' || confirmPress('menu')) nav.select();
   }
+  // Toggle 1x/2x; zooming in centres on view point (lx, ly) in logical screen px.
+  function toggleZoom(lx: number, ly: number): void {
+    if (zoom === 1) {
+      const wx = camX + lx;
+      const wy = camY + ly;
+      zoom = ZOOM;
+      camX = clampCam(wx - VIEW_W / ZOOM / 2);
+      camY = clampCamY(wy - VIEW_H / ZOOM / 2);
+    } else {
+      const centre = camX + VIEW_W / zoom / 2;
+      zoom = 1;
+      camX = clampCam(centre - VIEW_W / 2);
+      camY = 0;
+    }
+    sfx('click');
+  }
 
   // ---- input ----
   const bag = new Bag();
@@ -195,6 +225,8 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
     const r = canvas.getBoundingClientRect();
     return { x: ((clientX - r.left) * VIEW_W) / r.width, y: ((clientY - r.top) * VIEW_H) / r.height };
   };
+  // Logical view point -> world point through camera + zoom.
+  const toWorld = (lx: number, ly: number): { x: number; y: number } => ({ x: camX + lx / zoom, y: camY + ly / zoom });
   const insideView = (): boolean => mouse.present && mouse.x >= 0 && mouse.x < VIEW_W && mouse.y >= 0 && mouse.y < VIEW_H;
 
   bag.on<PointerEvent>(window, 'pointermove', (e) => {
@@ -205,13 +237,14 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
     mouse.present = true;
     if (drag) {
       const r = canvas.getBoundingClientRect();
-      camX = clampCam(drag.cam - ((e.clientX - drag.clientX) * VIEW_W) / r.width);
+      camX = clampCam(drag.cam - ((e.clientX - drag.clientX) * VIEW_W) / r.width / zoom);
+      camY = clampCamY(drag.camY - ((e.clientY - drag.clientY) * VIEW_H) / r.height / zoom);
     }
   });
   bag.on(document.documentElement, 'mouseleave', () => (mouse.present = false));
   bag.on(window, 'blur', () => {
     mouse.present = false;
-    keys.left = keys.right = false;
+    keys.left = keys.right = keys.up = keys.down = false;
     drag = null;
   });
 
@@ -221,7 +254,7 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
       e.preventDefault();
       mouse.present = false;
       if (touch) return;
-      touch = { id: e.pointerId, x0: e.clientX, y0: e.clientY, cam: camX, moved: false };
+      touch = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now(), cam: camX, camY, moved: false };
       capture(canvas, e.pointerId);
       return;
     }
@@ -231,27 +264,30 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
     mouse.present = true;
     if (e.button === 0) {
       if (!selected || game.status !== 'playing') return;
-      const g = game.pickAt(camX + mouse.x, mouse.y, selected);
+      const w = toWorld(mouse.x, mouse.y);
+      const g = game.pickAt(w.x, w.y, selected);
       if (g) game.assignSkill(g, selected);
     } else if (e.button === 1 || e.button === 2) {
       e.preventDefault();
-      drag = { clientX: e.clientX, cam: camX };
+      drag = { clientX: e.clientX, clientY: e.clientY, cam: camX, camY };
       capture(canvas, e.pointerId);
     }
   });
   bag.on<PointerEvent>(canvas, 'pointermove', (e) => {
     if (!touch || e.pointerId !== touch.id) return;
     const dx = e.clientX - touch.x0;
-    if (!touch.moved && Math.hypot(dx, e.clientY - touch.y0) > TAP_SLOP) touch.moved = true;
+    const dy = e.clientY - touch.y0;
+    if (!touch.moved && Math.hypot(dx, dy) > TAP_SLOP) touch.moved = true;
     if (touch.moved) {
       const r = canvas.getBoundingClientRect();
-      camX = clampCam(touch.cam - (dx * VIEW_W) / r.width);
+      camX = clampCam(touch.cam - (dx * VIEW_W) / r.width / zoom);
+      camY = clampCamY(touch.camY - (dy * VIEW_H) / r.height / zoom);
     }
   });
   bag.on<PointerEvent>(canvas, 'pointerup', (e) => {
     drag = null;
     if (!touch || e.pointerId !== touch.id) return;
-    if (!touch.moved) tapAt(e.clientX, e.clientY);
+    if (!touch.moved) tapAt(e.clientX, e.clientY, touch.t0);
     touch = null;
   });
   bag.on(canvas, 'pointercancel', () => {
@@ -270,7 +306,8 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
     const g = game.pickAt(wx, wy, selected);
     if (g) return g;
     let best: Groundhog | null = null;
-    let bestD = TOUCH_R * TOUCH_R;
+    const r = TOUCH_R / zoom; // constant on screen
+    let bestD = r * r;
     for (const c of game.groundhogs) {
       if (GONE_OR_DYING.has(c.state)) continue;
       const dx = c.x - wx;
@@ -284,27 +321,39 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
     return best;
   }
 
-  function tapAt(clientX: number, clientY: number): void {
-    if (game.status !== 'playing') return;
+  // Tap on a groundhog assigns at once; two quick taps on empty ground toggle zoom.
+  function tapAt(clientX: number, clientY: number, downAt: number): void {
     const p = toLogical(clientX, clientY);
-    const g = pickTouch(camX + p.x, p.y);
-    if (!g) return;
-    flash = { g, until: performance.now() + FLASH_MS };
-    if (selected) game.assignSkill(g, selected);
-    else sfx('fail');
+    const w = toWorld(p.x, p.y);
+    const g = game.status === 'playing' ? pickTouch(w.x, w.y) : null;
+    if (g) {
+      lastEmptyTap = null;
+      flash = { g, until: performance.now() + FLASH_MS };
+      if (selected) game.assignSkill(g, selected);
+      else sfx('fail');
+      return;
+    }
+    const prev = lastEmptyTap;
+    if (prev && downAt - prev.t < DOUBLE_TAP_MS && Math.hypot(clientX - prev.x, clientY - prev.y) < DOUBLE_TAP_PX) {
+      lastEmptyTap = null;
+      toggleZoom(p.x, p.y);
+    } else {
+      lastEmptyTap = { t: performance.now(), x: clientX, y: clientY };
+    }
   }
 
-  const mapTo = (clientX: number): void => {
-    camX = clampCam(minimap.worldX(clientX) - VIEW_W / 2);
+  const mapTo = (clientX: number, clientY: number): void => {
+    camX = clampCam(minimap.worldX(clientX) - VIEW_W / zoom / 2);
+    camY = clampCamY(minimap.worldY(clientY) - VIEW_H / zoom / 2);
   };
   bag.on<PointerEvent>(minimap.canvas, 'pointerdown', (e) => {
     if (e.button !== 0) return;
     mapDrag = true;
     capture(minimap.canvas, e.pointerId);
-    mapTo(e.clientX);
+    mapTo(e.clientX, e.clientY);
   });
   bag.on<PointerEvent>(minimap.canvas, 'pointermove', (e) => {
-    if (mapDrag) mapTo(e.clientX);
+    if (mapDrag) mapTo(e.clientX, e.clientY);
   });
   for (const t of ['pointerup', 'pointercancel']) bag.on(minimap.canvas, t, () => (mapDrag = false));
 
@@ -315,6 +364,12 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
       keys.left = true;
     } else if (c === 'ArrowRight' || c === 'KeyD') {
       keys.right = true;
+    } else if (c === 'ArrowUp' || c === 'KeyW') {
+      keys.up = true;
+    } else if (c === 'ArrowDown' || c === 'KeyS') {
+      keys.down = true;
+    } else if (c === 'KeyZ') {
+      if (!e.repeat) toggleZoom(insideView() ? mouse.x : VIEW_W / 2, insideView() ? mouse.y : VIEW_H / 2);
     } else if (/^(Digit|Numpad)[0-9]$/.test(c)) {
       // 1-9 then 0 for the 10th
       const d = Number(c[c.length - 1]);
@@ -353,6 +408,8 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
   bag.on<KeyboardEvent>(window, 'keyup', (e) => {
     if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
     if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+    if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = false;
+    if (e.code === 'ArrowDown' || e.code === 'KeyS') keys.down = false;
   });
 
   // ---- loop ----
@@ -362,7 +419,10 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
       if (mouse.x < EDGE_PX && mouse.x >= -EDGE_OUTSIDE_PX) v -= 1;
       else if (mouse.x >= VIEW_W - EDGE_PX && mouse.x < VIEW_W + EDGE_OUTSIDE_PX) v += 1;
     }
-    if (v) camX = clampCam(camX + (Math.sign(v) * SCROLL_SPEED * dt) / 1000);
+    const speed = (SCROLL_SPEED * dt) / 1000 / zoom;
+    if (v) camX = clampCam(camX + Math.sign(v) * speed);
+    const vy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+    if (vy) camY = clampCamY(camY + vy * speed);
   }
 
   function step(): void {
@@ -423,40 +483,50 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
 
   function render(): void {
     const cx = Math.round(camX);
+    const cy = Math.round(camY);
+    const vw = VIEW_W / zoom;
+    const vh = VIEW_H / zoom;
+    const sx0 = Math.min(cx, maxCam1); // scene buffer always covers the visible region
     const t = game.ticks;
-    ctx.setTransform(res, 0, 0, res, 0, 0);
-    ctx.fillStyle = '#120b07';
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-    const bx = Math.max(0, Math.min(bg.width - VIEW_W, Math.round(cx * PARALLAX)));
-    ctx.drawImage(bg, bx, 0, VIEW_W, VIEW_H, 0, 0, VIEW_W, VIEW_H);
-    for (const hz of level.hazards) art.drawHazard(ctx, hz, cx, t);
-    ctx.drawImage(terrainView.canvas, cx, 0, VIEW_W, VIEW_H, 0, 0, VIEW_W, VIEW_H);
-    for (const ex of level.exits) art.drawExit(ctx, ex.x - cx, ex.y, t);
-    for (const en of level.entrances) art.drawEntrance(ctx, en.x - cx, en.y, game.hatchOpen, t, ceilingAbove(game.terrain, en.x, en.y - 36));
+    const c = sctx;
+    c.fillStyle = '#120b07';
+    c.fillRect(0, 0, VIEW_W, VIEW_H);
+    const bx = Math.max(0, Math.min(bg.width - VIEW_W, Math.round(sx0 * PARALLAX)));
+    c.drawImage(bg, bx, 0, VIEW_W, VIEW_H, 0, 0, VIEW_W, VIEW_H);
+    for (const hz of level.hazards) art.drawHazard(c, hz, sx0, t);
+    c.drawImage(terrainView.canvas, sx0, 0, VIEW_W, VIEW_H, 0, 0, VIEW_W, VIEW_H);
+    for (const ex of level.exits) art.drawExit(c, ex.x - sx0, ex.y, t);
+    for (const en of level.entrances) art.drawEntrance(c, en.x - sx0, en.y, game.hatchOpen, t, ceilingAbove(game.terrain, en.x, en.y - 36));
     for (const pad of game.pads) {
-      const px = pad.x - cx;
-      if (px > -16 && px < VIEW_W + 16) art.drawBouncePad(ctx, px, pad.y, t, pad.lastBounce < 0 ? 999 : game.ticks - pad.lastBounce);
+      const px = pad.x - sx0;
+      if (px > -16 && px < VIEW_W + 16) art.drawBouncePad(c, px, pad.y, t, pad.lastBounce < 0 ? 999 : game.ticks - pad.lastBounce);
     }
 
     const inside = insideView();
     const mx = Math.floor(mouse.x);
     const my = Math.floor(mouse.y);
-    const hover: Groundhog | null = inside && !drag ? game.pickAt(cx + mx, my, selected) : null;
+    const wmx = Math.floor(cx + mouse.x / zoom);
+    const wmy = Math.floor(cy + mouse.y / zoom);
+    const hover: Groundhog | null = inside && !drag ? game.pickAt(wmx, wmy, selected) : null;
     if (flash && (performance.now() > flash.until || GONE_OR_DYING.has(flash.g.state))) flash = null;
     const tapped = !hover && flash ? flash.g : null;
     for (const g of game.groundhogs) {
       if (g === hover || g === tapped || g.state === 'saved' || g.state === 'dead') continue;
-      const sx = g.x - cx;
+      const sx = g.x - sx0;
       if (sx < -16 || sx > VIEW_W + 16) continue;
-      art.drawGroundhog(ctx, g, Math.round(sx), Math.round(g.y), false);
+      art.drawGroundhog(c, g, Math.round(sx), Math.round(g.y), false);
     }
-    if (hover) art.drawGroundhog(ctx, hover, Math.round(hover.x - cx), Math.round(hover.y), true);
-    if (tapped) {
-      art.drawGroundhog(ctx, tapped, Math.round(tapped.x - cx), Math.round(tapped.y), true);
-      drawCursor(Math.round(tapped.x - cx), Math.round(tapped.y) - 5, true);
-    }
+    const hl = hover ?? tapped;
+    if (hl) art.drawGroundhog(c, hl, Math.round(hl.x - sx0), Math.round(hl.y), true);
 
-    drawOffscreen(cx, t);
+    // visible region -> view (integer 2x when zoomed, crisp)
+    ctx.setTransform(res, 0, 0, res, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(scene, cx - sx0, cy, vw, vh, 0, 0, VIEW_W, VIEW_H);
+
+    if (tapped) drawCursor(Math.round((tapped.x - cx) * zoom), Math.round((tapped.y - 5 - cy) * zoom), true);
+    drawOffscreen(cx, cy, vw, t);
+    if (zoom !== 1) drawZoomBadge();
     if (inside) drawCursor(mx, my, hover !== null);
 
     hud.update(game, {
@@ -466,17 +536,26 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
       muted: isMuted(),
       nuked,
       armed: game.status === 'playing' ? armed : null,
-      hover: hover ?? tapped,
-      under: inside ? underCursor(cx + mx, my) : 0,
+      zoomed: zoom !== 1,
+      hover: hl,
+      under: inside ? underCursor(wmx, wmy) : 0,
     });
     const msg = game.status === 'won' ? 'HOME FOR SPRING' : game.status === 'lost' ? 'SIX MORE WEEKS...' : paused ? 'PAUSED' : '';
     setText(banner, msg);
     banner.classList.toggle('show', msg !== '');
-    minimap.draw(game, cx);
+    minimap.draw(game, cx, cy, vw, vh);
+  }
+
+  // Tiny "2x" plate in the top-left corner while zoomed.
+  function drawZoomBadge(): void {
+    ctx.fillStyle = 'rgba(26,14,7,0.78)';
+    ctx.fillRect(2, 2, 13, 9);
+    drawDigit(4, 4, ZOOM, '#ffd34a');
+    for (const [x, y] of [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]]) ctx.fillRect(9 + x, 6 + y, 1, 1);
   }
 
   // Edge arrows with counts of live groundhogs left/right of the view; flash red when any is in trouble.
-  function drawOffscreen(cx: number, t: number): void {
+  function drawOffscreen(cx: number, cy: number, vw: number, t: number): void {
     for (const side of [-1, 1] as const) {
       let n = 0;
       let ySum = 0;
@@ -484,13 +563,13 @@ export function startPlay(root: HTMLElement, levelIndex: number, nav: Nav): () =
       for (const g of game.groundhogs) {
         if (g.state === 'saved' || g.state === 'dead' || g.state === 'exiting') continue;
         const sx = g.x - cx;
-        if (side < 0 ? sx >= -4 : sx <= VIEW_W + 4) continue;
+        if (side < 0 ? sx >= -4 : sx <= vw + 4) continue;
         n++;
         ySum += g.y;
         if (g.state === 'splatting' || g.state === 'drowning' || g.state === 'poofing' || g.fallDist > 24) danger = true;
       }
       if (n === 0) continue;
-      const y = Math.max(14, Math.min(VIEW_H - 14, Math.round(ySum / n) - 5));
+      const y = Math.max(17, Math.min(VIEW_H - 14, Math.round((ySum / n - 5 - cy) * zoom))); // clear of the 2x badge
       const flash = danger && (t >> 2) % 2 === 0;
       const fg = flash ? '#ff5a4a' : '#fff4d6';
       const label = String(n);

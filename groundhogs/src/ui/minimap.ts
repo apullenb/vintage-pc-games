@@ -90,7 +90,14 @@ export class Minimap {
     this.lctx.putImageData(img, 0, 0);
   }
 
-  draw(game: GameAPI, camX: number): void {
+  // World y under a client y.
+  worldY(clientY: number): number {
+    const r = this.canvas.getBoundingClientRect();
+    return ((clientY - r.top) / r.height) * VIEW_H;
+  }
+
+  // Viewport box = visible world region (smaller when zoomed).
+  draw(game: GameAPI, camX: number, camY = 0, viewW = VIEW_W, viewH = VIEW_H): void {
     if (this.stale && game.ticks - this.builtAt >= REBUILD_EVERY) {
       this.rebuild(game.terrain);
       this.stale = false;
@@ -118,6 +125,8 @@ export class Minimap {
     }
     ctx.strokeStyle = '#fff6dc';
     ctx.lineWidth = 1;
-    ctx.strokeRect(Math.round(camX * k) + 0.5, 0.5, Math.round(VIEW_W * k) - 1, h - 1);
+    const rx = Math.round(camX * k);
+    const ry = Math.min(h - 2, Math.round(camY * k));
+    ctx.strokeRect(rx + 0.5, ry + 0.5, Math.max(2, Math.round(viewW * k) - 1), Math.max(2, Math.min(h - ry, Math.round(viewH * k)) - 1));
   }
 }

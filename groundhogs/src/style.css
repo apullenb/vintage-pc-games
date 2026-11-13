@@ -767,6 +767,7 @@ canvas.view {
 
 /* ---------- fullscreen button ---------- */
 
+.status .ctl.zoom,
 .status .ctl.fs {
   flex: none;
   width: calc(var(--px) * 12);
@@ -864,7 +865,11 @@ canvas.view {
   grid-template-rows: none;
   grid-auto-rows: calc(var(--px) * 22);
 }
-.side .ctl.fs {
+/* last row: zoom (2 wide) + fullscreen, or zoom alone */
+.side .ctl.zoom {
+  grid-column: span 2;
+}
+.side .ctl.zoom:last-child {
   grid-column: 1 / -1;
 }
 

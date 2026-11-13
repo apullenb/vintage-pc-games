@@ -49,6 +49,7 @@ export const LEVELS: LevelDef[] = [
     releaseRate: 50,
     timeLimit: 240,
     skills: { burrower: 10 },
+    startX: 0,
   },
 
   // 2. Every groundhog needs a glider before stepping off the 130px cliff.
@@ -73,6 +74,7 @@ export const LEVELS: LevelDef[] = [
     releaseRate: 40,
     timeLimit: 180,
     skills: { glider: 15 },
+    startX: 0,
   },
 
   // 3. Tunnel right through two 40px earth walls at floor level.
@@ -102,6 +104,7 @@ export const LEVELS: LevelDef[] = [
     releaseRate: 50,
     timeLimit: 240,
     skills: { tunneler: 8 },
+    startX: 0,
   },
 
   // 4. Ditch (20 deep, harmless trap): plank out from inside it, start ~4-20px from its left wall.
@@ -129,6 +132,7 @@ export const LEVELS: LevelDef[] = [
     releaseRate: 20,
     timeLimit: 240,
     skills: { planker: 8 },
+    startX: 0,
   },
 
   // 5. Climbers scale the 52px rock pillar (safe 52px drop after), then the 90px cliff to the exit.
@@ -154,6 +158,7 @@ export const LEVELS: LevelDef[] = [
     releaseRate: 30,
     timeLimit: 180,
     skills: { climber: 10 },
+    startX: 0,
   },
 
   // 6. Sentry the lead on the rock before the dirt patch (x 345-371) to hold the crowd. Pop the sentry,
@@ -172,7 +177,7 @@ export const LEVELS: LevelDef[] = [
       rect(400, 190, 240, 50),
       rect(628, 130, 12, 60),
     ],
-    entrances: [{ x: 300, y: 90 }],
+    entrances: [{ x: 200, y: 90 }],
     exits: [{ x: 580, y: 189 }],
     hazards: [],
     count: 30,
@@ -180,14 +185,49 @@ export const LEVELS: LevelDef[] = [
     releaseRate: 40,
     timeLimit: 240,
     skills: { sentry: 2, popper: 2, scraper: 3 },
+    startX: 0,
   },
 
-  // 7. Burrow through the dirt patch (x 260-379) in the 20px rock floor; the crowd drops 60px through
-  //    the shaft (safe); tunnel the 60px wall right.
+  // 7. Popper intro. The crowd falls into a rock pit with a 5px dirt floor and paces; pop anyone in it
+  //    and the crater opens the floor (safe 56px drop to the exit cave).
+  {
+    id: 'pop-the-cork',
+    name: 'Pop the Cork',
+    hint: 'The floor of the pit is thin. One groundhog will have to go out with a bang.',
+    width: 560,
+    theme: 'burrow',
+    shapes: [
+      fill(560),
+      hole(12, 40, 210, 60),
+      hole(222, 70, 70, 44),
+      hole(12, 119, 536, 51),
+      rock(0, 100, 222, 19),
+      rect(222, 114, 70, 5),
+      rock(292, 70, 268, 54),
+      rock(0, 170, 560, 70),
+      rock(0, 0, 12, 240),
+      rock(548, 0, 12, 240),
+      stalactite(120, 40, 20, 18),
+      stalactite(400, 124, 24, 16),
+      bump(380, 170, 30, 3),
+    ],
+    entrances: [{ x: 80, y: 70 }],
+    exits: [{ x: 480, y: 169 }],
+    hazards: [],
+    count: 20,
+    required: 15,
+    releaseRate: 50,
+    timeLimit: 240,
+    skills: { popper: 3 },
+    startX: 0,
+  },
+
+  // 8. Burrow the soft patch (x 260-379), then switch the same digger to tunneler at feet y 119-138 so it
+  //    tunnels under the rock wall into the exit chamber. Burrowing all the way drops everyone into the flood.
   {
     id: 'burrow-down',
     name: 'Burrow Down',
-    hint: 'Rock will not budge. Find the soft spot.',
+    hint: 'Dig down, but not too far. What is under the soft spot?',
     width: 800,
     theme: 'burrow',
     shapes: [
@@ -196,26 +236,86 @@ export const LEVELS: LevelDef[] = [
       rock(20, 90, 400, 20),
       rect(260, 90, 120, 20),
       rock(420, 20, 40, 90),
-      hole(20, 110, 500, 40),
-      hole(580, 100, 200, 50),
-      rock(0, 200, 800, 40),
+      hole(20, 110, 240, 30),
+      hole(20, 140, 440, 90),
+      rock(460, 140, 20, 100),
+      hole(480, 90, 300, 60),
+      rock(0, 228, 800, 12),
       rock(0, 0, 12, 240),
       rock(788, 0, 12, 240),
-      stalactite(560, 30, 18, 26),
-      stalactite(160, 110, 20, 14),
+      stalactite(560, 90, 18, 26),
+      stalactite(120, 140, 30, 20),
     ],
     entrances: [{ x: 80, y: 60 }],
     exits: [{ x: 700, y: 149 }],
-    hazards: [],
+    hazards: [{ kind: 'water', x: 20, y: 212, w: 440, h: 16 }],
     count: 50,
-    required: 40,
+    required: 45,
     releaseRate: 50,
     timeLimit: 240,
-    skills: { burrower: 3, tunneler: 3 },
+    skills: { burrower: 1, tunneler: 1 },
+    startX: 0,
   },
 
-  // 8. Tunnel the snow mound; plank the 20px gap (start 2-18px before edge); plank onto the 20px rock
-  //    step (start 20-36px before it); drop 40px; tunnel the snowbank.
+  // 9. Two families, two hollows, exit on the 30px mesa between. Tunnel the mesa base (from either side,
+  //    within 14px of the face) to join them, then chain both plankers from one side (x ~125-163 heading right).
+  {
+    id: 'twin-hollows',
+    name: 'Twin Hollows',
+    hint: 'Two burrows, one way up. Watch both hollows!',
+    width: 480,
+    theme: 'dusk',
+    shapes: [
+      rock(0, 200, 480, 40),
+      rock(0, 90, 10, 110),
+      rock(470, 90, 10, 110),
+      rect(200, 170, 90, 30),
+      ellipse(245, 170, 45, 4),
+      bump(70, 200, 30, 3),
+      bump(400, 200, 30, 3),
+    ],
+    entrances: [
+      { x: 60, y: 160 },
+      { x: 410, y: 160 },
+    ],
+    exits: [{ x: 245, y: 165 }],
+    hazards: [],
+    count: 40,
+    required: 36,
+    releaseRate: 40,
+    timeLimit: 300,
+    skills: { planker: 2, tunneler: 1 },
+    startX: 0,
+  },
+
+  // 10. Bouncer intro. Plant a pad 17-53px before the 34px rock wall (x 207-243); everyone hops it to the exit.
+  {
+    id: 'spring-loaded',
+    name: 'Spring Loaded',
+    hint: 'Too tall to climb, too hard to dig. Plant a springy mushroom and jump it!',
+    width: 560,
+    theme: 'meadow',
+    shapes: [
+      rect(0, 190, 560, 50),
+      rock(0, 110, 10, 80),
+      rock(260, 156, 24, 34),
+      poly([[256, 156], [272, 146], [288, 156]], 'rock'),
+      rect(548, 130, 12, 60),
+      bump(140, 190, 40, 3),
+    ],
+    entrances: [{ x: 80, y: 160 }],
+    exits: [{ x: 430, y: 189 }],
+    hazards: [],
+    count: 20,
+    required: 16,
+    releaseRate: 40,
+    timeLimit: 180,
+    skills: { bouncer: 2 },
+    startX: 0,
+  },
+
+  // 11. Tunnel the snow mound; one planker and one pad for the stream and the 20px rock step (either way
+  //     round: plank from x 402-418 / pad from x 549-594). Tunnel the snowbank. Followers crowd the bridge.
   {
     id: 'long-winter',
     name: 'Long Winter',
@@ -240,45 +340,72 @@ export const LEVELS: LevelDef[] = [
     exits: [{ x: 1120, y: 199 }],
     hazards: [{ kind: 'water', x: 420, y: 214, w: 20, h: 26 }],
     count: 40,
-    required: 28,
-    releaseRate: 30,
+    required: 37,
+    releaseRate: 45,
     timeLimit: 300,
-    skills: { tunneler: 3, planker: 4 },
+    skills: { tunneler: 2, planker: 1, bouncer: 1 },
+    startX: 0,
   },
 
-  // 9. Two entrances. Left: burrow the 40px plateau anywhere (60px drop through the shaft). Right: scraper
-  //    heading left from x 672-699 (dirt buttress) cuts out of the cliff face. Exit in the middle valley.
+  // 12. Napper intro. Nap one within 7px of the 9px rock ledge; the mound is the step up for the rest.
   {
-    id: 'twin-hollows',
-    name: 'Twin Hollows',
-    hint: 'Two families, two problems. Rock does not dig.',
-    width: 960,
+    id: 'forty-winks',
+    name: 'Forty Winks',
+    hint: 'One sleepy groundhog curled up by the ledge makes a fine step for the rest.',
+    width: 560,
     theme: 'dusk',
     shapes: [
-      rect(0, 200, 600, 40),
-      rock(600, 200, 360, 40),
-      rect(0, 40, 10, 160),
-      rect(10, 140, 310, 40),
-      rock(700, 110, 250, 90),
-      rect(620, 110, 80, 90),
-      rock(950, 40, 10, 160),
-      poly([[372, 200], [410, 192], [448, 200]]),
+      rect(0, 190, 560, 50),
+      rock(0, 110, 10, 80),
+      rock(250, 181, 310, 9),
+      rect(250, 181, 310, 2),
+      rect(548, 120, 12, 60),
+      bump(130, 190, 40, 3),
+      bump(400, 181, 40, 3),
     ],
-    entrances: [
-      { x: 100, y: 110 },
-      { x: 860, y: 80 },
-    ],
-    exits: [{ x: 480, y: 199 }],
+    entrances: [{ x: 80, y: 160 }],
+    exits: [{ x: 470, y: 180 }],
     hazards: [],
-    count: 80,
-    required: 64,
+    count: 20,
+    required: 15,
     releaseRate: 40,
-    timeLimit: 300,
-    skills: { burrower: 2, scraper: 3, sentry: 1, popper: 1 },
+    timeLimit: 180,
+    skills: { napper: 2 },
+    startX: 0,
   },
 
-  // 10. Sentry the first left-walker (x~170-200). Chain plankers heading right until the ramp meets the
-  //     48px rock block: 2 from x 285-297, or 3 from x 250-288; everyone else loops safely meanwhile.
+  // 13. No sentry: let the lead pass, then burrow the next one into the 20px dirt shelf (rock below) as a
+  //     holding pit. Lead chains 2 plankers from x ~309-320 up to the 40px far ledge; then tunnel the pit out.
+  {
+    id: 'cold-feet',
+    name: 'Cold Feet',
+    hint: 'No sentries today. Find another way to keep the family waiting.',
+    width: 640,
+    theme: 'dusk',
+    shapes: [
+      rect(10, 100, 290, 20),
+      rock(10, 120, 290, 30),
+      rock(0, 50, 10, 190),
+      rock(0, 150, 640, 90),
+      hole(330, 150, 50, 40),
+      rect(380, 110, 260, 40),
+      rock(380, 110, 4, 40),
+      rect(628, 50, 12, 60),
+      bump(470, 110, 30, 3),
+    ],
+    entrances: [{ x: 60, y: 70 }],
+    exits: [{ x: 570, y: 109 }],
+    hazards: [{ kind: 'water', x: 330, y: 172, w: 50, h: 18 }],
+    count: 30,
+    required: 27,
+    releaseRate: 80,
+    timeLimit: 300,
+    skills: { burrower: 1, tunneler: 1, planker: 2 },
+    startX: 0,
+  },
+
+  // 14. Sentry the first left-walker (x~170-200). Chain both plankers heading right from x 285-297 until the
+  //     ramp meets the 48px rock block; everyone else loops safely meanwhile. The sentry is lost.
   {
     id: 'groundhog-day',
     name: 'Groundhog Day',
@@ -299,15 +426,82 @@ export const LEVELS: LevelDef[] = [
       { kind: 'water', x: 480, y: 210, w: 160, h: 18 },
     ],
     count: 25,
-    required: 20,
-    releaseRate: 35,
+    required: 22,
+    releaseRate: 70,
     timeLimit: 240,
-    skills: { sentry: 1, planker: 3, popper: 1 },
+    skills: { sentry: 1, planker: 2 },
+    startX: 0,
   },
 
-  // 11. Crowd is penned. One climber (heading right) scales the pen wall (56px drop), chains 2 plankers over
-  //     the thorn pit from x 380-399, then tunnels the thorn-topped hedge from x 546-559 (do not let it
-  //     climb!). Then tunnel the pen wall (x 186-199).
+  // 15. Two families, door on the 40px rock hill. Left: pad at x 255-283 lands them on top. Right (9px lower):
+  //     nap one at the shelf (x ~364-377) for a step, then a pad on the shelf (x ~350-370) for left-walkers.
+  {
+    id: 'crossing-paths',
+    name: 'Crossing Paths',
+    hint: 'Two burrows, one door on top of the hill. Each family needs a different way up!',
+    width: 640,
+    theme: 'dusk',
+    shapes: [
+      rect(0, 190, 330, 50),
+      rock(0, 110, 10, 80),
+      rock(300, 150, 30, 40),
+      ellipse(315, 150, 15, 3, 'rock'),
+      rock(330, 190, 40, 50),
+      rect(370, 199, 270, 41),
+      rock(628, 120, 12, 79),
+      bump(150, 190, 40, 3),
+      bump(520, 199, 40, 3),
+    ],
+    entrances: [
+      { x: 140, y: 160 },
+      { x: 500, y: 170 },
+    ],
+    exits: [{ x: 315, y: 146 }],
+    hazards: [],
+    count: 30,
+    required: 27,
+    releaseRate: 40,
+    timeLimit: 300,
+    skills: { bouncer: 2, napper: 1 },
+    startX: 80,
+  },
+
+  // 16. Left pen: pop anyone on its 5px dirt floor (60px safe drop). Right: pad at x 431-440 for left-walkers
+  //     clears the wall AND lands on the exit rock; nap the left family's step there (x ~333-339 heading right).
+  {
+    id: 'equinox',
+    name: 'Equinox',
+    hint: 'Two families, two pens, one door. Both need a way out, and you are short a skill...',
+    width: 640,
+    theme: 'dusk',
+    shapes: [
+      rock(80, 60, 10, 110),
+      rect(90, 110, 140, 5),
+      rock(230, 90, 10, 25),
+      rock(80, 170, 560, 70),
+      rock(340, 161, 40, 9),
+      rock(400, 134, 16, 36),
+      poly([[400, 134], [408, 128], [416, 134]], 'rock'),
+      rock(628, 100, 12, 70),
+      bump(520, 170, 40, 3),
+      bump(200, 170, 40, 2),
+    ],
+    entrances: [
+      { x: 160, y: 80 },
+      { x: 520, y: 140 },
+    ],
+    exits: [{ x: 360, y: 160 }],
+    hazards: [],
+    count: 30,
+    required: 26,
+    releaseRate: 40,
+    timeLimit: 300,
+    skills: { popper: 1, napper: 1, bouncer: 1 },
+    startX: 80,
+  },
+
+  // 17. Penned crowd. Climber scout: 2 chained plankers over the thorns (x 380-399), tunnel the hedge
+  //     (x 546-559, before it climbs into thorns). Then tunnel the pen wall (x 186-199) for everyone.
   {
     id: 'thornbrake',
     name: 'Thornbrake',
@@ -337,15 +531,81 @@ export const LEVELS: LevelDef[] = [
       { kind: 'thorns', x: 560, y: 92, w: 40, h: 12 },
     ],
     count: 30,
-    required: 27,
-    releaseRate: 30,
+    required: 28,
+    releaseRate: 70,
     timeLimit: 300,
-    skills: { climber: 1, planker: 3, tunneler: 2 },
+    skills: { climber: 1, planker: 2, tunneler: 2 },
+    startX: 0,
   },
 
-  // 12. Burrow the soft end of the shelf (x 236-318; 60px drop). One climber+glider crosses the ice wall,
-  //     planks gap 1 (from x 677-699) and gap 2 (from x 734-755), scrapes under the rock wall into the den
-  //     (from x 895-949). Then tunnel the dirt crack at the ice wall's base (x 506-519) for the crowd.
+  // 18. One leaf for 20. Glider scout drops the 100px cliff; sentry #2 holds the rest up top. Scout bumps a
+  //     planker under the low ceiling (turns back), chains 2 plankers from x ~225-241 to the cliff; pop the sentry.
+  {
+    id: 'candlemas-leap',
+    name: 'Candlemas Leap',
+    hint: 'One leaf, twenty groundhogs. A builder who bumps his head turns back...',
+    width: 640,
+    theme: 'winter',
+    shapes: [
+      rect(0, 180, 640, 60),
+      rect(300, 80, 340, 100),
+      rock(300, 80, 8, 100),
+      rect(628, 30, 12, 50),
+      rock(0, 120, 10, 60),
+      rock(60, 150, 100, 20),
+      poly([[60, 150], [70, 140], [150, 140], [160, 150]], 'rock'),
+      bump(460, 80, 40, 3),
+    ],
+    entrances: [{ x: 520, y: 50 }],
+    exits: [{ x: 32, y: 179 }],
+    hazards: [],
+    count: 20,
+    required: 17,
+    releaseRate: 40,
+    timeLimit: 300,
+    skills: { glider: 1, sentry: 1, popper: 1, planker: 3 },
+    startX: 160,
+  },
+
+  // 19. Pop #2 (lead passes) so it bursts on the hollow lid (x 140-230) and the crowd drops into the cellar. Lead
+  //     chains 2 plankers over the chasm (x 323-339), burrows the gap (x 500-515); tunnel the cellar out (x 216-229).
+  {
+    id: 'burrow-relay',
+    name: 'Burrow Relay',
+    hint: 'No sentries today, and the ground near home sounds hollow...',
+    width: 800,
+    theme: 'dusk',
+    shapes: [
+      rect(10, 100, 290, 30),
+      hole(140, 105, 90, 25),
+      rock(140, 105, 4, 25),
+      rock(0, 130, 340, 110),
+      rock(0, 40, 10, 100),
+      hole(340, 130, 54, 110),
+      rock(394, 130, 300, 10),
+      rect(500, 130, 16, 10),
+      rock(394, 140, 20, 100),
+      rock(414, 190, 386, 50),
+      rock(690, 130, 4, 60),
+      rock(788, 60, 12, 130),
+      ellipse(560, 190, 40, 3),
+    ],
+    entrances: [{ x: 60, y: 70 }],
+    exits: [{ x: 620, y: 189 }],
+    hazards: [
+      { kind: 'thorns', x: 340, y: 222, w: 54, h: 18 },
+      { kind: 'thorns', x: 694, y: 176, w: 94, h: 14 },
+    ],
+    count: 30,
+    required: 27,
+    releaseRate: 70,
+    timeLimit: 300,
+    skills: { popper: 1, planker: 2, burrower: 1, tunneler: 1 },
+    startX: 0,
+  },
+
+  // 20. Burrow the shelf's soft end (x 236-318). Climber+glider scout: plank gaps (x 677-699, 734-755), scrape
+  //     under the rock wall (x 895-949). Then tunnel the crack at the ice wall's base (x 506-519) for the crowd.
   {
     id: 'early-spring',
     name: 'Early Spring',
@@ -378,9 +638,47 @@ export const LEVELS: LevelDef[] = [
       { kind: 'water', x: 756, y: 200, w: 16, h: 24 },
     ],
     count: 40,
-    required: 34,
+    required: 37,
     releaseRate: 40,
     timeLimit: 360,
-    skills: { burrower: 1, climber: 1, glider: 1, planker: 3, scraper: 2, tunneler: 1 },
+    skills: { burrower: 1, climber: 1, glider: 1, planker: 2, scraper: 1, tunneler: 1 },
+    startX: 0,
+  },
+
+  // 21. Pad at x 172-185 hops the 36px rock wall. Nap the FIRST lander by the 7px post (x 275-279, either way)
+  //     or everyone turns back into the pool; the mound steps the post and plugs the crack. Plank out from x ~384-396.
+  {
+    id: 'spring-fever',
+    name: 'Spring Fever',
+    hint: 'Over the wall lies a flooded hollow. Who goes first matters.',
+    width: 640,
+    theme: 'meadow',
+    shapes: [
+      rect(0, 190, 200, 50),
+      rock(0, 100, 10, 90),
+      rock(200, 154, 16, 36),
+      poly([[200, 154], [216, 154], [216, 150], [206, 151]], 'rock'),
+      rect(230, 190, 50, 50),
+      rock(280, 183, 2, 57),
+      rect(283, 190, 17, 50),
+      rect(300, 200, 120, 40),
+      rock(420, 184, 220, 56),
+      rect(420, 184, 220, 3),
+      rect(628, 120, 12, 64),
+      bump(100, 190, 40, 3),
+      bump(500, 184, 40, 3),
+    ],
+    entrances: [{ x: 80, y: 160 }],
+    exits: [{ x: 560, y: 183 }],
+    hazards: [
+      { kind: 'water', x: 216, y: 200, w: 14, h: 40 },
+      { kind: 'water', x: 282, y: 200, w: 1, h: 40 },
+    ],
+    count: 25,
+    required: 22,
+    releaseRate: 40,
+    timeLimit: 300,
+    skills: { bouncer: 1, napper: 1, planker: 1 },
+    startX: 0,
   },
 ];

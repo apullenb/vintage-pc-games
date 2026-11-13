@@ -16,6 +16,7 @@ export interface HudHandlers {
   restart(): void;
   menu(): void; // each press; caller confirms while a level is live
   mute(): void;
+  zoom(): void;
 }
 
 export type Armed = 'nuke' | 'menu' | null;
@@ -27,6 +28,7 @@ export interface HudState {
   muted: boolean;
   nuked: boolean;
   armed: Armed; // control waiting for its confirming second press
+  zoomed: boolean;
   hover: Groundhog | null;
   under: number; // live groundhogs under the cursor
 }
@@ -38,6 +40,8 @@ const ICONS = {
   restart: ['..###.#.', '.#...##.', '#...###.', '#.......', '#......#', '.#....#.', '..####..'],
   sound: ['...#....', '..##.#..', '####..#.', '####..#.', '####..#.', '..##.#..', '...#....'],
   muted: ['...#....', '..##....', '####.#.#', '####..#.', '####.#.#', '..##....', '...#....'],
+  zoomIn: ['..###...', '.#...#..', '#..#..#.', '#.###.#.', '#..#..#.', '.#...#..', '..###.#.', '......##'],
+  zoomOut: ['..###...', '.#...#..', '#.....#.', '#.###.#.', '#.....#.', '.#...#..', '..###.#.', '......##'],
 };
 
 const REPEAT_FIRST = 350;
@@ -55,6 +59,8 @@ export class Hud {
   readonly skillbar: HTMLDivElement; // compact: skills under the view
   private wells: { rate: HTMLElement; skills: HTMLElement; controls: HTMLElement; nuke: HTMLElement; map: HTMLElement };
   private fsBtn: HTMLButtonElement | null = null;
+  private zoomBtn: HTMLButtonElement;
+  private zoomShown: boolean | null = null;
   private fsShown: boolean | null = null;
   private compact: boolean | null = null;
   private pressWord = isTouchDevice() ? 'TAP' : 'PRESS';
@@ -152,6 +158,7 @@ export class Hud {
     mapWell.title = 'Map: click or drag to look around';
     mapWell.append(minimap);
 
+    this.zoomBtn = this.tool('ctl zoom', ICONS.zoomIn, 'Zoom 2x [Z] (or double-tap empty ground)', () => this.handlers.zoom());
     if (fullscreenButtonWanted()) {
       this.fsBtn = this.tool('ctl fs', FS_ICONS.enter, 'Fullscreen', () => toggleFullscreen());
     }
@@ -206,9 +213,11 @@ export class Hud {
     if (on) {
       this.skillbar.append(w.skills);
       this.side.append(w.rate, w.controls, w.nuke, w.map);
+      w.controls.append(this.zoomBtn);
       if (this.fsBtn) w.controls.append(this.fsBtn);
     } else {
       this.toolbar.append(w.rate, w.skills, w.controls, w.nuke, w.map);
+      this.status.append(this.zoomBtn);
       if (this.fsBtn) this.status.append(this.fsBtn);
     }
   }
@@ -254,6 +263,12 @@ export class Hud {
     setText(this.nukeLabel, st.armed === 'nuke' ? 'SURE?' : 'NUKE');
     this.menuBtn.classList.toggle('armed', st.armed === 'menu');
     setText(this.menuBtn, st.armed === 'menu' ? 'SURE?' : 'MENU');
+    if (this.zoomShown !== st.zoomed) {
+      this.zoomShown = st.zoomed;
+      this.zoomBtn.innerHTML = pixelSvg(st.zoomed ? ICONS.zoomOut : ICONS.zoomIn);
+      this.zoomBtn.classList.toggle('on', st.zoomed);
+      this.zoomBtn.title = st.zoomed ? 'Zoom out [Z] (or double-tap empty ground)' : 'Zoom 2x [Z] (or double-tap empty ground)';
+    }
     const fs = isFullscreen();
     if (this.fsBtn && this.fsShown !== fs) {
       this.fsShown = fs;

@@ -681,13 +681,15 @@ export class Game implements GameAPI {
       }
     } else if (phase === 3 || phase === 5) {
       const nx = g.x + g.dir;
-      if (!this.inWorldX(nx)) {
+      const ny = phase === 5 ? g.y + 1 : g.y;
+      // terrain may have changed since the stroke: clear the body's next column, stop at rock
+      if (!this.inWorldX(nx) || this.terrain.eraseRect(nx, ny - GH_HEIGHT + 1, 1, GH_HEIGHT).hitRock) {
         this.turn(g);
         this.setState(g, 'walking');
         return;
       }
       g.x = nx;
-      if (phase === 5) g.y++;
+      g.y = ny;
     }
     if (!this.standing(g)) this.startFall(g);
   }

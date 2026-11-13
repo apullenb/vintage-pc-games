@@ -56,8 +56,8 @@ const inHazard = (hs: Hazard[], x: number, y: number) =>
   hs.some((h) => x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h);
 
 describe('LEVELS', () => {
-  it('has 12 levels with unique ids and names', () => {
-    expect(LEVELS.length).toBe(12);
+  it('has at least 20 levels with unique ids and names', () => {
+    expect(LEVELS.length).toBeGreaterThanOrEqual(20);
     expect(new Set(LEVELS.map((l) => l.id)).size).toBe(LEVELS.length);
     expect(new Set(LEVELS.map((l) => l.name)).size).toBe(LEVELS.length);
   });
@@ -80,10 +80,9 @@ describe('LEVELS', () => {
         expect(level.timeLimit).toBeLessThanOrEqual(600);
         expect(level.entrances.length).toBeGreaterThan(0);
         expect(level.exits.length).toBeGreaterThan(0);
-        if (level.startX !== undefined) {
-          expect(level.startX).toBeGreaterThanOrEqual(0);
-          expect(level.startX).toBeLessThanOrEqual(W);
-        }
+        expect(level.startX, 'startX set deliberately').toBeDefined();
+        expect(level.startX!).toBeGreaterThanOrEqual(0);
+        expect(level.startX!).toBeLessThanOrEqual(W - 480);
       });
 
       it('has valid skills', () => {
@@ -115,6 +114,14 @@ describe('LEVELS', () => {
             expect(solidAt(mask, W, e.x, y), `headroom at exit ${e.x},${y}`).toBe(false);
           expect(inHazard(level.hazards, e.x, e.y)).toBe(false);
         }
+      });
+
+      it('shows every entrance from the starting camera, and says so when there are two', () => {
+        for (const en of level.entrances) {
+          expect(en.x).toBeGreaterThanOrEqual(level.startX ?? 0);
+          expect(en.x).toBeLessThan((level.startX ?? 0) + 480);
+        }
+        if (level.entrances.length > 1) expect(level.hint ?? '').toMatch(/both|two/i);
       });
 
       it('drops groundhogs safely from each entrance', () => {
