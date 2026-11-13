@@ -53,14 +53,15 @@ function fuzz(levelIdx: number, seed: number): Game {
   return game;
 }
 
-// Small chunks so no single synchronous test starves the vitest worker RPC on slow CI.
+// Small chunks that yield, so the vitest worker can answer runner RPCs on slow CI.
 const CHUNK = 5;
 
 describe('invariant fuzz', () => {
   LEVELS.forEach((lv, i) => {
     for (let first = 1; first <= SEEDS; first += CHUNK) {
       const last = Math.min(SEEDS, first + CHUNK - 1);
-      it(`${lv.id}: seeds ${first}-${last} keep physics invariants`, () => {
+      it(`${lv.id}: seeds ${first}-${last} keep physics invariants`, async () => {
+        await new Promise((r) => setTimeout(r, 0)); // let the worker answer runner RPCs
         for (let seed = first; seed <= last; seed++) {
           let game: Game;
           try {
