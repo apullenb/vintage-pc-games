@@ -1,0 +1,35 @@
+/* Shift Rush + Bus Dash: one row of big thumb buttons on phones, controls text per input type. */
+.mini.shift-rush,
+.mini.bus-dash {
+  overscroll-behavior: contain;
+  -webkit-tap-highlight-color: transparent;
+}
+.mini.shift-rush .touchpad,
+.mini.bus-dash .touchpad {
+  flex-wrap: nowrap;
+}
+@media (max-width: 560px) {
+  .mini.shift-rush .tp-btn,
+  .mini.bus-dash .tp-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 62px;
+    padding: 0 2px;
+    font-size: 14px;
+  }
+  .mini.shift-rush .tp-btn.wide,
+  .mini.bus-dash .tp-btn.wide {
+    flex-grow: 1.6;
+  }
+}
+.mini .sr-touch-note {
+  display: none;
+}
+@media (hover: none) and (pointer: coarse) {
+  .mini .sr-key-note {
+    display: none;
+  }
+  .mini .sr-touch-note {
+    display: block;
+  }
+}

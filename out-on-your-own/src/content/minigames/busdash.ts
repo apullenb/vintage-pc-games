@@ -5,14 +5,22 @@ import type { MiniGameDef } from './types.ts';
 export const busdash: MiniGameDef = {
   id: 'busdash',
   title: 'Bus Dash',
-  how: 'Jump with ↑, SPACE, or tap. Duck with ↓. Dodge dogs, strollers, and puddles, and reach the bus stop before the bus pulls away.',
+  how: 'You run on your own. Jump with ↑ or SPACE (hold for a higher jump) over dogs, strollers, puddles and signs. Duck with ↓ under ladders, sprinklers and low branches. On a phone: tap the screen to jump, hold DUCK to duck. Grab coffee for a burst of speed. Every bump costs you time.',
   stakes: 'Make it and you’re on time. Miss it and you show up late, and your boss notices.',
   art: 'street',
   apply: (s, r) => {
     energy(s, -4);
+    const left = r.stats?.secondsLeft;
     if (r.score >= 0.5) {
       rep(s, 1);
-      return { text: 'You slap the side of the bus just as the doors close. The driver sighs and lets you on. On time!' };
+      const close = r.played && left !== undefined && left < 2;
+      return {
+        text: close
+          ? 'You slap the side of the bus just as the doors close. The driver sighs and lets you on. On time!'
+          : r.played && (r.stats?.bumps ?? 1) === 0
+            ? 'You weave through the morning like a movie stunt double and hop on with time to spare. On time!'
+            : 'You hop on, out of breath, as the driver pulls the lever. On time!',
+      };
     }
     rep(s, -3);
     return {
