@@ -1,0 +1,93 @@
+/* Flashcard Cram: clue banner + crisp HTML labels laid over the pixel canvas. */
+.cards-game {
+  gap: 6px;
+}
+.cards-clue {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 3.6em;
+  padding: 4px 10px 6px;
+  background: #fff8dc;
+  border: 3px solid var(--line);
+  box-shadow: 0 3px 0 var(--line);
+  font: 22px/1.05 var(--font-body);
+  color: var(--ink);
+  transition: background-color 0.15s;
+}
+.cards-clue-tag {
+  font: 11px var(--font-ui);
+  color: var(--ink2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cards-clue.right {
+  background: #d4f5df;
+}
+.cards-clue.wrong {
+  background: #fbd9d2;
+}
+.cards-clue.right .cards-clue-tag,
+.cards-clue.wrong .cards-clue-tag {
+  font-size: 14px;
+  color: var(--ink);
+}
+.cards-clue.right .cards-clue-tag::before {
+  content: '✓ ';
+  color: var(--good);
+}
+.cards-clue.wrong .cards-clue-tag::before {
+  content: '✗ ';
+  color: var(--bad);
+}
+.cards-wrap {
+  position: relative;
+  width: min(100%, calc(52vh * 192 / 120));
+  margin: 0 auto;
+  container-type: inline-size;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cards-wrap .mini-canvas {
+  display: block;
+  max-height: none;
+}
+.cards-labels {
+  position: absolute;
+  inset: 3px; /* inside the canvas border */
+  pointer-events: none;
+  overflow: hidden;
+}
+.cards-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1.2%;
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: 5cqw;
+  line-height: 0.82;
+  text-transform: uppercase;
+  color: var(--ink);
+  will-change: transform, left, top;
+}
+.cards-label span {
+  display: block;
+  padding-top: 0.32em;
+  overflow-wrap: anywhere;
+}
+.cards-label[data-state='wrong'] span {
+  color: #8a1f14;
+  text-decoration: line-through;
+}
+.cards-label[data-state='missed'] span {
+  color: #8a1f14;
+}
+@media (max-height: 760px) {
+  .cards-clue {
+    font-size: 20px;
+    min-height: 3.3em;
+  }
+}
