@@ -1,0 +1,393 @@
+/* Driving mini-games (Driving Test, Delivery Rush). Scoped under .drive. */
+.drive {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: contain;
+}
+.drive .mini-hud {
+  justify-content: space-between;
+}
+.drive .mini-hud .good {
+  color: var(--good);
+}
+.drive-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 10px;
+  align-items: start;
+}
+.drive-canvas-wrap {
+  position: relative;
+  line-height: 0;
+}
+.drive-canvas-wrap .mini-canvas {
+  max-height: 58vh;
+  cursor: crosshair;
+}
+.drive-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* road test layout: talk + clipboard beside the canvas on wide screens */
+.drive-main.rt {
+  grid-template-areas: 'cv talk' 'cv clip';
+  grid-template-rows: auto 1fr;
+}
+.drive-main.rt .drive-canvas-wrap {
+  grid-area: cv;
+}
+.drive-main.rt .drive-talk {
+  grid-area: talk;
+  flex-direction: column;
+}
+.drive-main.rt .drive-clip {
+  grid-area: clip;
+  margin-top: 6px;
+}
+.drive-main.rt .drive-cab {
+  width: 100%;
+}
+
+/* instructor / customer speech */
+.drive-talk {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.drive-cab {
+  width: 96px;
+  flex: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border: 3px solid var(--line);
+  background: #1c1424;
+  aspect-ratio: 96 / 48;
+  height: auto;
+  align-self: flex-start;
+}
+.drive-bubble {
+  flex: 1;
+  position: relative;
+  background: #fffaf0;
+  border: 3px solid var(--line);
+  padding: 4px 8px;
+  font-size: 20px;
+  line-height: 1.05;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.drive-bubble small {
+  font: 10px var(--font-ui);
+  color: var(--muted);
+}
+.drive-bubble.mark {
+  background: #ffe2dc;
+}
+.drive-bubble.good {
+  background: #e2f6e4;
+}
+.drive-bubble.cmd {
+  background: #fff3c4;
+}
+
+/* examiner's clipboard */
+.drive-clip {
+  background: #f4ecd6;
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line);
+  padding: 14px 8px 6px;
+  position: relative;
+  font-size: 18px;
+  line-height: 1.05;
+}
+.drive-clip::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 46px;
+  height: 12px;
+  margin-left: -23px;
+  background: #8a8a9a;
+  border: 3px solid var(--line);
+}
+.drive-clip h4 {
+  margin: 0 0 4px;
+  font: 11px var(--font-ui);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  justify-content: space-between;
+}
+.drive-clip h4 span:last-child {
+  color: var(--ink2);
+}
+.drive-clip ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 210px;
+  overflow: hidden;
+}
+.drive-clip li {
+  color: var(--bad);
+}
+.drive-clip li span {
+  color: var(--ink2);
+}
+.drive-clip .none {
+  color: var(--muted);
+  margin: 0;
+}
+.drive-clip .stamp {
+  margin-top: 6px;
+  font: 14px var(--font-title);
+  text-align: center;
+  padding: 4px;
+  border: 3px solid currentColor;
+  transform: rotate(-4deg);
+}
+.drive-clip .stamp.pass {
+  color: var(--good);
+}
+.drive-clip .stamp.fail {
+  color: var(--bad);
+}
+
+/* order list (delivery) */
+.drive-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.drive-order {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  gap: 6px;
+  align-items: center;
+  background: #fffaf0;
+  border: 2px solid var(--line);
+  padding: 2px 6px;
+  font-size: 18px;
+  line-height: 1;
+}
+.drive-order i {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line);
+  display: block;
+}
+.drive-order.carry {
+  background: #e2f0ff;
+}
+.drive-order.hurry b {
+  color: var(--bad);
+}
+.drive-order .bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  background: #ddd3bb;
+}
+.drive-order .bar > div {
+  height: 100%;
+  background: var(--good);
+}
+.drive-order.hurry .bar > div {
+  background: var(--bad);
+}
+
+/* start overlay */
+.drive-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(20, 12, 32, 0.45);
+  pointer-events: none;
+  line-height: 1.1;
+  transition: opacity 0.4s;
+}
+.drive-overlay.fade {
+  opacity: 0;
+}
+.drive-howto {
+  background: #fffaf0;
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line);
+  padding: 6px 12px;
+  max-width: 92%;
+  font-size: 19px;
+}
+.drive-howto b {
+  font: 12px var(--font-ui);
+}
+.drive-howto ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.drive-count {
+  font: 34px var(--font-title);
+  color: #fff3c4;
+  text-shadow: 3px 3px 0 var(--line), -2px -2px 0 var(--line), 2px -2px 0 var(--line), -2px 2px 0 var(--line);
+  animation: drive-pop 0.35s ease-out;
+}
+.drive-count.go {
+  color: #7ee08a;
+}
+@keyframes drive-pop {
+  from {
+    transform: scale(1.8);
+    opacity: 0.2;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drive-count {
+    animation: none;
+  }
+}
+
+/* touch pedals */
+.drive-pad {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  touch-action: none;
+}
+.drive-pad .grp {
+  display: flex;
+  gap: 6px;
+  flex: 2;
+}
+.drive-pad .grp + .grp {
+  flex: 3;
+}
+.drive-pad .drive-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 0 2px;
+  font-size: 15px;
+  overflow: hidden;
+}
+@media (max-width: 480px) {
+  .drive-pad .drive-btn {
+    font-size: 11px;
+  }
+}
+.drive-btn {
+  min-width: 60px;
+  padding: 0 6px;
+}
+.drive-btn.gas {
+  background: #c8f0cc;
+}
+.drive-btn.brake {
+  background: #ffd2c8;
+}
+.drive-btn.sig {
+  background: #ffe7a8;
+}
+.drive-btn.sig.on {
+  background: #ffb020;
+}
+.drive-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  grid-template-rows: repeat(2, 50px);
+  gap: 4px;
+}
+.drive-dpad .drive-btn {
+  min-width: 0;
+  min-height: 0;
+}
+.drive-dpad .u {
+  grid-column: 2;
+  grid-row: 1;
+}
+.drive-dpad .l {
+  grid-column: 1;
+  grid-row: 2;
+}
+.drive-dpad .d {
+  grid-column: 2;
+  grid-row: 2;
+}
+.drive-dpad .r {
+  grid-column: 3;
+  grid-row: 2;
+}
+.drive-keys {
+  font-size: 17px;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+}
+
+/* delivery: d-pad on the left, a tall SLOW button on the right */
+.drive-pad .grp.slow {
+  flex: 0 0 110px;
+}
+.drive-pad .grp.slow .drive-btn {
+  min-height: 104px;
+}
+
+/* pedals on touch screens (and any narrow window); key legend for keyboards */
+@media (hover: hover) and (pointer: fine) and (min-width: 761px) {
+  .drive-pad.touch-only {
+    display: none;
+  }
+}
+@media (hover: none), (pointer: coarse), (max-width: 760px) {
+  .drive-keys {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .drive-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .drive-main.rt {
+    grid-template-areas: 'talk' 'cv' 'clip';
+    grid-template-rows: auto;
+  }
+  .drive-main.rt .drive-talk {
+    flex-direction: row;
+  }
+  .drive-main.rt .drive-cab {
+    width: 112px;
+  }
+  .drive-clip ul {
+    max-height: 58px;
+  }
+  .drive-bubble {
+    font-size: 18px;
+  }
+  .drive .mini-hud {
+    font-size: 18px;
+    gap: 4px 10px;
+  }
+  .drive-canvas-wrap .mini-canvas {
+    max-height: 50vh;
+  }
+  .drive-howto {
+    font-size: 16px;
+  }
+  .drive-count {
+    font-size: 26px;
+  }
+}
