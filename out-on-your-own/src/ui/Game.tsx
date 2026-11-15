@@ -124,7 +124,7 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
           <div className="panel">{panel}</div>
           </>
           )}
-          {h?.t !== 'ending' && <MissionStrip g={g} onOpen={() => setModal('missions')} />}
+          {h?.t !== 'ending' && !(h?.t === 'minigame' && !h.result) && <MissionStrip g={g} onOpen={() => setModal('missions')} />}
         </section>
         {h?.t !== 'ending' && (
           <aside className="side-col">

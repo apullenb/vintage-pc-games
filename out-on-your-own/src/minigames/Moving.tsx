@@ -173,6 +173,7 @@ export function Moving({ s, onDone, reducedMotion }: MiniProps) {
     st.phase = 'loaded';
     st.t = 0;
     st.banner = msg;
+    st.fl.length = 0; // clear pop-up labels so they don't pile on the banner
     st.clockAtEnd = Math.max(0, st.clock);
     st.drag = null;
     if (msg === 'ALL PACKED!') sound.fanfare();
