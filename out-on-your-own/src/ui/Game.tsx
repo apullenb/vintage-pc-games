@@ -110,7 +110,7 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
       <div className="stage">
         <section className="main-col">
           <div className="scene-frame">
-            <SceneCanvas art={art} look={g.look} speaker={speaker} talking={talking} hidePlayer={hidePlayer} />
+            <SceneCanvas art={art} look={g.look} speaker={speaker} talking={talking} hidePlayer={hidePlayer} path={g.path} night={h?.t === 'summary'} />
             <div className="scene-tag">
               {speaker && CAST[speaker] ? <span className="speaker">{CAST[speaker].name}</span> : <span className="where">{g.housing.name}</span>}
             </div>
