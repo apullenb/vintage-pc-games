@@ -1,0 +1,98 @@
+/* Moving Day: canvas sizing, the "holding" chip, weight tags, compact button row. */
+.moving-game {
+  gap: 6px;
+}
+.mv-wrap {
+  width: min(100%, calc(54vh * 192 / 128));
+  margin: 0 auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.mv-wrap .mini-canvas {
+  display: block;
+  max-height: none;
+}
+.mini-hud .mv-sel b {
+  font-weight: normal;
+  white-space: nowrap;
+}
+.mv-w {
+  display: inline-block;
+  font: 10px/1 var(--font-ui);
+  font-style: normal;
+  padding: 3px 4px 2px;
+  border: 2px solid var(--line);
+  color: #fff;
+  vertical-align: middle;
+}
+.mv-heavy {
+  background: #4a4a6a;
+}
+.mv-medium {
+  background: #b08a5a;
+}
+.mv-light {
+  background: #5ab0e0;
+}
+.mv-fragile {
+  background: #e0503c;
+}
+.mv-pad .tp-btn {
+  min-width: 54px;
+  padding: 0 6px;
+}
+.mv-pad .mv-drop {
+  min-width: 80px;
+  background: #fff3c4;
+}
+.mv-pad .mv-brake {
+  min-width: 220px;
+  background: #fbd9d2;
+}
+.mv-legend {
+  font-size: 17px;
+  line-height: 1.5;
+}
+.mv-legend .mv-w {
+  font-size: 9px;
+  padding: 2px 3px 1px;
+}
+/* One steady HUD row so the canvas never jumps while you drag. */
+.moving-game .mini-hud {
+  flex-wrap: nowrap;
+  gap: 6px 14px;
+  min-height: 42px;
+}
+.moving-game .mini-hud .mv-sel {
+  min-width: 0;
+  flex: 1;
+}
+.moving-game .mini-hud .mv-sel b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mv-pad {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+@media (hover: none), (pointer: coarse) {
+  .mv-keys {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .mv-pad .tp-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 50px;
+    font-size: 15px;
+    padding: 0 2px;
+  }
+  .mv-pad .mv-drop {
+    flex: 1.4 1 0;
+  }
+  .mv-pad .mv-brake {
+    flex: 1 1 auto;
+  }
+}
