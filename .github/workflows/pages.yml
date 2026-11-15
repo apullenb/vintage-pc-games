@@ -26,7 +26,7 @@ jobs:
           cache-dependency-path: |
             groundhogs/package-lock.json
             star-keys/package-lock.json
-            out-on-your-own/package-lock.json
+            out-in-the-real-world/package-lock.json
       - name: Test and build Groundhogs
         working-directory: groundhogs
         run: |
@@ -40,7 +40,7 @@ jobs:
           npx vitest run
           npm run build
       - name: Test and build Out in the Real World
-        working-directory: out-on-your-own
+        working-directory: out-in-the-real-world
         run: |
           npm ci
           npx vitest run
@@ -51,7 +51,7 @@ jobs:
           cp -r site/. _site/
           cp -r groundhogs/dist _site/groundhogs
           cp -r star-keys/dist _site/star-keys
-          cp -r out-on-your-own/dist _site/out-on-your-own
+          cp -r out-in-the-real-world/dist _site/out-in-the-real-world
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

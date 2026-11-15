@@ -8,7 +8,7 @@ Browser games in the spirit of classic 1990s PC game genres, each in its own fol
 | --- | --- | --- |
 | [Groundhogs](https://apullenb.github.io/vintage-pc-games/groundhogs/) | [`groundhogs/`](groundhogs/) | Guide a stream of walking groundhogs home by assigning them jobs |
 | [Star Keys](https://apullenb.github.io/vintage-pc-games/star-keys/) | [`star-keys/`](star-keys/) | Typing adventure: type words to move an astronaut ahead of the danger |
-| [Out in the Real World](https://apullenb.github.io/vintage-pc-games/out-on-your-own/) | [`out-on-your-own/`](out-on-your-own/) | Life sim: your first year after high school, with real money, time, and credit tradeoffs |
+| [Out in the Real World](https://apullenb.github.io/vintage-pc-games/out-in-the-real-world/) | [`out-in-the-real-world/`](out-in-the-real-world/) | Life sim: your first year after high school, with real money, time, and credit tradeoffs |
 
 ## Running a game
 
