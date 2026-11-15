@@ -14,6 +14,9 @@ real-world tradeoffs.
 - **Payday and bills.** Every other week you get a real pay stub (taxes, FICA, insurance, 401(k)).
   Bills are due every four weeks, and you decide what to pay and from where. Skipping rent twice
   ends the game.
+- **Costs nobody budgets for.** Haircuts, work clothes, birthdays, holiday gifts, textbooks, move-in
+  basics, and car registration land on a fixed calendar, and heating bills climb in winter. Prices
+  (groceries, takeout, rent, taxes withheld) follow 2026 numbers, so money is tight but manageable.
 - **Every cost asks how you'll pay.** Checking (watch for overdraft fees), savings (your emergency
   fund), or a credit card (interest, utilization, your credit score). Or wait and take the risk:
   the worn tire really can blow out.

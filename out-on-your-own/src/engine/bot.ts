@@ -42,10 +42,17 @@ export function botPlan(s: GameState, style: Style): Plan {
   if (!s.job) plan.slots.weekday = 'jobhunt';
 
   if (style === 'reckless') {
-    plan.slots.evening = 'friends';
+    // Careless, not clueless: out twice a week and takeout by default (every other week on a prepaid
+    // meal plan, every fourth week when Mom is cooking). Only an overdrawn account (the bank texts
+    // you) means one night out and cheap food that week.
+    const broke = s.stats.cash < 0;
+    plan.slots.evening = broke ? 'rest' : 'friends';
     plan.slots.saturday = 'friends';
     plan.slots.sunday = 'rest';
-    plan.food = foodOptions(s).includes('takeout') ? 'takeout' : plan.food;
+    const foods = foodOptions(s);
+    const every = foods.includes('parents') ? 4 : foods.includes('mealplan') ? 2 : 1;
+    if (foods.includes('takeout') && !broke && s.week % every === 0) plan.food = 'takeout';
+    else plan.food = foods.includes('ramen') ? 'ramen' : foods[0];
     // Reckless players still eventually do some missions, late.
     const left = s.chapter >= 0 ? 6 - ((s.week - 1) % 6) : 6;
     if (left <= 2) taskPass(s, plan, used, free, set);
@@ -54,17 +61,31 @@ export function botPlan(s: GameState, style: Style): Plan {
 
   taskPass(s, plan, used, free, set);
   const need = CAREER_NEED[s.path];
+  // Meal prep most Sundays, but like most people, one week a month gets away from you (and takeout
+  // wins), unless money is tight.
+  const flush = s.stats.cash > 400 && s.stats.cash + s.stats.savings > 800;
+  const busyWeek = s.week % 4 === 2 && flush;
   for (const slot of ['evening', 'saturday', 'sunday'] as SlotId[]) {
     if (!free(slot)) continue;
     const ids = activitiesFor(s, slot).filter((x) => x.ok === true).map((x) => x.a.id);
-    if (slot === 'sunday' && ids.includes('mealprep') && s.stats.energy > 30) {
+    if (slot === 'sunday' && ids.includes('mealprep') && s.stats.energy > 30 && !busyWeek) {
       set(slot, 'mealprep');
+      continue;
+    }
+    // A sensible person still has a life: out with friends on Saturdays, unless money is tight.
+    if (slot === 'saturday' && ids.includes('friends') && s.stats.cash + s.stats.savings > 600) {
+      set(slot, 'friends');
       continue;
     }
     if (s.stats.energy < 45) continue;
     const behind = s.stats.xp < (need.xp + 8) * Math.min(1, s.week / 32);
     if (ids.includes('study') && ((behind && s.stats.energy > 40) || (s.stats.xp < need.xp + 8 && s.stats.energy > 60 && !used.has('study')))) {
       set(slot, 'study');
+      continue;
+    }
+    // With a real cushion saved, most people loosen up a little: a second night out.
+    if (slot === 'evening' && ids.includes('friends') && s.stats.savings > 2000) {
+      set(slot, 'friends');
       continue;
     }
     if (s.stats.energy > 70 && ids.includes('shift') && !used.has('shift')) {
@@ -76,7 +97,7 @@ export function botPlan(s: GameState, style: Style): Plan {
     }
   }
   const foods = foodOptions(s);
-  plan.food = plan.slots.sunday === 'mealprep' && foods.includes('cook') ? 'cook' : foods.includes('ramen') ? (s.stats.energy < 40 ? 'takeout' : 'ramen') : foods[0];
+  plan.food = plan.slots.sunday === 'mealprep' && foods.includes('cook') ? 'cook' : foods.includes('ramen') ? ((s.stats.energy < 40 && flush) || busyWeek ? 'takeout' : 'ramen') : foods[0];
   return plan;
 }
 
@@ -136,7 +157,9 @@ export interface BotRun {
   reason?: string;
 }
 
-export function playGame(path: PathId, seed: number, style: Style, maxSteps = 6000): BotRun {
+const SAVINGS_GOALS: Record<string, number> = { 't-efund': 500, 't-1k': 1000, 't-fund5': 500, 't-final-fund': 1000 };
+
+export function playGame(path: PathId, seed: number, style: Style, maxSteps = 6000, trace?: (s: GameState) => void): BotRun {
   let s = begin(newState('Bot', { skin: 0, hair: 0, hairStyle: 0, shirt: 0 }, path, seed));
   let steps = 0;
   const visits = new Map<string, number>();
@@ -146,8 +169,15 @@ export function playGame(path: PathId, seed: number, style: Style, maxSteps = 60
       if (style === 'wise') {
         const buffer = monthlyBills(s) + 350;
         if (s.stats.cash > buffer) s = moveMoney(s, s.stats.cash - buffer, 'savings');
+        // Chasing a savings mission: dip into the bill buffer, but keep a couple weeks of spending money
+        // (plus half the month's bills on bills week).
+        const open = taskStatus(s).filter((t) => !t.done).map((t) => SAVINGS_GOALS[t.id] ?? 0);
+        const goal = Math.max(0, ...open);
+        const keep = 400 + (s.week % 4 === 0 ? monthlyBills(s) / 2 : 0);
+        if (goal > s.stats.savings && s.stats.cash > keep) s = moveMoney(s, Math.min(s.stats.cash - keep, goal - s.stats.savings), 'savings');
         if (s.card && s.card.balance > 0 && s.stats.cash > s.card.balance + 200 && s.card.balance / s.card.limit > 0.3) s = moveMoney(s, s.card.balance, 'card');
       }
+      trace?.(s);
       s = startWeek(s, botPlan(s, style));
       continue;
     }
@@ -172,9 +202,15 @@ export function playGame(path: PathId, seed: number, style: Style, maxSteps = 60
         if (s === before) throw new Error(`choice had no effect in ${h.id}:${h.step}`);
         break;
       }
-      case 'billsDue':
+      case 'billsDue': {
+        // A sensible person moves money over from savings rather than paying rent late.
+        if (style === 'wise') {
+          const due = h.bills.reduce((a, b) => a + b.amount, 0);
+          if (s.stats.cash < due && s.stats.savings > 0) s = moveMoney(s, Math.min(s.stats.savings, due - s.stats.cash), 'checking');
+        }
         s = payBills(s, botBills(s, style));
         break;
+      }
       case 'paycheck':
       case 'summary':
       case 'chapterEnd':

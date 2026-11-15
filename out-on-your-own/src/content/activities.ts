@@ -86,12 +86,12 @@ const LIST: Activity[] = [
     icon: 'friends',
     slots: ['evening', 'saturday'],
     desc: 'Tacos, games, a drive to nowhere. You remember why life is fun.',
-    hint: () => '+18 energy · About $30',
+    hint: () => '+18 energy · About $50',
     run: (s) => {
-      charge(s, 30, 'Night out');
+      charge(s, 50, 'Night out');
       energy(s, 18);
       inc(s, 'friendTime');
-      log(s, 'Hung out with Rae and the crew (−$30). Worth it.', 'good');
+      log(s, 'Hung out with Rae and the crew (−$50: food, gas, a movie). Worth it.', 'good');
     },
   },
   {

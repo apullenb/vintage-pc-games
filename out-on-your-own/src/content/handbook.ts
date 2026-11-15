@@ -33,6 +33,7 @@ export const HANDBOOK: Entry[] = [
   { id: 'roommate-agreement', term: 'Roommate agreement', text: 'A written plan for rent splits, bills, chores, guests, and quiet hours. Awkward to write, but it prevents much more awkward fights.' },
   { id: 'renters-insurance', term: 'Renters insurance', text: 'Covers YOUR stuff from theft, fire, and water damage. Usually $10–20/month. Your landlord’s insurance only covers the building.' },
   { id: 'budget', term: 'Budget & 50/30/20', text: 'A plan for your money before you spend it. A common starting point: 50% needs, 30% wants, 20% savings and debt payoff.' },
+  { id: 'irregular-costs', term: 'Irregular expenses', text: 'Haircuts, clothes, gifts, textbooks, car registration: they aren’t monthly bills, but they always come. Add them up for the year, divide by 12, and set that much aside every month (a “sinking fund”) so they never become emergencies.' },
   { id: 'pay-yourself-first', term: 'Pay yourself first', text: 'Move money to savings automatically on payday, before you can spend it.' },
   { id: 'emergency-fund', term: 'Emergency fund', text: 'Savings for surprises: car repairs, medical bills, losing a job. Start with $500–$1,000. Eventually aim for 3–6 months of expenses.' },
   { id: 'credit-score', term: 'Credit score', text: 'A number (300–850) that tells lenders how risky you are. It’s built by paying on time, keeping balances low, and having accounts open a long time. It affects apartments, car loans, even some jobs.' },

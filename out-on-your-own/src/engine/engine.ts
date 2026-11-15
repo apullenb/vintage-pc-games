@@ -90,13 +90,20 @@ export function foodOptions(s: GameState): Plan['food'][] {
   return ['ramen', 'cook', 'takeout'];
 }
 
+// Weekly food costs, 2026 prices for one young adult. Groceries track the USDA "thrifty" plan
+// (~$80–85/week buying for one); a week of mostly takeout and delivery apps runs ~$25/day.
 export const FOOD: Record<Plan['food'], { name: string; cost: number; energy: number; desc: string }> = {
-  ramen: { name: 'Ramen & cereal', cost: 35, energy: -5, desc: 'Cheap. You feel it by Thursday.' },
-  cook: { name: 'Groceries & cooking', cost: 60, energy: 4, desc: 'Needs a Sunday meal-prep slot.' },
-  takeout: { name: 'Takeout & delivery', cost: 120, energy: 4, desc: 'Fast and tasty. Expensive.' },
-  parents: { name: 'Family dinners', cost: 0, energy: 4, desc: 'Free. Comes with questions about your future.' },
+  ramen: { name: 'Ramen & cereal', cost: 45, energy: -5, desc: 'Cheap. You feel it by Thursday.' },
+  cook: { name: 'Groceries & cooking', cost: 85, energy: 4, desc: 'Needs a Sunday meal-prep slot.' },
+  takeout: { name: 'Takeout & delivery', cost: 185, energy: 4, desc: 'Fast and tasty. Delivery fees and tips add up fast.' },
+  parents: { name: 'Family dinners', cost: 25, energy: 4, desc: 'Dinner is free. Lunches at work and snacks are on you.' },
   mealplan: { name: 'Dining hall', cost: 0, energy: 2, desc: 'Prepaid meal plan. Mystery casserole.' },
 };
+
+// Toiletries, laundry, cleaning supplies, toilet paper: the stuff nobody budgets for.
+export function personalCost(s: GameState): number {
+  return s.housing.kind === 'parents' || s.housing.kind === 'dorm' ? 25 : 45;
+}
 
 export function appointmentSlots(s: GameState): Partial<Record<SlotId, string>> {
   const out: Partial<Record<SlotId, string>> = {};
@@ -202,7 +209,7 @@ export function spend(s: GameState, amount: number, label: string, kind: 'small'
 function runFood(s: GameState): void {
   const f = FOOD[s.plan.food];
   if (f.cost > 0) spend(s, f.cost, 'Food', 'all');
-  const misc = s.housing.kind === 'parents' || s.housing.kind === 'dorm' ? 20 : 30;
+  const misc = personalCost(s);
   spend(s, misc, 'Personal stuff', 'small');
   log(s, `Toiletries, laundry, and life stuff: ${money(misc)}.`);
   energy(s, f.energy);
@@ -215,7 +222,10 @@ function runFood(s: GameState): void {
 function runUpkeep(s: GameState): void {
   // The job itself.
   if (s.job) {
-    s.hoursThisPeriod += s.job.hours;
+    // Construction slows down in the dead of winter: apprentices get cut hours, not paid time off.
+    const slow = s.path === 'trade' && s.week >= 19 && s.week <= 24 && s.job.hours > 32;
+    s.hoursThisPeriod += slow ? 32 : s.job.hours;
+    if (slow) log(s, `Winter slowdown: only 32 hours on the schedule this week (−${money(8 * s.job.wage)} before taxes).`, 'bad');
     const drain = Math.round(s.job.hours * 0.42) + (s.path === 'trade' ? 4 : 0);
     energy(s, -drain);
   }
@@ -224,6 +234,12 @@ function runUpkeep(s: GameState): void {
   switch (s.transport) {
     case 'bus':
       energy(s, -3);
+      // No monthly pass (or ride arrangement) means paying per trip, which costs more.
+      if (s.path !== 'college' && !s.subs.some((x) => x.id === 'buspass' || x.id === 'rides')) {
+        const fare = s.path === 'trade' ? 60 : 25;
+        spend(s, fare, s.path === 'trade' ? 'Rides to job sites' : 'Bus fares', 'small');
+        log(s, s.path === 'trade' ? `No ride arrangement: paying coworkers per ride (${money(fare)}).` : `Bus fares without a monthly pass: ${money(fare)}.`);
+      }
       break;
     case 'bike':
       energy(s, -1);
@@ -265,6 +281,71 @@ function runUpkeep(s: GameState): void {
       s.stats.savings = round2(s.stats.savings + i);
       log(s, `Savings interest: +${money(i, true)}.`, 'good');
     }
+  }
+  runLifeCosts(s);
+}
+
+// ---------- irregular costs ----------
+// Real costs that don't show up as a monthly bill but always show up. They're on a fixed
+// calendar (not random), so a player who keeps a cushion is never blindsided by them.
+interface LifeCost {
+  id: string;
+  weeks: number[];
+  amount: number;
+  label: string;
+  text: string;
+  when?: (s: GameState) => boolean;
+}
+
+const ownPlace = (s: GameState): boolean => s.housing.kind !== 'parents' && s.housing.kind !== 'dorm';
+
+export const LIFE_COSTS: LifeCost[] = [
+  { id: 'haircut', weeks: [5, 11, 17, 23, 29, 35], amount: 28, label: 'Haircut', text: 'Haircut plus tip: $28. Every six weeks, that’s about $240 a year.' },
+  { id: 'uniform', weeks: [3], amount: 45, label: 'Work clothes', text: 'Fresh Fields requires black pants and non-slip shoes: $45.', when: (s) => s.path === 'home' && !!s.job },
+  { id: 'codebook', weeks: [4], amount: 135, label: 'Code book', text: 'Night class requires the current electrical code book: $135, even used.', when: (s) => s.path === 'trade' },
+  { id: 'clothes', weeks: [9], amount: 60, label: 'Clothes', text: 'Your jeans ripped and your shoes gave out. Discount-store replacements: $60.' },
+  { id: 'bday', weeks: [7, 13, 27, 33], amount: 35, label: 'Birthday', text: 'Another birthday (family or a friend): dinner out and a small gift, $35.' },
+  { id: 'coat', weeks: [16], amount: 95, label: 'Winter coat', text: 'It got cold fast. A winter coat and gloves: $95.' },
+  { id: 'workshoes', weeks: [24], amount: 70, label: 'Work shoes', text: 'On your feet all day, your work shoes wore through: $70.', when: (s) => (s.path === 'trade' || s.path === 'work') && !!s.job },
+  { id: 'holidays', weeks: [20], amount: 140, label: 'Holiday gifts', text: 'Holiday gifts for family and friends: $140, even shopping carefully.' },
+  { id: 'books2', weeks: [21], amount: 210, label: 'Spring textbooks', text: 'New semester, new syllabus. Used and rental textbooks: $210.', when: (s) => s.path === 'college' && s.flags.enrolled !== false },
+  { id: 'carreg', weeks: [26], amount: 95, label: 'Car registration', text: 'Annual car registration renewal: $95. The DMV doesn’t send a reminder twice.', when: (s) => !!s.car },
+];
+
+function lifeCost(s: GameState, amount: number, label: string, text: string): void {
+  spend(s, amount, label, 'small');
+  log(s, text, 'bad');
+  inc(s, 'lifeCosts', amount);
+  unlock(s, 'irregular-costs');
+}
+
+function runLifeCosts(s: GameState): void {
+  for (const c of LIFE_COSTS) {
+    if (!c.weeks.includes(s.week) || (c.when && !c.when(s))) continue;
+    lifeCost(s, c.amount, c.label, c.text);
+  }
+  // First place of your own: sheets, towels, pots, a shower curtain, a trash can… and, in an
+  // unfurnished apartment, something to sleep on.
+  if (ownPlace(s) && !s.flags.movedInBasics) {
+    s.flags.movedInBasics = true;
+    if (s.housing.kind === 'room') lifeCost(s, 150, 'Move-in basics', 'Move-in basics: sheets, towels, a pot, a shower curtain, a trash can… $150 at the discount store.');
+    else lifeCost(s, 300, 'Move-in basics', 'Move-in basics for an empty apartment: a used mattress, sheets, towels, a pot, a shower curtain… $300, even secondhand.');
+  }
+  // A new car comes with sales tax, title, and plates.
+  if (s.car && !s.flags.carTitled) {
+    s.flags.carTitled = true;
+    const fees = Math.round(s.car.value * 0.06) + 95;
+    const loan = s.loans.find((l) => l.kind === 'car' && l.balance > 0);
+    if (loan) {
+      loan.balance = round2(loan.balance + fees);
+      log(s, `Sales tax, title, and plates for your car: ${money(fees)}, rolled into your car loan.`, 'bad');
+      unlock(s, 'irregular-costs');
+    } else lifeCost(s, fees, 'Car tax & title', `Sales tax, title, and plates for your car: ${money(fees)}. The sticker price is never the whole price.`);
+  }
+  // Borrowing the family car isn't free: your parents' insurance went up when you were added.
+  if (s.transport !== 'borrow' && s.subs.some((x) => x.id === 'carshare')) {
+    s.subs = s.subs.filter((x) => x.id !== 'carshare');
+    log(s, 'You’re no longer on Mom’s car, so no more insurance share.', 'info');
   }
 }
 
@@ -326,6 +407,24 @@ function runEvents(s: GameState): void {
 }
 
 // ---------- payday ----------
+// 2026 federal withholding for a biweekly paycheck: IRS percentage method, single filer, standard W-4.
+// The paycheck is annualized, so someone who only works part of the year gets most of it back at tax time.
+function fedWithholding(taxablePerCheck: number): number {
+  const annual = taxablePerCheck * 26 - 8600;
+  const brackets: [number, number][] = [
+    [7500, 0.1],
+    [19900, 0.12],
+    [57900, 0.22],
+  ];
+  let tax = 0;
+  for (let i = 0; i < brackets.length; i++) {
+    const [lo, rate] = brackets[i];
+    const hi = brackets[i + 1]?.[0] ?? Infinity;
+    if (annual > lo) tax += (Math.min(annual, hi) - lo) * rate;
+  }
+  return round2(tax / 26);
+}
+
 export function makeStub(s: GameState): PayStub {
   const job = s.job;
   const hours = job ? Math.max(0, s.hoursThisPeriod) : 0;
@@ -336,8 +435,9 @@ export function makeStub(s: GameState): PayStub {
   const retire = round2(gross * s.retirePct);
   const match = job && s.retirePct > 0 ? round2(gross * Math.min(s.retirePct, job.match)) : 0;
   const taxable = Math.max(0, gross - retire - health - dental);
-  const federal = s.flags.w4exempt ? 0 : round2(Math.max(0, taxable - 300) * 0.1);
-  const fica = s.path === 'college' ? 0 : round2(gross * 0.0765);
+  const federal = s.flags.w4exempt ? 0 : fedWithholding(taxable);
+  // Health/dental premiums are pre-tax for FICA too; 401(k) money is not. On-campus student jobs are FICA-exempt.
+  const fica = s.path === 'college' ? 0 : round2((gross - health - dental) * 0.0765);
   const state = round2(taxable * 0.035);
   const net = round2(gross - federal - fica - state - health - dental - retire);
   return { hours, wage, gross, federal, fica, state, health, dental, retire, match, net, autoSaved: 0, overdraftCleared: 0 };
@@ -371,8 +471,12 @@ export function billsFor(s: GameState): Bill[] {
   const b: Bill[] = [];
   const h = s.housing;
   if (h.rent > 0) b.push({ id: 'rent', label: h.kind === 'parents' ? 'Rent to your parents' : 'Rent', amount: h.rent, kind: 'housing' });
-  if (h.utilities > 0) b.push({ id: 'utilities', label: 'Utilities (power, internet)', amount: h.utilities, kind: 'utilities' });
-  for (const sub of s.subs) b.push({ id: `sub:${sub.id}`, label: sub.label, amount: sub.cost, kind: sub.id === 'phone' ? 'phone' : sub.id === 'nightclass' || sub.id === 'tuitionplan' ? 'tuition' : sub.id === 'gym' ? 'gym' : 'sub' });
+  if (h.utilities > 0) {
+    // Heating season (weeks 17–28) pushes the power bill up about 30%.
+    const winter = s.week >= 17 && s.week <= 28;
+    b.push({ id: 'utilities', label: winter ? 'Utilities (power, internet) · winter heating' : 'Utilities (power, internet)', amount: winter ? Math.round(h.utilities * 1.3) : h.utilities, kind: 'utilities' });
+  }
+  for (const sub of s.subs) b.push({ id: `sub:${sub.id}`, label: sub.label, amount: sub.cost, kind: sub.id === 'phone' ? 'phone' : sub.id === 'nightclass' || sub.id === 'tuitionplan' || sub.id === 'schoolbal' ? 'tuition' : sub.id === 'gym' ? 'gym' : 'sub' });
   if (s.car) b.push({ id: 'carins', label: `Car insurance`, amount: s.car.insurance, kind: 'insurance' });
   for (const l of s.loans) if (!l.deferred && l.balance > 0) b.push({ id: `loan:${l.name}`, label: `${l.name} payment`, amount: Math.min(l.payment, round2(l.balance)), kind: 'carloan' });
   if (s.card && s.card.balance > 0.5) {
