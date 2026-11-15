@@ -17,12 +17,13 @@ export function MiniGameHost({ g, head, onFinish, onContinue }: { g: GameState; 
   useEffect(() => setPhase('intro'), [head.id, g.week]);
 
   const title = txt(def.title, g, data);
+  const art = typeof def.art === 'function' ? def.art(g) : def.art;
 
   if (head.result) {
     return (
       <>
         <div className="scene-frame">
-          <SceneCanvas art={def.art} look={g.look} path={g.path} />
+          <SceneCanvas art={art} look={g.look} path={g.path} />
           <div className="scene-tag">
             <span className="speaker">{title}</span>
           </div>
@@ -78,7 +79,7 @@ export function MiniGameHost({ g, head, onFinish, onContinue }: { g: GameState; 
   return (
     <>
       <div className="scene-frame">
-        <SceneCanvas art={def.art} look={g.look} path={g.path} />
+        <SceneCanvas art={art} look={g.look} path={g.path} />
         <div className="scene-tag">
           <span className="speaker">Mini-game</span>
         </div>

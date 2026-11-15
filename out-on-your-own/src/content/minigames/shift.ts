@@ -25,7 +25,7 @@ export const shift: MiniGameDef = {
   title: (s) => TITLE[s.path] ?? 'Shift Rush',
   how: (s) => HOW[s.path] ?? HOW.work,
   stakes: 'A great shift impresses your boss (and sometimes earns a bonus). A sloppy one gets noticed too.',
-  art: 'warehouse',
+  art: (s) => ({ home: 'grocery', college: 'library', trade: 'jobsite', work: 'warehouse' } as const)[s.path],
   apply: (s, r) => {
     const delta = r.score >= 0.85 ? 4 : r.score >= 0.6 ? 2 : r.score >= 0.35 ? 0 : -3;
     rep(s, delta);
