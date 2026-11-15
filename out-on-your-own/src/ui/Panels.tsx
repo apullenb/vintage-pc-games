@@ -6,6 +6,7 @@ import { canPay, creditScore, money, round2, snap } from '../engine/core.ts';
 import {
   FOOD,
   appointmentSlots,
+  billsFor,
   chapterEndWeek,
   chapterReport,
   defaultPlan,
@@ -37,6 +38,8 @@ export function Planner({ s, onStart }: { s: GameState; onStart: (p: Plan) => vo
   const payday = s.week % 2 === 0;
   const bills = s.week % 4 === 0;
   const left = chapterEndWeek(s.chapter) - s.week + 1;
+  const billTotal = billsFor(s).reduce((a, b) => a + b.amount, 0);
+  const nextBills = Math.ceil(s.week / 4) * 4;
 
   const setSlot = (slot: SlotId, id: string): void => {
     const next = { ...plan, slots: { ...plan.slots, [slot]: id } };
@@ -60,6 +63,11 @@ export function Planner({ s, onStart }: { s: GameState; onStart: (p: Plan) => vo
             Back
           </button>
         </div>
+        {opts.some(({ a }) => a.task) && (
+          <p className="muted small legend">
+            <span className="star">★</span> = helps finish a mission
+          </p>
+        )}
         <div className="choice-list">
           {opts.map(({ a, ok }) => {
             const dup = usedTasks.has(a.id);
@@ -91,20 +99,38 @@ export function Planner({ s, onStart }: { s: GameState; onStart: (p: Plan) => vo
       <div className="panel-head">
         <h3>Plan week {s.week}</h3>
         <div className="tags">
-          {payday && <span className="tag good">Payday</span>}
-          {bills && <span className="tag warn">Bills due</span>}
           <span className={`tag ${left <= 2 ? 'warn' : ''}`}>{left === 1 ? 'Chapter deadline!' : `${left} weeks left in chapter`}</span>
         </div>
       </div>
+      <div className="week-info" data-coach="week-info">
+        {s.job && (
+          <span className={payday ? 'good' : ''}>
+            <Icon name="money" size={14} /> {payday ? 'Payday this week!' : `Next payday: week ${s.week + 1}`}
+          </span>
+        )}
+        {billTotal > 0 && (
+          <span className={bills ? 'warn' : ''}>
+            <Icon name="docs" size={14} /> {bills ? 'Bills due this week' : `Bills due week ${nextBills}`}: about {money(billTotal)}
+          </span>
+        )}
+      </div>
       {s.stats.energy < 30 && <div className="warn-box">Your energy is low. Tired people get sick. Schedule some rest.</div>}
-      <p className="muted small order-note">Your week happens in order, left to right. Tap a slot to change it.</p>
+      <p className="muted small order-note">Your week happens in order: 1, 2, 3, 4. Tap a slot to change it.</p>
       <div className="slots">
-        {SLOTS.map((slot) => {
+        {SLOTS.map((slot, n) => {
           const appt = appts[slot];
           const a = activityFor(plan.slots[slot]);
           return (
-            <button key={slot} className={`slot ${appt ? 'locked' : ''} ${a.task && !appt ? 'task' : ''}`} disabled={!!appt} onClick={() => setPicking(slot)}>
-              <span className="slot-when">{SLOT_LABEL[slot]}</span>
+            <button
+              key={slot}
+              className={`slot ${appt ? 'locked' : ''} ${a.task && !appt ? 'task' : ''}`}
+              disabled={!!appt}
+              onClick={() => setPicking(slot)}
+              aria-label={`${n + 1}. ${SLOT_LABEL[slot]}: ${appt ?? txt(a.name, s)}.${appt ? ' Scheduled appointment.' : ' Tap to change.'}`}
+            >
+              <span className="slot-when">
+                <span className="slot-num">{n + 1}</span> {SLOT_LABEL[slot]}
+              </span>
               <span className="slot-what">
                 <Icon name={appt ? 'calendar' : a.icon} />
                 {appt ?? txt(a.name, s)}
@@ -133,6 +159,7 @@ export function Planner({ s, onStart }: { s: GameState; onStart: (p: Plan) => vo
               <button
                 key={f}
                 className={`pill ${plan.food === f ? 'on' : ''}`}
+                aria-pressed={plan.food === f}
                 disabled={needsPrep}
                 title={needsPrep ? 'Schedule "Grocery shop & meal prep" on Sunday first' : FOOD[f].desc}
                 onClick={() => {
@@ -149,6 +176,7 @@ export function Planner({ s, onStart }: { s: GameState; onStart: (p: Plan) => vo
       )}
       <button
         className="btn primary big"
+        data-coach="live"
         onClick={() => {
           sfx('week');
           onStart(plan);
@@ -313,7 +341,7 @@ type BillPick = { mode: 'full' | 'min' | 'skip'; method: PayMethod };
 function consequence(b: Bill, s: GameState): string {
   switch (b.kind) {
     case 'housing':
-      return s.housing.missed >= 1 ? 'LAST WARNING: missing again means losing your home.' : s.housing.kind === 'parents' ? 'Your parents will NOT be happy.' : '$75 late fee. Miss twice = eviction.';
+      return s.housing.missed >= 1 ? 'LAST WARNING: missing again means losing your home.' : s.housing.kind === 'parents' ? 'Your parents will NOT be happy. Miss twice and your deal with them is off.' : '$75 late fee. Miss twice = eviction.';
     case 'card':
       return 'Late fee + a late mark on your credit report.';
     case 'carloan':
@@ -344,6 +372,9 @@ export function BillsPanel({ s, bills, onPay }: { s: GameState; bills: Bill[]; o
     return out;
   };
   const [picks, setPicks] = useState<Record<string, BillPick>>(init);
+  const [confirmSkip, setConfirmSkip] = useState(false);
+  const total = round2(bills.reduce((a, b) => a + b.amount, 0));
+  const canAll = s.stats.cash >= total || s.overdraftOptIn;
   const amountOf = (b: Bill, p: BillPick): number => (p.mode === 'skip' ? 0 : p.mode === 'min' ? (b.minimum ?? b.amount) : b.amount);
   const totals = { checking: 0, savings: 0 };
   for (const b of bills) {
@@ -353,7 +384,28 @@ export function BillsPanel({ s, bills, onPay }: { s: GameState; bills: Bill[]; o
   const cashAfter = round2(s.stats.cash - totals.checking);
   const savAfter = round2(s.stats.savings - totals.savings);
   const blocked = savAfter < 0 || (cashAfter < 0 && !s.overdraftOptIn);
-  const set = (id: string, p: Partial<BillPick>) => setPicks({ ...picks, [id]: { ...picks[id], ...p } });
+  const set = (id: string, p: Partial<BillPick>) => {
+    setPicks({ ...picks, [id]: { ...picks[id], ...p } });
+    setConfirmSkip(false);
+  };
+  const payAllFromChecking = (): void => {
+    const out: Record<string, BillPick> = {};
+    for (const b of bills) out[b.id] = { mode: 'full', method: 'checking' };
+    setPicks(out);
+    setConfirmSkip(false);
+    sfx('click');
+  };
+  // Skipping these can end the run, so ask twice.
+  const critical = bills.filter((b) => picks[b.id].mode === 'skip' && (b.kind === 'housing' || (b.kind === 'tuition' && s.path === 'college')));
+  const submit = (): void => {
+    const out: Record<string, { amount: number; method: PayMethod } | null> = {};
+    for (const b of bills) {
+      const p = picks[b.id];
+      out[b.id] = p.mode === 'skip' ? null : { amount: amountOf(b, p), method: p.method };
+    }
+    sfx('spend');
+    onPay(out);
+  };
 
   return (
     <div className="panel-inner bills">
@@ -361,6 +413,15 @@ export function BillsPanel({ s, bills, onPay }: { s: GameState; bills: Bill[]; o
         <h3>Bills are due</h3>
       </div>
       <p className="muted small">Pay what you can. Skipping a bill has consequences.</p>
+      <div className="bill-quick">
+        <span>
+          Total due <strong>{money(total, true)}</strong> · In checking <strong className={s.stats.cash < total ? 'neg' : ''}>{money(s.stats.cash, true)}</strong>
+        </span>
+        <button className="btn small" disabled={!canAll} onClick={payAllFromChecking}>
+          Pay everything from checking
+        </button>
+        {!canAll && <span className="muted small">Not enough in checking for everything. Use savings for some, or skip something.</span>}
+      </div>
       <div className="bill-list">
         {bills.map((b) => {
           const p = picks[b.id];
@@ -371,24 +432,24 @@ export function BillsPanel({ s, bills, onPay }: { s: GameState; bills: Bill[]; o
                 <span className="bill-amt">{money(amountOf(b, p), true)}</span>
               </div>
               <div className="bill-ctrl">
-                <button className={`pill ${p.mode === 'full' ? 'on' : ''}`} onClick={() => set(b.id, { mode: 'full' })}>
+                <button className={`pill ${p.mode === 'full' ? 'on' : ''}`} aria-pressed={p.mode === 'full'} aria-label={`Pay ${b.label} in full`} onClick={() => set(b.id, { mode: 'full' })}>
                   {b.kind === 'card' ? `Full ${money(b.amount)}` : 'Pay'}
                 </button>
                 {b.kind === 'card' && (
-                  <button className={`pill ${p.mode === 'min' ? 'on' : ''}`} onClick={() => set(b.id, { mode: 'min' })}>
+                  <button className={`pill ${p.mode === 'min' ? 'on' : ''}`} aria-pressed={p.mode === 'min'} onClick={() => set(b.id, { mode: 'min' })}>
                     Minimum {money(b.minimum ?? 0)}
                   </button>
                 )}
-                <button className={`pill danger ${p.mode === 'skip' ? 'on' : ''}`} onClick={() => set(b.id, { mode: 'skip' })}>
+                <button className={`pill danger ${p.mode === 'skip' ? 'on' : ''}`} aria-pressed={p.mode === 'skip'} aria-label={`Skip ${b.label}`} onClick={() => set(b.id, { mode: 'skip' })}>
                   Skip
                 </button>
                 {p.mode !== 'skip' && (
                   <span className="from">
                     from
-                    <button className={`pill ${p.method === 'checking' ? 'on' : ''}`} onClick={() => set(b.id, { method: 'checking' })}>
+                    <button className={`pill ${p.method === 'checking' ? 'on' : ''}`} aria-pressed={p.method === 'checking'} aria-label={`Pay ${b.label} from checking`} onClick={() => set(b.id, { method: 'checking' })}>
                       Checking
                     </button>
-                    <button className={`pill ${p.method === 'savings' ? 'on' : ''}`} onClick={() => set(b.id, { method: 'savings' })}>
+                    <button className={`pill ${p.method === 'savings' ? 'on' : ''}`} aria-pressed={p.method === 'savings'} aria-label={`Pay ${b.label} from savings`} onClick={() => set(b.id, { method: 'savings' })}>
                       Savings
                     </button>
                   </span>
@@ -410,21 +471,47 @@ export function BillsPanel({ s, bills, onPay }: { s: GameState; bills: Bill[]; o
       </div>
       {cashAfter < 0 && s.overdraftOptIn && <div className="warn-box">This will overdraw your checking account ($35 fee per transaction).</div>}
       {blocked && <div className="warn-box">Not enough money for that. Pay from somewhere else, or skip something.</div>}
-      <button
-        className="btn primary"
-        disabled={blocked}
-        onClick={() => {
-          const out: Record<string, { amount: number; method: PayMethod } | null> = {};
-          for (const b of bills) {
-            const p = picks[b.id];
-            out[b.id] = p.mode === 'skip' ? null : { amount: amountOf(b, p), method: p.method };
-          }
-          sfx('spend');
-          onPay(out);
-        }}
-      >
-        Pay bills
-      </button>
+      {confirmSkip && critical.length > 0 ? (
+        <div className="confirm-skip" role="alertdialog" aria-labelledby="skip-q" aria-describedby="skip-why">
+          <strong id="skip-q">Really skip {critical.map((b) => b.label.toLowerCase()).join(' and ')}?</strong>
+          <p id="skip-why">
+            {critical.map((b) => consequence(b, s)).join(' ')} Housing and school come first when money is tight.
+          </p>
+          <div className="row">
+            <button
+              className="btn primary"
+              autoFocus
+              onClick={() => {
+                const next = { ...picks };
+                for (const b of critical) next[b.id] = { ...next[b.id], mode: 'full' };
+                setPicks(next);
+                setConfirmSkip(false);
+                sfx('click');
+              }}
+            >
+              No, pay it
+            </button>
+            <button className="btn danger" disabled={blocked} onClick={submit}>
+              Yes, skip it
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="btn primary"
+          disabled={blocked}
+          onClick={() => {
+            if (critical.length) {
+              setConfirmSkip(true);
+              sfx('bad');
+              return;
+            }
+            submit();
+          }}
+        >
+          Pay bills
+        </button>
+      )}
     </div>
   );
 }

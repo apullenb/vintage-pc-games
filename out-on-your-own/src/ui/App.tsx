@@ -4,6 +4,7 @@ import { HAIR_STYLES, HAIRS, SHIRTS, SKINS, playerPerson } from '../art/people.t
 import { PATHS, newState } from '../content/paths.ts';
 import { begin } from '../engine/engine.ts';
 import type { GameState, Look, PathId } from '../engine/types.ts';
+import { applyBigText } from './a11y.ts';
 import { setMuted, sfx } from './audio.ts';
 import { Icon, PersonCanvas, SceneCanvas } from './common.tsx';
 import { Game } from './Game.tsx';
@@ -17,6 +18,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>('title');
 
   useEffect(() => setMuted(meta.muted), [meta.muted]);
+  useEffect(() => applyBigText(meta.bigText), [meta.bigText]);
 
   const setMeta = (m: Meta): void => {
     setMetaRaw(m);

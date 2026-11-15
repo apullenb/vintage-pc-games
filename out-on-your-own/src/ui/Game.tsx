@@ -1,5 +1,5 @@
 // The in-game screen: HUD, scene, interaction panel, missions sidebar, modals.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CAST } from '../art/people.ts';
 import { ACHIEVEMENTS } from '../content/achievements.ts';
 import { CHAPTERS } from '../content/chapters.ts';
@@ -23,10 +23,13 @@ import {
 } from '../engine/engine.ts';
 import { finalScore } from '../engine/score.ts';
 import type { ArtId, GameState, NpcId, PayMethod, Plan } from '../engine/types.ts';
+import { reducedMotion } from './a11y.ts';
 import { sfx } from './audio.ts';
+import { HistoryCharts } from './Charts.tsx';
 import { Bar, Icon, Modal, SceneCanvas } from './common.tsx';
 import { BillsPanel, ChapterEndPanel, PaycheckPanel, Planner, ScenePanel, SummaryPanel } from './Panels.tsx';
 import type { Meta } from './save.ts';
+import { Tutorial } from './Tutorial.tsx';
 
 type ModalId = 'money' | 'handbook' | 'awards' | 'missions' | 'menu' | null;
 
@@ -89,10 +92,11 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
   const { art, speaker, hidePlayer } = artFor(g);
   const talking = h?.t === 'scene' && !h.result;
   const chapter = CHAPTERS[Math.min(g.chapter, CHAPTERS.length - 1)];
+  const showTutorial = !h && !meta.tutorialDone && !modal;
 
   let panel: React.ReactNode = null;
   if (!h) panel = <Planner s={g} onStart={(p: Plan) => commit(startWeek(g, p))} />;
-  else if (h.t === 'scene') panel = <ScenePanel key={`${h.id}:${h.step}:${h.result ? 'r' : 'q'}:${g.week}`} s={g} head={h} fast={meta.fast} onChoose={(i: number, m?: PayMethod) => commit(choose(g, i, m))} onContinue={() => commit(proceed(g))} />;
+  else if (h.t === 'scene') panel = <ScenePanel key={`${h.id}:${h.step}:${h.result ? 'r' : 'q'}:${g.week}`} s={g} head={h} fast={meta.fast || reducedMotion()} onChoose={(i: number, m?: PayMethod) => commit(choose(g, i, m))} onContinue={() => commit(proceed(g))} />;
   else if (h.t === 'paycheck') panel = <PaycheckPanel s={g} stub={h.stub} onContinue={() => commit(proceed(g))} />;
   else if (h.t === 'billsDue') panel = <BillsPanel key={`bills-${g.week}`} s={g} bills={h.bills} onPay={(p) => commit(payBills(g, p))} />;
   else if (h.t === 'summary') panel = <SummaryPanel s={g} onContinue={() => commit(proceed(g))} />;
@@ -112,6 +116,7 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
             </div>
           </div>
           <div className="panel">{panel}</div>
+          {h?.t !== 'ending' && <MissionStrip g={g} onOpen={() => setModal('missions')} />}
         </section>
         {h?.t !== 'ending' && (
           <aside className="side-col">
@@ -119,9 +124,9 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
           </aside>
         )}
       </div>
-      <div className="toasts" aria-live="polite">
+      <div className="toasts" aria-live="polite" hidden={showTutorial || !!modal}>
         {toasts.map((t) => (
-          <button key={t.id} className={`toast ${t.kind}`} onClick={() => setModal(t.kind === 'hb' ? 'handbook' : 'awards')}>
+          <button key={t.id} className={`toast ${t.kind}`} onClick={() => setModal(t.kind === 'hb' ? 'handbook' : 'awards')} aria-label={`${t.kind === 'hb' ? 'New handbook page' : 'Achievement unlocked'}: ${t.text}. Open.`}>
             <Icon name={t.kind === 'hb' ? 'book' : 'trophy'} />
             <span>
               <small>{t.kind === 'hb' ? 'New handbook page' : 'Achievement unlocked!'}</small>
@@ -130,6 +135,7 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
           </button>
         ))}
       </div>
+      {showTutorial && <Tutorial g={g} onDone={() => setMeta({ ...meta, tutorialDone: true })} />}
       {modal === 'money' && <MoneyModal g={g} setG={setG} onClose={() => setModal(null)} />}
       {modal === 'missions' && (
         <Modal title={`Chapter ${g.chapter + 1}: ${chapter.title}`} onClose={() => setModal(null)}>
@@ -144,8 +150,21 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
             <button className="btn" onClick={() => setMeta({ ...meta, fast: !meta.fast })}>
               Text speed: {meta.fast ? 'Instant' : 'Typewriter'}
             </button>
+            <button className="btn" aria-pressed={meta.bigText} onClick={() => setMeta({ ...meta, bigText: !meta.bigText })}>
+              Text size: {meta.bigText ? 'Large' : 'Normal'}
+            </button>
             <button className="btn" onClick={() => setMeta({ ...meta, muted: !meta.muted })}>
               Sound: {meta.muted ? 'Off' : 'On'}
+            </button>
+            <button
+              className="btn"
+              onClick={() => {
+                setMeta({ ...meta, tutorialDone: false });
+                setModal(null);
+              }}
+            >
+              Replay tutorial
+              {h && <small>Shows next time you plan a week</small>}
             </button>
             {g.checkpoint && (
               <button
@@ -172,11 +191,157 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
 }
 
 // ================= HUD =================
+type TipId = 'week' | 'cash' | 'savings' | 'card' | 'credit' | 'energy' | 'rep' | 'xp';
+
+// Plain-language explanations for every number and bar in the HUD.
+function hudTip(id: TipId, g: GameState): { title: string; text: string; money?: boolean } {
+  const sc = creditScore(g);
+  const ch = Math.min(g.chapter, CHAPTERS.length - 1);
+  switch (id) {
+    case 'week':
+      return {
+        title: `Week ${Math.min(g.week, TOTAL_WEEKS)} of ${TOTAL_WEEKS}`,
+        text: `Your first year on your own is ${TOTAL_WEEKS} weeks, split into ${CHAPTERS.length} chapters. You’re in chapter ${ch + 1}, “${CHAPTERS[ch].title}”. Each chapter has missions to finish before it ends.`,
+      };
+    case 'cash':
+      return {
+        title: `Checking: ${money(g.stats.cash, true)}`,
+        text: 'Your everyday spending money. Paychecks land here, and bills and purchases come out of it. If it drops below $0, the bank charges fees or declines your payments.',
+        money: true,
+      };
+    case 'savings':
+      return {
+        title: `Savings: ${money(g.stats.savings, true)}`,
+        text: 'Your safety net for emergencies and big goals. It earns a little interest. Move money here on the Money screen, or turn on auto-save.',
+        money: true,
+      };
+    case 'card':
+      return {
+        title: `Card owed: ${money(g.card?.balance ?? 0, true)}`,
+        text: g.card
+          ? `What you owe the credit card company (your limit is ${money(g.card.limit)}). Pay the full amount when the bill comes, or you pay ${Math.round(g.card.apr * 100)}% interest. Using more than 30% of your limit lowers your credit score.`
+          : 'You don’t have a credit card.',
+        money: true,
+      };
+    case 'credit':
+      return sc === null
+        ? {
+            title: 'Credit score: none yet',
+            text: 'A credit score (300 to 850) shows lenders how well you pay back money. You get one a few weeks after you open your first credit card or loan.',
+            money: true,
+          }
+        : {
+            title: `Credit score: ${sc} (${creditLabel(sc)})`,
+            text: 'Shows lenders how well you pay back money, from 300 to 850. A higher score means cheaper apartments, cars, and loans. Paying every bill on time raises it. Late payments drop it fast.',
+            money: true,
+          };
+    case 'energy':
+      return {
+        title: `Energy: ${g.stats.energy} / 100`,
+        text: `Work, class, and errands use energy. Rest and good food fill it back up. When it gets low you can get sick and lose days.${g.stats.energy < 30 ? ' You’re running low: plan some rest!' : ''}`,
+      };
+    case 'rep':
+      return g.path === 'college'
+        ? { title: `Professors’ opinion: ${g.stats.rep} / 100`, text: 'How your professors think you’re doing. Going to class and studying raise it. Skipping class lowers it.' }
+        : {
+            title: `Boss rating: ${g.stats.rep} / 100`,
+            text: g.job
+              ? 'How your boss feels about your work. Showing up and working hard raise it. Skipping work lowers it. If it gets too low, you could get fired.'
+              : 'You don’t have a boss yet. Once you get a job, this shows how your boss feels about your work.',
+          };
+    case 'xp':
+      return {
+        title: `Career progress: ${g.stats.xp}`,
+        text: 'Skills and experience from work, training, and classes. More progress leads to better jobs and raises, and a better final score.',
+      };
+  }
+}
+
 function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) => void; muted: boolean; onMute: () => void }) {
   const sc = creditScore(g);
+  const [tip, setTip] = useState<{ id: TipId; x: number; y: number } | null>(null);
+  const pointer = useRef<string>('mouse');
+  const downAt = useRef(0);
+  const ref = useRef<HTMLElement>(null);
+
+  // Publish the HUD height so phone toasts can sit just below it.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty('--hud-h', `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Close the tip on an outside tap, Escape, or scroll.
+  useEffect(() => {
+    if (!tip) return;
+    const onDown = (e: PointerEvent): void => {
+      const t = e.target as Element | null;
+      if (t?.closest?.('.hud-stat, .hud-tip')) return;
+      setTip(null);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setTip(null);
+    };
+    const onScroll = (): void => setTip(null);
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [tip]);
+
+  const show = (id: TipId, el: HTMLElement): void => {
+    const r = el.getBoundingClientRect();
+    setTip({ id, x: r.left + r.width / 2, y: r.bottom });
+  };
+  const hide = (id: TipId): void => setTip((t) => (t?.id === id ? null : t));
+  // Mouse: hover shows the tip, click opens Money. Touch: tap toggles the tip. Keyboard: focus shows it.
+  const stat = (id: TipId, opensMoney: boolean) => ({
+    'aria-expanded': tip?.id === id,
+    'aria-describedby': tip?.id === id ? 'hud-tip' : undefined,
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      pointer.current = e.pointerType;
+      downAt.current = Date.now();
+    },
+    onPointerEnter: (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.pointerType === 'mouse') show(id, e.currentTarget);
+    },
+    onPointerLeave: (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.pointerType === 'mouse') hide(id);
+    },
+    onFocus: (e: React.FocusEvent<HTMLButtonElement>) => {
+      if (e.currentTarget.matches(':focus-visible')) show(id, e.currentTarget);
+    },
+    onBlur: () => {
+      if (Date.now() - downAt.current > 400) hide(id);
+    },
+    onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
+      const touch = e.detail !== 0 && pointer.current !== 'mouse';
+      if (opensMoney && !touch) {
+        setTip(null);
+        onOpen('money');
+        return;
+      }
+      sfx('click');
+      if (tip?.id === id) setTip(null);
+      else show(id, e.currentTarget);
+    },
+  });
+
+  const info = tip ? hudTip(tip.id, g) : null;
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
+  const tipW = Math.min(300, vw - 16);
+  const tipLeft = tip ? Math.max(8, Math.min(tip.x - tipW / 2, vw - tipW - 8)) : 0;
+  const repLabel = g.path === 'college' ? 'Professors' : 'Boss';
+
   return (
-    <header className="hud">
-      <div className="hud-when">
+    <header className="hud" ref={ref}>
+      <button className="hud-when hud-stat" {...stat('week', false)} aria-label={`Week ${Math.min(g.week, TOTAL_WEEKS)} of ${TOTAL_WEEKS}. What does this mean?`}>
         <span className="hud-week">
           Week {Math.min(g.week, TOTAL_WEEKS)}
           <small>/{TOTAL_WEEKS}</small>
@@ -184,60 +349,108 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
         <span className="hud-ch">
           Ch.{Math.min(g.chapter + 1, CHAPTERS.length)} {CHAPTERS[Math.min(g.chapter, CHAPTERS.length - 1)].title}
         </span>
-      </div>
-      <button className="hud-money" onClick={() => onOpen('money')} title="Money">
-        <span className={`m ${g.stats.cash < 0 ? 'neg' : ''}`}>
+      </button>
+      <div className="hud-money" data-coach="money">
+        <button className={`hud-stat m ${g.stats.cash < 0 ? 'neg' : ''}`} {...stat('cash', true)} aria-label={`Checking ${money(g.stats.cash)}`}>
           <small>Checking</small>
           {money(g.stats.cash)}
-        </span>
-        <span className="m">
+        </button>
+        <button className="hud-stat m" {...stat('savings', true)} aria-label={`Savings ${money(g.stats.savings)}`}>
           <small>Savings</small>
           {money(g.stats.savings)}
-        </span>
+        </button>
         {g.card && (
-          <span className={`m ${g.card.balance / g.card.limit > 0.3 ? 'neg' : ''}`}>
+          <button className={`hud-stat m ${g.card.balance / g.card.limit > 0.3 ? 'neg' : ''}`} {...stat('card', true)} aria-label={`Credit card owed ${money(g.card.balance)}`}>
             <small>Card owed</small>
             {money(g.card.balance)}
-          </span>
+          </button>
         )}
-        <span className="m">
+        <button className="hud-stat m" {...stat('credit', true)} aria-label={`Credit score ${sc ?? 'none yet'}`}>
           <small>Credit</small>
           {sc ?? '—'}
-        </span>
-      </button>
-      <div className="hud-bars">
-        <span title="Energy">
-          <Icon name="energy" size={12} /> <Bar value={g.stats.energy} tone="energy" />
-        </span>
-        <span title={g.path === 'college' ? 'Professors’ opinion' : 'Boss rating'}>
-          <Icon name="boss" size={12} /> <Bar value={g.stats.rep} tone="rep" />
-        </span>
-        <span title="Career progress">
-          <Icon name="star" size={12} /> <Bar value={g.stats.xp} max={120} tone="xp" />
-        </span>
+        </button>
       </div>
-      <nav className="hud-btns">
-        <button className="icon-btn missions-btn" onClick={() => onOpen('missions')} aria-label="Missions">
+      <div className="hud-bars">
+        <button className="hud-stat b" data-coach="energy" {...stat('energy', false)} aria-label={`Energy ${g.stats.energy} out of 100`}>
+          <small>Energy</small>
+          <span>
+            <Icon name="energy" size={12} /> <Bar value={g.stats.energy} tone="energy" />
+          </span>
+        </button>
+        <button className="hud-stat b" {...stat('rep', false)} aria-label={`${g.path === 'college' ? 'Professors’ opinion' : 'Boss rating'} ${g.stats.rep} out of 100`}>
+          <small>{repLabel}</small>
+          <span>
+            <Icon name="boss" size={12} /> <Bar value={g.stats.rep} tone="rep" />
+          </span>
+        </button>
+        <button className="hud-stat b" {...stat('xp', false)} aria-label={`Career progress ${g.stats.xp}`}>
+          <small>Career</small>
+          <span>
+            <Icon name="star" size={12} /> <Bar value={g.stats.xp} max={120} tone="xp" />
+          </span>
+        </button>
+      </div>
+      <nav className="hud-btns" aria-label="Game menus">
+        <button className="icon-btn missions-btn" onClick={() => onOpen('missions')} aria-label="Missions" title="Missions">
           <Icon name="calendar" />
         </button>
-        <button className="icon-btn" onClick={() => onOpen('money')} aria-label="Money">
+        <button className="icon-btn" onClick={() => onOpen('money')} aria-label="Money" title="Money">
           <Icon name="wallet" />
         </button>
-        <button className="icon-btn" onClick={() => onOpen('handbook')} aria-label="Adulting Handbook">
+        <button className="icon-btn" onClick={() => onOpen('handbook')} aria-label={`Adulting Handbook, ${g.handbook.length} pages`} title="Adulting Handbook">
           <Icon name="book" />
-          {g.handbook.length > 0 && <span className="badge">{g.handbook.length}</span>}
+          {g.handbook.length > 0 && <span className="badge" aria-hidden="true">{g.handbook.length}</span>}
         </button>
-        <button className="icon-btn" onClick={() => onOpen('awards')} aria-label="Achievements">
+        <button className="icon-btn" onClick={() => onOpen('awards')} aria-label="Achievements" title="Achievements">
           <Icon name="trophy" />
         </button>
-        <button className="icon-btn" onClick={onMute} aria-label={muted ? 'Unmute' : 'Mute'}>
+        <button className="icon-btn" onClick={onMute} aria-label={muted ? 'Unmute' : 'Mute'} title={muted ? 'Unmute' : 'Mute'}>
           <Icon name={muted ? 'mute' : 'sound'} />
         </button>
-        <button className="icon-btn" onClick={() => onOpen('menu')} aria-label="Menu">
+        <button className="icon-btn" onClick={() => onOpen('menu')} aria-label="Menu" title="Menu">
           <Icon name="menu" />
         </button>
       </nav>
+      {tip && info && (
+        <div id="hud-tip" className="hud-tip" role="tooltip" style={{ top: tip.y + 10, left: tipLeft, width: tipW }}>
+          <span className="hud-tip-arrow" style={{ left: Math.max(10, Math.min(tipW - 22, tip.x - tipLeft - 6)) }} />
+          <strong>{info.title}</strong>
+          <span>{info.text}</span>
+          {info.money && (
+            <button
+              className="btn small"
+              onClick={() => {
+                setTip(null);
+                onOpen('money');
+              }}
+            >
+              Open Money ▶
+            </button>
+          )}
+        </div>
+      )}
     </header>
+  );
+}
+
+// Phones hide the missions sidebar, so show a tappable one-line summary under the panel instead.
+function MissionStrip({ g, onOpen }: { g: GameState; onOpen: () => void }) {
+  const ch = Math.min(g.chapter, CHAPTERS.length - 1);
+  const tasks = taskStatus(g, ch).filter((t) => !t.optional);
+  const done = tasks.filter((t) => t.done).length;
+  const next = tasks.find((t) => !t.done);
+  const left = chapterEndWeek(ch) - g.week + 1;
+  return (
+    <button className="mobile-missions" onClick={onOpen} aria-label={`Missions: ${done} of ${tasks.length} done, ${left} weeks left. Show all missions.`}>
+      <span className="mm-top">
+        <span className="mm-title">
+          <Icon name="calendar" size={14} /> Missions {done}/{tasks.length}
+        </span>
+        <span className={`deadline ${left <= 2 ? 'urgent' : ''}`}>{left > 0 ? `${left} week${left === 1 ? '' : 's'} left` : 'Deadline!'}</span>
+      </span>
+      <span className="mm-next">{next ? <>Next: {next.title}</> : 'All missions done! Nice.'}</span>
+      <span className="mm-more">See all ▶</span>
+    </button>
   );
 }
 
@@ -326,9 +539,9 @@ function MoneyModal({ g, setG, onClose }: { g: GameState; setG: (g: GameState) =
         </div>
       </div>
       <div className="transfer">
-        <span>Move</span>
+        <span>Move money:</span>
         {[50, 100, 250, 500].map((v) => (
-          <button key={v} className={`pill ${amt === v ? 'on' : ''}`} onClick={() => setAmt(v)}>
+          <button key={v} className={`pill ${amt === v ? 'on' : ''}`} aria-pressed={amt === v} onClick={() => setAmt(v)}>
             {money(v)}
           </button>
         ))}
@@ -350,11 +563,13 @@ function MoneyModal({ g, setG, onClose }: { g: GameState; setG: (g: GameState) =
       <div className="autosave">
         <span>Auto-save each payday:</span>
         {[0, 50, 100, 150, 250].map((v) => (
-          <button key={v} className={`pill ${g.autoSave === v ? 'on' : ''}`} onClick={() => setG(setAutoSave(g, v))}>
+          <button key={v} className={`pill ${g.autoSave === v ? 'on' : ''}`} aria-pressed={g.autoSave === v} onClick={() => setG(setAutoSave(g, v))}>
             {v ? money(v) : 'Off'}
           </button>
         ))}
       </div>
+      <h4 className="money-h">Your progress, week by week</h4>
+      <HistoryCharts history={g.history} />
       <div className="money-cols">
         <div>
           <h4>Monthly picture</h4>

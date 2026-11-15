@@ -413,6 +413,19 @@ p {
   top: 0;
   z-index: 5;
 }
+.hud-stat {
+  background: transparent;
+  border: 2px solid transparent;
+  color: var(--hud-ink);
+  padding: 2px 4px;
+  text-align: left;
+  touch-action: manipulation;
+}
+.hud-stat:hover,
+.hud-stat[aria-expanded='true'] {
+  border-color: #ffffff44;
+  background: #ffffff0d;
+}
 .hud-when {
   display: flex;
   flex-direction: column;
@@ -433,14 +446,10 @@ p {
 }
 .hud-money {
   display: flex;
-  gap: 14px;
-  background: transparent;
+  gap: 4px;
   border: 2px solid #ffffff22;
-  padding: 3px 10px;
+  padding: 1px 4px;
   color: var(--hud-ink);
-}
-.hud-money:hover {
-  border-color: #ffffff55;
 }
 .hud-money .m {
   display: flex;
@@ -456,13 +465,52 @@ p {
 }
 .hud-bars {
   display: flex;
-  gap: 12px;
+  gap: 4px;
   align-items: center;
 }
-.hud-bars > span {
+.hud-stat.b {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1;
+}
+.hud-stat.b small {
+  font: 10px var(--font-ui);
+  color: #8a7ea0;
+}
+.hud-stat.b > span {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+.hud-tip {
+  position: fixed;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 3px solid var(--line);
+  box-shadow: 0 5px 0 #000;
+  padding: 8px 12px 10px;
+  font-size: 19px;
+  line-height: 1.15;
+}
+.hud-tip strong {
+  font: 13px var(--font-ui);
+  font-weight: normal;
+  color: var(--accent-dk);
+}
+.hud-tip-arrow {
+  position: absolute;
+  top: -10px;
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  border-bottom: 7px solid var(--line);
+  border-top: none;
 }
 .bar {
   display: inline-block;
@@ -1369,26 +1417,41 @@ p {
   .hud-ch {
     display: none;
   }
+  .hud-when {
+    order: 1;
+  }
+  .hud-btns {
+    order: 2;
+  }
   .hud-money {
     order: 3;
     width: 100%;
     justify-content: space-between;
-    gap: 6px;
+    gap: 2px;
   }
   .hud-money .m {
     font-size: 19px;
   }
   .hud-bars {
-    gap: 6px;
+    order: 4;
+    width: 100%;
+    justify-content: space-between;
+    gap: 2px;
+  }
+  .hud-stat.b {
+    flex: 1 1 0;
+    min-width: 0;
   }
   .bar {
-    width: 40px;
+    width: auto;
+    flex: 1;
+    min-width: 30px;
   }
   .hud-btns {
     gap: 0;
   }
   .icon-btn {
-    padding: 5px;
+    padding: 6px;
   }
   .panel-inner {
     padding: 12px 10px 16px;
@@ -1434,6 +1497,9 @@ p {
   z-index: 30;
   pointer-events: none;
 }
+.toasts[hidden] {
+  display: none;
+}
 .toast {
   pointer-events: auto;
   display: flex;
@@ -1475,17 +1541,502 @@ p {
     transform: none;
   }
 }
-@media (max-width: 600px) {
+/* Phones and tablets: one slim line over the HUD's top row, where there are no decisions to cover. */
+@media (max-width: 900px) {
   .toasts {
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
+    left: 8px;
+    right: 8px;
+    bottom: auto;
+    top: calc(2px + env(safe-area-inset-top));
   }
   .toast {
     max-width: none;
+    padding: 3px 10px;
+    font-size: 18px;
+    animation-name: dropin;
+  }
+  .toast span {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .toast small {
+    margin: 0;
+    flex: none;
+  }
+  .toast:nth-last-child(n + 2) {
+    display: none;
+  }
+}
+@keyframes dropin {
+  from {
+    transform: translateY(-60%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
   }
 }
 
 .order-note {
   margin: 0 0 -4px;
+}
+
+/* ---------- planner helpers ---------- */
+.week-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 19px;
+  color: var(--ink2);
+  margin: -4px 0 6px;
+}
+.week-info:empty {
+  display: none;
+}
+.week-info span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.week-info .good {
+  color: var(--good);
+}
+.week-info .warn {
+  color: #b05a00;
+}
+.slot-num {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  background: var(--ink);
+  color: var(--panel);
+  font-size: 10px;
+  margin-right: 2px;
+}
+.legend {
+  margin: -4px 0 0;
+}
+.legend .star {
+  color: var(--gold);
+  text-shadow: 1px 1px 0 var(--ink);
+}
+
+/* ---------- missions strip (phones) ---------- */
+.mobile-missions {
+  display: none;
+  width: 100%;
+  margin-top: 14px;
+  text-align: left;
+  background: var(--panel);
+  border: 4px solid var(--line);
+  box-shadow: 0 5px 0 var(--line);
+  padding: 8px 10px;
+  flex-direction: column;
+  gap: 2px;
+}
+.mm-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.mm-title {
+  font: 13px var(--font-ui);
+  color: var(--accent-dk);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mm-next {
+  font-size: 20px;
+}
+.mm-more {
+  font: 11px var(--font-ui);
+  color: var(--muted);
+}
+@media (max-width: 900px) {
+  .mobile-missions {
+    display: flex;
+  }
+}
+
+/* ---------- bills helpers ---------- */
+.bill-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  background: var(--panel2);
+  border: 2px solid var(--line);
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  font-size: 20px;
+}
+.bill-quick strong {
+  font-weight: normal;
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+.bill-quick .muted {
+  width: 100%;
+}
+.btn.danger {
+  background: var(--bad);
+  color: #fff;
+}
+.btn.danger:hover:not(:disabled) {
+  background: #e05540;
+}
+.confirm-skip {
+  background: #fbe2dc;
+  border: 3px solid var(--bad);
+  padding: 10px 12px;
+}
+.confirm-skip strong {
+  display: block;
+  font: 14px var(--font-ui);
+  color: var(--bad);
+  margin-bottom: 4px;
+}
+.confirm-skip p {
+  font-size: 20px;
+}
+
+/* ---------- money charts ---------- */
+.money-h {
+  font: 13px var(--font-ui);
+  margin: 16px 0 6px;
+}
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px 16px;
+}
+.chart {
+  margin: 0;
+  background: #fffaf0;
+  border: 3px solid var(--line);
+  padding: 6px 8px 2px;
+  min-width: 0;
+}
+.chart figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  font-size: 18px;
+  line-height: 1.1;
+}
+.chart figcaption strong {
+  font: 12px var(--font-ui);
+  font-weight: normal;
+}
+.chart-sub {
+  color: var(--muted);
+  font-size: 16px;
+}
+.readout {
+  width: 100%;
+  color: var(--ink2);
+}
+.readout b {
+  font-weight: normal;
+  color: var(--ink);
+}
+.chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: pan-y;
+  cursor: crosshair;
+}
+.chart .ax {
+  font-family: var(--font-body);
+  font-size: 13px;
+  fill: var(--muted);
+}
+.chart .empty-note {
+  font-size: 16px;
+}
+.chart .grid {
+  stroke: #d8ceb6;
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.chart .zero {
+  stroke: var(--ink2);
+  stroke-width: 1.5;
+}
+.chart .cursor {
+  fill: #3f7fd81a;
+}
+.chart .bar-v {
+  fill: var(--accent);
+}
+.chart .bar-v.neg {
+  fill: var(--bad);
+}
+.chart .bar-v.on {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.chart .line {
+  fill: none;
+  stroke: var(--accent-dk);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.chart .dot {
+  fill: var(--accent-dk);
+  stroke: #fffaf0;
+  stroke-width: 1.5;
+}
+.chart .dot.on {
+  fill: var(--gold);
+  stroke: var(--ink);
+}
+.chart-table {
+  grid-column: 1 / -1;
+  font-size: 18px;
+}
+.chart-table summary {
+  cursor: pointer;
+  color: var(--accent-dk);
+}
+.chart-table table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 4px;
+}
+.chart-table th,
+.chart-table td {
+  text-align: left;
+  padding: 1px 8px 1px 0;
+  border-bottom: 1px dotted #d8ceb6;
+}
+.chart-table th {
+  font: 11px var(--font-ui);
+  font-weight: normal;
+}
+
+/* ---------- tutorial coach marks ---------- */
+.coach {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.coach-dim {
+  position: fixed;
+  inset: 0;
+  background: #0b0814b8;
+}
+.coach-spot {
+  position: fixed;
+  border: 3px solid var(--gold);
+  box-shadow:
+    0 0 0 4px var(--line),
+    0 0 0 9999px #0b0814b8;
+  pointer-events: none;
+  transition:
+    top 0.2s,
+    left 0.2s,
+    width 0.2s,
+    height 0.2s;
+}
+.coach-card {
+  position: fixed;
+  background: var(--panel);
+  color: var(--ink);
+  border: 4px solid var(--line);
+  box-shadow: 0 6px 0 #000;
+  padding: 10px 14px 12px;
+  animation: pop 0.25s ease-out;
+}
+.coach-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.coach-count {
+  font: 11px var(--font-ui);
+  color: var(--muted);
+}
+.coach-skip {
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  font-size: 18px;
+  color: var(--ink2);
+  text-decoration: underline;
+}
+.coach-card h3 {
+  font: 16px var(--font-ui);
+  color: var(--accent-dk);
+  margin-bottom: 4px;
+}
+.coach-card p {
+  font-size: 21px;
+  line-height: 1.15;
+}
+.coach-dots {
+  display: flex;
+  gap: 5px;
+  margin: 2px 0 8px;
+}
+.coach-dots span {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--line);
+  background: transparent;
+}
+.coach-dots .seen {
+  background: var(--muted);
+}
+.coach-dots .on {
+  background: var(--gold);
+}
+.coach-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.coach-btns .btn {
+  font-size: 13px;
+  padding: 8px 14px;
+}
+
+/* ---------- keyboard focus ---------- */
+:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+.btn:focus-visible,
+.choice:focus-visible,
+.slot:focus-visible,
+.pill:focus-visible,
+.pay:focus-visible,
+.path:focus-visible,
+.sw:focus-visible,
+.mobile-missions:focus-visible,
+.toast:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--gold);
+}
+.hud :focus-visible,
+.modal header :focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 1px;
+}
+.field input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- larger text (menu option) ---------- */
+html.big-text body {
+  font-size: 25px;
+}
+html.big-text .story {
+  font-size: 27px;
+}
+html.big-text .choice-label {
+  font-size: 25px;
+}
+html.big-text .choice-desc,
+html.big-text .hint,
+html.big-text .slot-hint,
+html.big-text .muted.small,
+html.big-text .small,
+html.big-text .task-list .how,
+html.big-text .task-list .prog,
+html.big-text .week-info,
+html.big-text .pay small,
+html.big-text .bill-warn,
+html.big-text .from,
+html.big-text .chart-table {
+  font-size: 21px;
+}
+html.big-text .slot-what,
+html.big-text .task-list strong,
+html.big-text .bill-top,
+html.big-text .kv,
+html.big-text .journal,
+html.big-text .tip,
+html.big-text .report,
+html.big-text .stub,
+html.big-text .hb button,
+html.big-text .hb p,
+html.big-text .coach-card p,
+html.big-text .hud-tip,
+html.big-text .mm-next,
+html.big-text .warn-box,
+html.big-text .epilogue,
+html.big-text .score-line {
+  font-size: 24px;
+}
+html.big-text .pill {
+  font-size: 22px;
+}
+html.big-text .btn {
+  font-size: 16px;
+}
+html.big-text .btn.small {
+  font-size: 14px;
+}
+html.big-text .award div {
+  font-size: 20px;
+}
+html.big-text .chart .ax {
+  font-size: 15px;
+}
+@media (max-width: 600px) {
+  html.big-text .story {
+    font-size: 25px;
+  }
+  html.big-text .choice-label {
+    font-size: 23px;
+  }
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .caret {
+    display: none;
+  }
+}
+
+/* Touch screens keep :hover after a tap, which makes a slot or choice look selected. */
+@media (hover: none) {
+  .slot:hover:not(:disabled),
+  .choice:hover:not(:disabled):not(.selected) {
+    background: #fffaf0;
+  }
+  .slot.task:hover:not(:disabled) {
+    background: #e8f0fc;
+  }
+  .btn:hover:not(:disabled):not(.primary):not(.danger) {
+    background: var(--panel);
+  }
+  .btn.primary:hover:not(:disabled) {
+    background: var(--accent);
+  }
 }

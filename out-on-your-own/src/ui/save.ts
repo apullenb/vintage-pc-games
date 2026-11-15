@@ -11,6 +11,8 @@ export interface Meta {
   muted: boolean;
   fast: boolean; // skip typewriter
   runs: number;
+  tutorialDone: boolean; // first-week coach marks seen (or skipped)
+  bigText: boolean; // larger reading text
 }
 
 function read<T>(key: string): T | null {
@@ -48,6 +50,8 @@ export function loadMeta(): Meta {
     muted: m.muted === true,
     fast: m.fast === true,
     runs: typeof m.runs === 'number' ? m.runs : 0,
+    tutorialDone: m.tutorialDone === true,
+    bigText: m.bigText === true,
   };
 }
 export function saveMeta(m: Meta): void {
