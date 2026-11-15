@@ -1,6 +1,6 @@
 // Random life events and their consequences. Every choice trades money, time, energy, or risk.
-import { achieve, chance, charge, earn, energy, inc, log, missWork, money, num, rep, schedule, setFlag, unlock, xp } from '../../engine/core.ts';
-import type { GameState } from '../../engine/types.ts';
+import { achieve, chance, charge, earn, energy, inc, log, missWork, money, num, openCredit, rep, schedule, setFlag, unlock, xp } from '../../engine/core.ts';
+import type { GameState, SlotId } from '../../engine/types.ts';
 import type { Choice, Scene } from '../types.ts';
 import { CARD_USE } from './tasks.ts';
 
@@ -442,6 +442,26 @@ export const EVENT_SCENES: Scene[] = [
               inc(s, 'carRepairs');
             },
             result: 'Fixed. That one hurt.',
+          },
+          {
+            label: 'File a claim on your extended warranty ($100 deductible)',
+            hide: (s) => !s.flags.carWarranty,
+            hint: '✓ It’s what you’ve been paying for · ✗ Only if they approve it',
+            bot: 3,
+            do: (s, d) => {
+              const cost = repairCost(s);
+              d.denied = num(s, 'oilSkipped') > 0 ? 1 : 0;
+              missWork(s, 'Car in the shop');
+              if (s.car) s.car.condition = 70;
+              inc(s, 'carRepairs');
+              charge(s, d.denied ? cost : 100, d.denied ? 'Repair (warranty denied)' : 'Warranty deductible');
+              unlock(s, 'extended-warranty');
+            },
+            result: (_s, d) =>
+              d.denied
+                ? 'DENIED. “No proof of regular oil changes.” You skipped one, and they found it. You pay the whole repair yourself.'
+                : 'Approved! You pay the $100 deductible and the warranty covers the rest. This time the fine print was on your side.',
+            tip: 'Warranties can deny claims if you can’t prove regular maintenance. Keep every oil change receipt.',
           },
           {
             label: (s) => `Sell it for scrap (${money(Math.round((s.car?.value ?? 0) * 0.2))}) and take the bus`,
@@ -1287,7 +1307,968 @@ export const EVENT_SCENES: Scene[] = [
       },
     },
   },
+
+  // ====================== MONEY TRAPS ======================
+  {
+    id: 'ev-paydayloan',
+    title: 'Short on cash',
+    art: 'street',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `Your account says ${money(s.stats.cash)}. ${s.housing.rent > 0 ? 'Rent' : 'Your phone bill'} is due soon, and payday feels very far away.\n\nOn the corner, a neon sign: “CASH TODAY! NO CREDIT CHECK!” Borrow $300 now, pay back $345 on your next payday.`,
+        choices: [
+          {
+            label: 'Take the payday loan: $300 now, $345 in 2 weeks',
+            hint: '✓ Cash in 10 minutes · ✗ $45 fee for 2 weeks (≈391% APR) · ✗ All due at once',
+            bot: -3,
+            do: (s) => {
+              earn(s, 300);
+              setFlag(s, 'paydayDue', s.week + 2);
+              unlock(s, 'payday-loan');
+            },
+            result: 'The clerk counts out fifteen $20 bills. It feels like relief. It’s really a $45 fee to borrow your own next paycheck for two weeks.',
+            tip: '$15 per $100 sounds small. Stretched over a year, it’s about 391% APR. Most payday borrowers can’t repay in two weeks and end up paying the fee again and again.',
+          },
+          {
+            label: 'Credit union small-dollar loan: $300 at 28% APR',
+            hide: (s) => s.bank !== 'creditunion',
+            hint: '✓ Pay it back over 6 months · ✓ Builds credit · ✗ $20 application fee',
+            bot: 2,
+            do: (s) => {
+              earn(s, 300);
+              charge(s, 20, 'Loan application fee');
+              s.loans.push({ name: 'Credit union PAL', balance: 300, apr: 0.28, payment: 55, kind: 'personal' });
+              openCredit(s);
+              unlock(s, 'payday-loan');
+            },
+            result: 'Approved the same day. $55 a month for six months, at a rate that won’t eat you alive. Being a member pays off.',
+            tip: 'Federal credit unions offer Payday Alternative Loans (PALs) with APRs capped at 28%.',
+          },
+          {
+            label: 'Sell stuff you don’t use (old game console, hoodies)',
+            hint: '✓ No debt · ✗ An evening of listing and haggling (−4 energy)',
+            bot: 2,
+            do: (s) => {
+              earn(s, 180);
+              energy(s, -4);
+            },
+            result: 'The buyer haggles, flakes twice, then finally shows up. $180, zero debt.',
+          },
+          {
+            label: 'Call and ask for a few extra days on the bill',
+            hint: '✓ Free · ✗ They might say no (late fee)',
+            bot: 1,
+            do: (s, d) => {
+              d.ok = chance(s, 0.65) ? 1 : 0;
+              energy(s, -3);
+              if (!d.ok) charge(s, 40, 'Late fee');
+            },
+            result: (_s, d) => (d.ok ? '“Thanks for calling ahead. Friday’s fine.” Asking cost you nothing.' : '“Sorry, policy is policy.” A $40 late fee, but no new debt.'),
+            tip: 'Call BEFORE a bill is late. Landlords, utilities, and phone companies often give extensions to people who ask early.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-paydaydue',
+    title: 'Payday loan due',
+    art: 'street',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) => {
+          const r = num(s, 'paydayRolls');
+          return `The payday lender texts: “Reminder! $345 will be withdrawn from your account on Friday 🙂”${r ? `\n\nYou’ve rolled it over ${r} time${r > 1 ? 's' : ''}. You’ve paid ${money(45 * r)} in fees and still owe the full $345.` : ''}`;
+        },
+        choices: [
+          {
+            label: 'Pay it off: $345',
+            pay: 345,
+            methods: ['checking', 'savings'],
+            hint: '✓ Free of it',
+            bot: 3,
+            do: (s) => setFlag(s, 'paydayDue', 0),
+            result: (s) => `Paid off. That $300 loan cost you ${money(45 * (num(s, 'paydayRolls') + 1))} in fees.`,
+          },
+          {
+            label: 'Roll it over: just pay the $45 fee',
+            pay: 45,
+            methods: ['checking', 'savings'],
+            hide: (s) => num(s, 'paydayRolls') >= 2,
+            hint: '✓ Only $45 today · ✗ You still owe $345 in two more weeks',
+            bot: -3,
+            do: (s) => {
+              inc(s, 'paydayRolls');
+              setFlag(s, 'paydayDue', s.week + 2);
+            },
+            result: 'Another $45 for another two weeks. This is how a $300 loan turns into hundreds in fees.',
+            tip: 'Rolling over is the trap. The fee never touches what you borrowed.',
+          },
+          {
+            label: 'Let them pull it from your account',
+            hint: '✗ If your balance is short, overdraft fees pile on',
+            bot: -1,
+            do: (s) => {
+              charge(s, 345, 'Payday loan withdrawal');
+              setFlag(s, 'paydayDue', 0);
+            },
+            result: (s) => (s.stats.cash < 0 ? 'The withdrawal sends your account below zero. Overdraft fee on top of the loan fee.' : 'They take it. Your account is a lot lighter.'),
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-bnpl',
+    title: 'Pay in 4!',
+    art: 'street',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `${s.housing.kind === 'dorm' ? 'The dorm mattress is a vinyl gym mat pretending to be a bed.' : 'Your hand-me-down mattress has a spring that’s been stabbing you since 9th grade.'} You wake up sore every day.\n\nA decent new one is $240. At checkout, a bright button: “Pay in 4 interest-free payments of $60! 🎉”`,
+        choices: [
+          {
+            label: 'Buy it outright: $240',
+            pay: 240,
+            hint: '✓ Real sleep (+10 energy) · ✓ Nothing owed later',
+            bot: (s) => (s.stats.cash + s.stats.savings > 900 ? 2 : 0),
+            do: (s) => energy(s, 10),
+            result: 'You sleep nine hours straight. Your back sends a thank-you note.',
+          },
+          {
+            label: 'Pay in 4: $60 today, $180 over the next 6 weeks',
+            pay: 60,
+            methods: ['checking', 'savings'],
+            hint: '✓ Only $60 today · ✗ Payments auto-pull from your account · ✗ Late fees if you’re short',
+            bot: 0,
+            do: (s) => {
+              energy(s, 10);
+              s.loans.push({ name: 'Pay-in-4 plan', balance: 180, apr: 0, payment: 120, kind: 'personal' });
+              unlock(s, 'bnpl');
+            },
+            result: 'Easy. Too easy. Now you see that same button everywhere: sneakers, concert tickets, even groceries.',
+            tip: 'Buy now, pay later is fine for a planned purchase you could afford anyway. It’s risky when it makes things feel cheaper than they are, or when several plans stack up at once.',
+          },
+          {
+            label: 'Get a $40 foam topper instead',
+            pay: 40,
+            hint: '✓ Cheap fix (+5 energy) · ✗ Still a bad mattress underneath',
+            bot: (s) => (s.stats.cash + s.stats.savings > 900 ? 1 : 2),
+            do: (s) => energy(s, 5),
+            result: 'Not luxury. But the spring has been defeated.',
+          },
+          {
+            label: 'Keep sleeping on it',
+            hint: '✓ Free · ✗ −6 energy',
+            bot: -1,
+            do: (s) => energy(s, -6),
+            result: 'Boing. Ow.',
+          },
+        ],
+      },
+    },
+  },
+
+  // ====================== CAR (DMV & ACCIDENTS) ======================
+  {
+    id: 'ev-fenderbender',
+    title: 'Crunch',
+    art: 'street',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `Backing out of a parking spot, you feel a sickening CRUNCH. You tapped a parked SUV. Nobody’s hurt, but their bumper is dented and cracked.\n\nThe owner walks out of the store, surprisingly calm. Their body shop quote comes the next day: $680.${s.flags.uninsuredCar ? '\n\nAnd your car insurance lapsed. Uh-oh.' : ''}`,
+        choices: [
+          {
+            label: 'Exchange info and file an insurance claim',
+            hide: (s) => !!s.flags.uninsuredCar,
+            hint: '✓ $0 out of pocket · ✗ At-fault claim: insurance +$35/month for years',
+            bot: 1,
+            do: (s) => {
+              if (s.car) s.car.insurance += 35;
+              unlock(s, 'at-fault-claim');
+              log(s, 'Your car insurance went up $35/month after the at-fault claim.', 'bad');
+            },
+            result: 'Your insurance pays for the bumper. Then your renewal notice arrives: +$35 a month.',
+            tip: 'Liability insurance pays for damage you cause to others. But an at-fault claim can raise your premium for 3 to 5 years.',
+          },
+          {
+            label: 'Pay them $680 yourself and get a signed release',
+            pay: 680,
+            hint: '✓ No claim, no rate hike · ✓ In writing · ✗ $680 now',
+            bot: (s) => (s.stats.cash + s.stats.savings > 1500 || s.flags.uninsuredCar ? 2 : 0),
+            do: (s) => unlock(s, 'at-fault-claim'),
+            result: 'You both sign a short note: “Paid in full, no further claims.” Painful, but it’s over.',
+            tip: '$35 a month for three years is $1,260. For small damage, paying it yourself can be cheaper. Always get it in writing.',
+          },
+          {
+            label: 'Venmo them $300 on the spot. Handshake deal.',
+            pay: 300,
+            hint: '✓ Cheaper, fast · ✗ No paperwork. Nothing stops them asking for more',
+            bot: -2,
+            do: (s) => setFlag(s, 'fenderHandshake', s.week),
+            result: '“Yeah, that’s probably fine,” they say. Probably.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-fenderback',
+    title: 'About that bumper…',
+    art: 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'A letter from the SUV owner’s insurance company. The “little dent” hid $1,900 of damage: parking sensors inside the bumper. They paid their customer, and now they want the rest from you: $1,600.\n\nYou have no signed release. And you never told your own insurance company.',
+        choices: [
+          {
+            label: 'Report it to your insurer now',
+            hide: (s) => !!s.flags.uninsuredCar || !s.car,
+            hint: '✓ They’ll probably cover it · ✗ Reported late: insurance +$45/month',
+            bot: 2,
+            do: (s) => {
+              setFlag(s, 'fenderHandshake', 0);
+              if (s.car) s.car.insurance += 45;
+              unlock(s, 'at-fault-claim');
+              log(s, 'Your car insurance went up $45/month after the late claim.', 'bad');
+            },
+            result: 'Your agent sighs. “You were supposed to report it right away.” They cover it this time. Your premium jumps $45 a month.',
+            tip: 'Most policies require you to report any accident quickly, even if you don’t plan to file a claim.',
+          },
+          {
+            label: 'Ask for a payment plan: $100/month',
+            hint: '✓ Nothing due today · ✗ $1,600 of debt',
+            bot: 1,
+            do: (s) => {
+              setFlag(s, 'fenderHandshake', 0);
+              s.loans.push({ name: 'Accident damages', balance: 1600, apr: 0, payment: 100, kind: 'personal' });
+            },
+            result: 'They agree to $100 a month. Sixteen months of paying for a $300 handshake.',
+          },
+          {
+            label: 'Pay $1,600',
+            pay: 1600,
+            bot: 0,
+            do: (s) => setFlag(s, 'fenderHandshake', 0),
+            result: 'Paid. The “cheap” deal cost you $1,900 in the end.',
+          },
+          {
+            label: 'Ignore it',
+            bot: -4,
+            do: (s) => {
+              setFlag(s, 'fenderHandshake', 0);
+              s.credit.collections++;
+              unlock(s, 'collections');
+            },
+            result: 'It goes to collections and lands on your credit report. In some states, unpaid accident damages can even get your license suspended.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-registration',
+    title: 'Registration renewal',
+    art: 'dmv',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'A DMV envelope: your car’s registration expires at the end of the month. Renewal: $95. But first, your county requires an emissions test: $30.\n\nThe online renewal portal is available “24/7*”.\n*Except nights, weekends, and whenever it isn’t.',
+        speaker: 'clerk',
+        choices: [
+          {
+            label: 'Get the emissions test, then renew online: $125',
+            pay: 125,
+            hint: (s) => ((s.car?.condition ?? 100) < 40 ? '✓ Legal for another year · ✗ That check engine light could fail you' : '✓ Legal for another year'),
+            bot: 3,
+            do: (s, d) => {
+              unlock(s, 'registration');
+              energy(s, -3);
+              d.fail = (s.car?.condition ?? 100) < 40 ? 1 : 0;
+              if (d.fail && s.car) {
+                charge(s, 180, 'Oxygen sensor repair');
+                s.car.condition = Math.min(100, s.car.condition + 12);
+              }
+            },
+            result: (_s, d) =>
+              d.fail
+                ? 'FAILED. A check engine light is an automatic fail. One $180 oxygen sensor later, you pass, and the portal accepts your payment on the third try.'
+                : 'Passed! The portal crashes once, but your new sticker shows up in the mail a week later.',
+            tip: 'Registration is a yearly bill. Put it in your budget so it isn’t a surprise.',
+          },
+          {
+            label: 'Deal with it later. There’s probably a grace period.',
+            hint: '✓ $125 stays in your pocket · ✗ Expired tags are a ticket waiting to happen',
+            bot: -3,
+            do: (s) => {
+              setFlag(s, 'regExpired', s.week);
+              unlock(s, 'registration');
+            },
+            result: 'You put the envelope on the counter. Then under the mail. Then… where did it go?',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-expiredtag',
+    title: 'Expired tags',
+    art: 'night',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Lights in your mirror. “Your registration expired last month.” Ticket: $150. The DMV adds a $25 late fee when you finally renew, on top of the $125.\n\nThe officer adds: “Renew within 10 days and bring proof to the court. They’ll cut it to a $25 fix-it fee.”',
+        speaker: 'cop',
+        choices: [
+          {
+            label: 'Renew right away and show proof: $175 total',
+            pay: 175,
+            hint: '✓ Ticket cut to $25 · ✗ An evening in line at the courthouse (−4 energy)',
+            bot: 3,
+            do: (s) => {
+              setFlag(s, 'regExpired', 0);
+              energy(s, -4);
+            },
+            result: 'Renewed, proof shown, fine reduced. The clerk stamps it like it’s the most boring thing in the world. For them, it is.',
+            tip: 'Tickets for things like expired tags or a broken taillight are often “correctable.” Fix the problem fast, show proof, and the fine shrinks.',
+          },
+          {
+            label: 'Pay the full ticket and renew: $300',
+            pay: 300,
+            bot: 0,
+            do: (s) => setFlag(s, 'regExpired', 0),
+            result: 'Paid in full. Putting it off cost you $175 extra.',
+          },
+        ],
+      },
+    },
+  },
+
+  // ====================== BILLS, PAPERWORK & IDENTITY ======================
+  {
+    id: 'ev-medbill',
+    title: 'Medical bill',
+    art: 'clinic',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `A bill from Northside Clinic for that 10-minute visit about a cough last month: $412${insured(s) ? ' (your share, after insurance)' : ''}.\n\nIt lists a “Level 5 comprehensive visit” (the most complicated kind) and a chest X-ray. You never had an X-ray.`,
+        speaker: 'doctor',
+        choices: [
+          {
+            label: 'Call billing and ask for an itemized bill',
+            hint: '✓ Billing errors are common · ✗ An evening on hold (−5 energy)',
+            bot: 3,
+            do: (s, d) => {
+              energy(s, -5);
+              unlock(s, 'itemized-bill');
+              d.fixed = chance(s, 0.75) ? 1 : 0;
+              charge(s, d.fixed ? 85 : 310, 'Corrected medical bill');
+              if (d.fixed) achieve(s, 'auditor');
+            },
+            result: (_s, d) =>
+              d.fixed
+                ? 'After 40 minutes of hold music: “You’re right. The X-ray belonged to another patient, and the visit was coded wrong.” New bill: $85.'
+                : 'The charges check out. But they offer a 25% discount for paying today: $310.',
+            tip: 'Always ask for an itemized bill and check every line. Fixing an error is usually just a phone call.',
+          },
+          {
+            label: 'Just pay it: $412',
+            pay: 412,
+            bot: -1,
+            result: 'Paid. Did you just pay for someone else’s X-ray? You’ll never know.',
+          },
+          {
+            label: 'Toss it in a drawer',
+            hint: '✗ It won’t go away',
+            bot: -3,
+            do: (s) => {
+              energy(s, -8);
+              charge(s, 412, 'Medical collections');
+              unlock(s, 'itemized-bill');
+            },
+            result: 'Two months later, a collection agency starts calling. Every. Single. Day. You pay the full $412 to make it stop. Too late to dispute anything now.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-shorted',
+    title: 'Something’s off',
+    art: (s) => s.job?.art ?? 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) => {
+          const h = (s.job?.hours ?? 0) * 2;
+          return `You check your last pay stub against the schedule screenshots on your phone. You worked ${h} hours. The stub says ${h - shortBy(s)}.\n\nThat’s ${money(shortBy(s) * (s.job?.wage ?? 0))} missing.`;
+        },
+        speaker: 'hr',
+        choices: [
+          {
+            label: 'Email payroll with your screenshots',
+            hint: '✓ Get paid what you earned · ✓ A paper trail',
+            bot: 3,
+            do: (s) => {
+              s.hoursThisPeriod += shortBy(s);
+              rep(s, 1);
+              unlock(s, 'pay-errors');
+              achieve(s, 'auditor');
+            },
+            result: '“Thanks for flagging! A punch didn’t sync. We’ll add it to your next check.” Polite plus proof gets it fixed fast.',
+            tip: 'Keep your own record of the hours you work. Payroll makes mistakes, and you’re the one who has to catch them.',
+          },
+          {
+            label: 'Complain about it in the break room',
+            hint: '✓ Gets fixed eventually · ✗ Your boss hears about it secondhand',
+            bot: 0,
+            do: (s) => {
+              s.hoursThisPeriod += shortBy(s);
+              rep(s, -3);
+              unlock(s, 'pay-errors');
+            },
+            result: 'Three coworkers check their stubs. Two were shorted too. It gets fixed, but your manager is annoyed they heard it through gossip.',
+          },
+          {
+            label: 'Don’t make waves',
+            hint: '✗ That money is just gone',
+            bot: -2,
+            result: (s) => `You let it go. That’s ${money(shortBy(s) * (s.job?.wage ?? 0))} of work you did for free.`,
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-idtheft',
+    title: 'Not your account',
+    art: (s) => s.housing.art,
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'A letter from Zoom Wireless: “Welcome to Zoom! Your new account ending in 4471 has a balance of $1,140 for 2 phones.”\n\nYou have never heard of Zoom Wireless. Someone opened an account in your name.',
+        choices: [
+          {
+            label: 'Report it at IdentityTheft.gov and freeze your credit',
+            hint: '✓ Fraud wiped off your record · ✓ Freezing is free · ✗ Two evenings of phone trees (−10 energy)',
+            bot: 3,
+            do: (s) => {
+              energy(s, -10);
+              setFlag(s, 'creditFrozen');
+              unlock(s, 'credit-freeze');
+              achieve(s, 'lockeddown');
+            },
+            result: 'You file the report, freeze your credit at Equifax, Experian, and TransUnion, and send Zoom the report. Account closed. Nothing on your record. Now nobody can open credit in your name, not even you, until you “thaw” it.',
+            tip: 'A credit freeze is free and is the strongest protection against identity theft. Thaw it for a day when you apply for credit.',
+          },
+          {
+            label: 'Call Zoom and tell them it isn’t you',
+            hint: '✓ Quicker · ✗ Without an official report, they might not believe you',
+            bot: 0,
+            do: (s, d) => {
+              energy(s, -5);
+              d.ok = chance(s, 0.5) ? 1 : 0;
+              if (!d.ok) {
+                s.credit.collections++;
+                unlock(s, 'collections');
+              }
+              unlock(s, 'credit-freeze');
+            },
+            result: (_s, d) =>
+              d.ok
+                ? 'A helpful rep flags the account as fraud and closes it. Lucky.'
+                : '“We’ll need an identity theft report.” You never get around to it. A month later, the $1,140 shows up as a collection on YOUR credit report.',
+          },
+          {
+            label: 'Ignore it. It’s not your bill.',
+            hint: '✗ To the credit bureaus, it is',
+            bot: -4,
+            do: (s) => {
+              s.credit.collections++;
+              unlock(s, 'collections');
+            },
+            result: 'Zoom sends it to collections. It lands on your credit report, and your score drops hard for a debt you never made.',
+          },
+        ],
+      },
+    },
+  },
+
+  // ====================== WORK & HEALTH ======================
+  {
+    id: 'ev-hourscut',
+    title: 'Hours cut',
+    art: (s) => s.job?.art ?? 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `${s.path === 'work' ? 'Peak shipping season is over.' : 'The store is dead after the holidays.'} Your manager posts the new schedule: everyone loses 8 hours a week for the next month.\n\nThat’s about ${money(8 * (s.job?.wage ?? 0) * 0.85 * 4)} less take-home pay.`,
+        speaker: 'boss',
+        choices: [
+          {
+            label: 'Ask to cross-train in another department',
+            hint: '✓ Only lose 4 hours · ✓ New skills, boss notices · ✗ −3 energy',
+            bot: 3,
+            do: (s) => {
+              cutHours(s, 4);
+              xp(s, 3);
+              rep(s, 2);
+              energy(s, -3);
+            },
+            result: 'You learn the returns desk. Half your hours are back, and now you’re the person who can cover two departments.',
+            tip: 'Being able to do more than one job makes you the last person whose hours get cut.',
+          },
+          {
+            label: 'Take the free time and tighten your budget',
+            hint: '✓ +5 energy · ✗ Lose 8 hours a week for a month',
+            bot: 1,
+            do: (s) => {
+              cutHours(s, 8);
+              energy(s, 5);
+            },
+            result: 'More naps, fewer dollars. Your emergency fund suddenly feels very important.',
+          },
+          {
+            label: '“This is so unfair.”',
+            hint: '✗ Still lose 8 hours · ✗ Boss rating drops',
+            bot: -2,
+            do: (s) => {
+              cutHours(s, 8);
+              rep(s, -4);
+            },
+            result: 'Your manager shrugs. “It’s everybody.” Now it’s everybody, and you’re the one who complained.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-hoursback',
+    title: 'Hours are back',
+    art: (s) => s.job?.art ?? 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Business picked back up. Your manager restores everyone’s hours on the new schedule.',
+        speaker: 'boss',
+        choices: [
+          ok('Finally', {
+            do: (s) => {
+              if (s.job && s.job.place === s.flags.hoursCutPlace) s.job.hours = Math.max(s.job.hours, num(s, 'hoursCutFrom'));
+              setFlag(s, 'hoursBackAt', 0);
+            },
+            result: 'Full paychecks again.',
+          }),
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-wisdom',
+    title: 'Wisdom teeth',
+    art: 'dentist',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `Your jaw has ached for a week. The X-ray shows four wisdom teeth coming in sideways.\n\nOral surgeon: ${money(wisdomCost(s))}${s.dental ? ' with your dental insurance' : ' (no dental insurance)'}. The local dental school clinic does it for $1,100, with a 3-week wait.`,
+        speaker: 'dentist',
+        choices: [
+          {
+            label: (s) => `Book the oral surgeon: ${money(wisdomCost(s))}`,
+            pay: (s) => wisdomCost(s),
+            hint: '✓ Done next week · ✗ A day off to recover',
+            bot: (s) => (s.dental ? 3 : 0),
+            do: (s) => schedule(s, { week: freeWeek(s, 'weekday', s.week + 1), slot: 'weekday', kind: 'oralsurgery', label: 'Wisdom teeth out' }),
+            result: 'Booked. The receptionist hands you a sheet titled “What to Expect.” You decide not to read it.',
+          },
+          {
+            label: 'Dental school clinic: $1,100',
+            pay: 1100,
+            hide: (s) => s.dental,
+            hint: '✓ About 40% cheaper · ✓ Supervised by experienced dentists · ✗ 3-week wait',
+            bot: 3,
+            do: (s) => schedule(s, { week: freeWeek(s, 'weekday', s.week + 3), slot: 'weekday', kind: 'oralsurgery', label: 'Wisdom teeth out' }),
+            result: 'Booked with a fourth-year dental student and their very watchful professor.',
+            tip: 'Dental schools and community health centers often do the same work for much less. Ask before you pay full price.',
+          },
+          {
+            label: (s) => `Surgeon’s in-house payment plan: ${money(wisdomCost(s))}, 0% for 12 months`,
+            hint: '✓ Nothing due today · ✗ $160/month · ✗ Another bill',
+            bot: 1,
+            do: (s) => {
+              s.loans.push({ name: 'Oral surgery plan', balance: wisdomCost(s), apr: 0, payment: 160, kind: 'personal' });
+              schedule(s, { week: freeWeek(s, 'weekday', s.week + 1), slot: 'weekday', kind: 'oralsurgery', label: 'Wisdom teeth out' });
+              unlock(s, 'payment-plan');
+            },
+            result: 'Signed. You read the fine print twice. It really is 0%, not a deferred-interest card. Good.',
+            tip: 'Many “no interest” medical financing offers are deferred-interest credit cards. Miss the payoff date and ALL the interest hits at once. An in-house plan is safer.',
+          },
+          {
+            label: 'Wait and see',
+            hint: '✓ Free for now · ✗ Wisdom teeth rarely fix themselves',
+            bot: -2,
+            do: (s) => {
+              setFlag(s, 'toothRisk', num(s, 'toothRisk') + 1);
+              energy(s, -6);
+            },
+            result: 'You chew on the other side and hope for the best.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'appt-oralsurgery',
+    title: 'Wisdom teeth out',
+    art: 'dentist',
+    kind: 'appt',
+    steps: {
+      start: {
+        text: '“Count backward from ten.” You make it to seven. You wake up with chipmunk cheeks and a strong opinion about the color blue that you cannot explain.',
+        speaker: 'dentist',
+        choices: [
+          {
+            label: 'Ice cream and rest',
+            do: (s) => {
+              energy(s, -12);
+              setFlag(s, 'toothRisk', 0);
+            },
+            result: 'Three days of pudding. Then it’s over for good.',
+          },
+        ],
+      },
+    },
+  },
+
+  // ====================== TAXES ======================
+  {
+    id: 'ev-1099',
+    title: 'Your 1099',
+    art: 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `An email from the delivery app: “Your 1099 tax form is ready.” You earned ${money(num(s, 'gigTax'))} delivering. Nobody took taxes out.\n\nGig workers owe income tax plus self-employment tax. Your estimate${s.flags.gigMiles ? ' (after your mileage deduction)' : ''}: ${money(gigOwed(s))}.${s.flags.gigSetAside ? '\n\nGood news: you set money aside for exactly this.' : ''}`,
+        speaker: 'taxpro',
+        choices: [
+          {
+            label: (s) => `Pay it with your return: ${money(gigOwed(s))}`,
+            pay: (s) => gigOwed(s),
+            hint: (s) => (s.flags.gigSetAside ? '✓ Already saved for it · ✓ Done' : '✓ Done, no penalties'),
+            bot: 3,
+            do: (s) => {
+              unlock(s, 'self-employment-tax');
+              achieve(s, 'selfemployed');
+            },
+            result: (s) => (s.flags.gigMiles ? 'Paid. That mileage log cut your bill nearly in half.' : 'Paid. Next time: track your miles. Every mile you drive for work lowers your taxes.'),
+            tip: 'Set aside about 25% of gig income for taxes, and log every work mile. The mileage deduction is huge for drivers.',
+          },
+          {
+            label: 'IRS payment plan: $40/month',
+            hint: '✓ Nothing big due today · ✗ $22 setup fee · ✗ Interest and penalties',
+            bot: 1,
+            do: (s) => {
+              charge(s, 22, 'IRS payment plan fee');
+              s.loans.push({ name: 'IRS payment plan', balance: gigOwed(s), apr: 0.1, payment: 40, kind: 'personal' });
+              unlock(s, 'self-employment-tax');
+            },
+            result: 'Set up online in 15 minutes. You’ll be paying last year’s taxes for a while.',
+          },
+          {
+            label: 'Leave it off your return. It was cash, basically.',
+            hint: '✓ $0 today · ✗ The app sent the IRS a copy',
+            bot: -4,
+            do: (s) => {
+              setFlag(s, 'gigOwed', gigOwed(s));
+              setFlag(s, 'irsUnreported', s.week);
+              unlock(s, 'self-employment-tax');
+            },
+            result: 'You file without it. Nobody will notice. (Narrator: the computer noticed.)',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-irsletter',
+    title: 'Letter from the IRS',
+    art: 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          s.flags.irsUnreported
+            ? `A real IRS letter, by mail: Notice CP2000. “The income you reported does not match our records.” The delivery app reported ${money(num(s, 'gigTax'))}. You didn’t.\n\nProposed amount due (tax, 20% penalty, and interest): ${money(irsBill(s))}.`
+            : `A real IRS letter, by mail. Your tax return doesn’t match what your employer and your parents reported. That “close enough” answer wasn’t.\n\nAmount due with interest: ${money(irsBill(s))}.`,
+        speaker: 'taxpro',
+        choices: [
+          {
+            label: (s) => `Respond and pay: ${money(irsBill(s))}`,
+            pay: (s) => irsBill(s),
+            bot: 2,
+            do: (s) => clearIrs(s),
+            result: 'Paid and done. The IRS sends a polite letter confirming it. It’s the most relieved you’ve ever felt reading mail.',
+            tip: 'The real IRS contacts you by mail first, never by text, DM, or a demand for gift cards. If you get a notice, respond by the deadline.',
+          },
+          {
+            label: 'Set up a payment plan: $40/month',
+            hint: '✓ Affordable · ✗ $22 setup fee · ✗ Interest keeps running',
+            bot: 1,
+            do: (s) => {
+              const owed = irsBill(s);
+              clearIrs(s);
+              charge(s, 22, 'IRS payment plan fee');
+              s.loans.push({ name: 'IRS payment plan', balance: owed, apr: 0.1, payment: 40, kind: 'personal' });
+            },
+            result: 'Set up online. Slow and steady.',
+          },
+          {
+            label: 'Ignore it. Probably a scam.',
+            hint: '✗ Real IRS letters don’t go away',
+            bot: -4,
+            do: (s) => {
+              const owed = Math.round(irsBill(s) * 1.3);
+              clearIrs(s);
+              energy(s, -6);
+              charge(s, owed, 'IRS levy');
+            },
+            result: 'It wasn’t a scam. More letters. More penalties. Then the IRS takes it straight from your bank account. Ignoring it cost you 30% more.',
+            tip: 'Not sure if an IRS letter is real? Look up the notice number at IRS.gov, or call the number listed on IRS.gov (not the one in the letter).',
+          },
+        ],
+      },
+    },
+  },
+
+  // ====================== SCHOOL ======================
+  {
+    id: 'ev-accesscode',
+    title: 'Access code required',
+    art: 'campus',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Spring syllabus, page 4: “All homework is completed in MathLab Plus (20% of your grade).”\n\nThe bookstore sells the access code bundled with a new textbook: $210. In small print: “Used codes will not work.”',
+        speaker: 'advisor',
+        choices: [
+          {
+            label: 'Buy the bookstore bundle: $210',
+            pay: 210,
+            hint: '✓ Easy · ✗ Priciest option',
+            bot: -1,
+            do: (s) => xp(s, 2),
+            result: 'Shrink-wrapped book, scratch-off code. You will never open the book.',
+          },
+          {
+            label: 'Use the free trial, then buy just the code from the publisher: $95',
+            pay: 95,
+            hint: '✓ Less than half the price · ✓ Library has the textbook · ✗ A little hassle (−2 energy)',
+            bot: 3,
+            do: (s) => {
+              xp(s, 2);
+              energy(s, -2);
+            },
+            result: 'Two weeks free, then $95 straight from the publisher. The library’s reserve copy of the book is fine.',
+            tip: 'Access codes are often cheaper straight from the publisher, and most come with a 2-week free trial. Some schools bill “inclusive access” to your account automatically. You can usually opt out by a deadline.',
+          },
+          {
+            label: 'Skip the online homework',
+            hint: '✓ Free · ✗ Lose 20% of your grade (−6 progress)',
+            bot: -3,
+            do: (s) => xp(s, -6),
+            result: 'Every zero in the gradebook stares at you.',
+          },
+        ],
+      },
+    },
+  },
+
+  // ====================== HOUSING ======================
+  {
+    id: 'ev-deposit',
+    title: 'Deposit deductions',
+    art: 'apartment',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `Your old landlord mailed back ${money(oldDeposit(s) - 375)} of your ${money(oldDeposit(s))} security deposit, with a list:\n• Carpet cleaning: $150\n• Repaint walls: $175\n• “General wear and tear”: $50\n\nThe carpet was stained when you moved in. ${s.flags.moveInPhotos ? 'And you have the dated move-in photos to prove it.' : 'You think. You don’t have any photos.'}`,
+        speaker: 'landlord',
+        choices: [
+          {
+            label: 'Send a written demand letter citing your state’s deposit law',
+            hint: (s) => (s.flags.moveInPhotos ? '✓ Your photos prove it · ✗ −3 energy' : '✓ Normal wear and tear can’t be deducted · ✗ No proof of the rest'),
+            bot: 3,
+            do: (s, d) => {
+              energy(s, -3);
+              unlock(s, 'deposit-return');
+              d.back = s.flags.moveInPhotos ? 375 : 50;
+              earn(s, oldDeposit(s) - 375 + d.back);
+              if (s.flags.moveInPhotos) achieve(s, 'depositback');
+            },
+            result: (_s, d) =>
+              d.back === 375
+                ? 'You attach the photos. A week later, a check for the full $375 arrives with no note. You don’t need a note.'
+                : 'They drop the “general wear and tear” charge ($50), since that’s illegal to deduct. For the rest, it’s your word against theirs.',
+            tip: 'Landlords can’t deduct for normal wear and tear: faded paint, worn carpet, small nail holes. Photos on move-in day are your best evidence.',
+          },
+          {
+            label: 'File in small claims court: $45 (a weekday in 2 weeks)',
+            pay: 45,
+            hint: (s) => (s.flags.moveInPhotos ? '✓ Strong case · ✓ Win back the fee too · ✗ A day off work' : '✗ A coin flip without photos · ✗ A day off work'),
+            bot: (s) => (s.flags.moveInPhotos ? 1 : 0),
+            do: (s) => {
+              earn(s, oldDeposit(s) - 375);
+              unlock(s, 'deposit-return');
+              schedule(s, { week: freeWeek(s, 'weekday', s.week + 2), slot: 'weekday', kind: 'smallclaims', label: 'Small claims court' });
+            },
+            result: 'Filed. No lawyer needed. You’ll tell your story to a judge.',
+          },
+          {
+            label: 'Let it go',
+            bot: -1,
+            do: (s) => {
+              earn(s, oldDeposit(s) - 375);
+              unlock(s, 'deposit-return');
+            },
+            result: 'You cash the partial check. $375 is a lot to just let go.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'appt-smallclaims',
+    title: 'Small claims court',
+    art: 'office',
+    kind: 'appt',
+    steps: {
+      start: {
+        text: (s) =>
+          `The judge has 40 cases today and gives yours four minutes. The landlord brought a folder.${s.flags.moveInPhotos ? ' You brought dated photos of every stain.' : ' You brought… your honest face.'}`,
+        speaker: 'landlord',
+        choices: [
+          {
+            label: 'Make your case',
+            do: (s, d) => {
+              d.won = s.flags.moveInPhotos || chance(s, 0.4) ? 1 : 0;
+              if (d.won) {
+                earn(s, 375 + 45);
+                if (s.flags.moveInPhotos) achieve(s, 'depositback');
+              }
+            },
+            result: (_s, d) => (d.won ? 'Judgment for you: $375 plus your $45 filing fee. The landlord pays by check, glaring.' : '“Without evidence of the move-in condition, I find for the landlord.” You lose the $45 fee too.'),
+            tip: 'Small claims court is built for regular people. No lawyer needed, just organized evidence.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-overage',
+    title: 'Out of data',
+    art: 'street',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'It’s the 21st. Your phone flashes: “You’ve used 100% of your data. Speeds are now reduced.” Maps takes four minutes to load. Your shift app won’t open.',
+        choices: [
+          {
+            label: 'Buy a 2 GB add-on: $10',
+            pay: 10,
+            hint: '✓ Back online · ✗ $10',
+            bot: 2,
+            result: 'Back to normal. Still cheaper than a bigger plan every month.',
+          },
+          {
+            label: 'Survive on Wi-Fi until it resets',
+            hint: '✓ Free · ✗ −4 energy · ✗ Might miss a message from work',
+            bot: 0,
+            do: (s, d) => {
+              energy(s, -4);
+              d.missed = s.job && chance(s, 0.35) ? 1 : 0;
+              if (d.missed) rep(s, -3);
+            },
+            result: (_s, d) => (d.missed ? 'You miss your manager’s “can you come in early?” text until you’re back on Wi-Fi. Not great.' : 'Library Wi-Fi, café Wi-Fi, the Wi-Fi from the bus stop near the coffee shop. You survive.'),
+          },
+          {
+            label: 'Upgrade to unlimited (+$15/month)',
+            hint: '✓ Never again · ✗ $180 a year',
+            bot: 0,
+            do: (s) => {
+              const p = s.subs.find((x) => x.id === 'phone');
+              if (p) p.cost += 15;
+              setFlag(s, 'dataTight', false);
+            },
+            result: 'Unlimited. Your phone bill is now a little less limited too.',
+          },
+        ],
+      },
+    },
+  },
 ];
+
+const ALDER = 'Rented room on Alder St.';
+
+// Did the player move out of the place they started in (and so get a deposit back)?
+function movedOut(s: GameState): boolean {
+  if (s.path === 'trade') return s.housing.name !== ALDER;
+  if (s.path === 'work') return /studio/i.test(s.housing.name);
+  return false;
+}
+
+function oldDeposit(s: GameState): number {
+  return s.path === 'work' ? 725 : 650;
+}
+
+function shortBy(s: GameState): number {
+  return (s.job?.hours ?? 0) >= 24 ? 8 : 4;
+}
+
+function cutHours(s: GameState, n: number): void {
+  if (!s.job) return;
+  setFlag(s, 'hoursCutFrom', s.job.hours);
+  setFlag(s, 'hoursCutPlace', s.job.place);
+  setFlag(s, 'hoursBackAt', s.week + 4);
+  s.job.hours = Math.max(0, s.job.hours - n);
+  unlock(s, 'hours-cut');
+}
+
+function wisdomCost(s: GameState): number {
+  return s.dental ? 650 : 1900;
+}
+
+function gigOwed(s: GameState): number {
+  return Math.round(num(s, 'gigTax') * (s.flags.gigMiles ? 0.13 : 0.25));
+}
+
+function irsBill(s: GameState): number {
+  return s.flags.irsUnreported ? Math.round(num(s, 'gigOwed') * 1.2 + 15) : 160;
+}
+
+function clearIrs(s: GameState): void {
+  setFlag(s, 'irsUnreported', 0);
+  setFlag(s, 'taxMistake', false);
+  unlock(s, 'irs-notice');
+}
+
+// First week (from `from`) with nothing already booked in that slot.
+function freeWeek(s: GameState, slot: SlotId, from: number): number {
+  let w = from;
+  while (s.appointments.some((a) => a.week === w && a.slot === slot)) w++;
+  return w;
+}
 
 function toothCost(s: GameState): number {
   const big = num(s, 'toothRisk') >= 2;
@@ -1344,5 +2325,29 @@ export const EVENTS = [
   { id: 'ev-concert', weight: 1, cooldown: 12, minWeek: 4 },
   { id: 'ev-wedding', weight: 0.6, once: true, minWeek: 14 },
   { id: 'ev-overdrawn', weight: (s: GameState) => (s.stats.cash < -150 ? 25 : 0), cooldown: 6 },
+  // Money traps
+  { id: 'ev-paydayloan', weight: (s: GameState) => (s.job && s.stats.cash < 150 && s.stats.savings < 250 ? 3 : 0), minWeek: 4, cooldown: 10 },
+  { id: 'ev-paydaydue', weight: (s: GameState) => (num(s, 'paydayDue') && s.week >= num(s, 'paydayDue') ? 40 : 0) },
+  { id: 'ev-bnpl', weight: 0.7, once: true, minWeek: 6 },
+  // Car paperwork and accidents
+  { id: 'ev-fenderbender', weight: (s: GameState) => (hasCar(s) ? 0.8 : 0), once: true, minWeek: 10 },
+  { id: 'ev-fenderback', weight: (s: GameState) => (num(s, 'fenderHandshake') && s.week - num(s, 'fenderHandshake') >= 3 ? 20 : 0), once: true },
+  { id: 'ev-registration', weight: (s: GameState) => (hasCar(s) ? 1.5 : 0), once: true, minWeek: 14 },
+  { id: 'ev-expiredtag', weight: (s: GameState) => (hasCar(s) && num(s, 'regExpired') && s.week - num(s, 'regExpired') >= 2 ? 8 : 0), once: true },
+  // Bills, paperwork, identity
+  { id: 'ev-medbill', weight: 0.6, once: true, minWeek: 8 },
+  { id: 'ev-shorted', weight: (s: GameState) => (s.job ? 0.8 : 0), once: true, minWeek: 4 },
+  { id: 'ev-idtheft', weight: (s: GameState) => (s.flags['seen:ev-fraudrefund'] ? 3 : 0.3), once: true, minWeek: 12 },
+  // Work and health
+  { id: 'ev-hourscut', weight: (s: GameState) => (s.job && (s.path === 'home' || s.path === 'work') && s.week >= 19 && s.week <= 26 ? 1.2 : 0), once: true },
+  { id: 'ev-hoursback', weight: (s: GameState) => (num(s, 'hoursBackAt') && s.week >= num(s, 'hoursBackAt') ? 50 : 0), once: true },
+  { id: 'ev-wisdom', weight: 0.5, once: true, minWeek: 9 },
+  // Taxes
+  { id: 'ev-1099', weight: (s: GameState) => (num(s, 'gigTax') >= 300 ? 6 : 0), once: true, minWeek: 20 },
+  { id: 'ev-irsletter', weight: (s: GameState) => ((num(s, 'irsUnreported') && s.week - num(s, 'irsUnreported') >= 6) || (s.flags.taxMistake && s.flags.taxesFiled && s.week >= 27) ? 15 : 0), once: true },
+  // School and housing
+  { id: 'ev-accesscode', weight: (s: GameState) => (s.path === 'college' && s.flags.enrolled !== false && s.week >= 19 && s.week <= 24 ? 3 : 0), once: true },
+  { id: 'ev-deposit', weight: (s: GameState) => (movedOut(s) ? 8 : 0), once: true, minWeek: 15 },
+  { id: 'ev-overage', weight: (s: GameState) => (s.flags.dataTight && s.subs.some((x) => x.id === 'phone') ? 1.2 : 0), cooldown: 8 },
 ];
 

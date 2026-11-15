@@ -30,6 +30,10 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'rested', name: 'Work-Life Balance', desc: 'Finished the year without burning out.', icon: 'rest' },
   { id: 'rehired', name: 'Back on Your Feet', desc: 'Got a new job after losing one.', icon: 'work' },
   { id: 'debtfree', name: 'Debt-Free', desc: 'Finished with no credit card or car debt.', icon: 'star' },
+  { id: 'auditor', name: 'Read Every Line', desc: 'Caught a mistake on a bill or a paycheck.', icon: 'docs' },
+  { id: 'lockeddown', name: 'Locked Down', desc: 'Froze your credit after identity theft.', icon: 'shield' },
+  { id: 'depositback', name: 'Spotless Record', desc: 'Got your whole security deposit back.', icon: 'home' },
+  { id: 'selfemployed', name: 'Self-Employed', desc: 'Paid your gig taxes on time.', icon: 'money' },
 ];
 
 export function checkAchievements(s: GameState): void {

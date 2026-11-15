@@ -1,5 +1,5 @@
 // Payday decisions (save it, or spend it on something that matters) and story beats.
-import { achieve, creditScore, energy, inc, log, money, num, rep, round2, schedule, setFlag, unlock, xp } from '../../engine/core.ts';
+import { achieve, charge, creditScore, energy, inc, log, money, num, rep, round2, save, schedule, setFlag, unlock, xp } from '../../engine/core.ts';
 import { missWork } from '../../engine/core.ts';
 import type { GameState } from '../../engine/types.ts';
 import { CAREER_NEED } from '../chapters.ts';
@@ -87,6 +87,7 @@ export const OFFER_SCENES: Scene[] = [
             bot: -2,
             do: (s) => {
               if (s.car) s.car.condition = Math.max(0, s.car.condition - 12);
+              inc(s, 'oilSkipped');
             },
             result: 'Skipped. The engine sounds a little rougher.',
             tip: 'Skipping a $70 oil change can lead to a $4,000 engine replacement.',
@@ -472,6 +473,275 @@ export const OFFER_SCENES: Scene[] = [
     },
   },
 
+  // ======================= MORE PAYDAY DECISIONS =======================
+  {
+    id: 'off-gigtax',
+    title: 'Gig money',
+    art: 'road',
+    kind: 'offer',
+    steps: {
+      start: {
+        text: (s) =>
+          `You’ve made ${money(num(s, 'gigTax'))} delivering food. The app didn’t take out a single dollar for taxes. That’s on you now.\n\nA driver in the pickup line says: “Set aside a quarter of it. And track your miles. Every mile is a deduction.”`,
+        choices: [
+          {
+            label: (s) => `Move ${money(Math.round(num(s, 'gigTax') * 0.25))} to savings and start a mileage log`,
+            hint: '✓ Tax bill covered · ✓ Mileage cuts what you owe · ✗ Logging trips is tedious (−2 energy)',
+            bot: 3,
+            do: (s) => {
+              save(s, Math.round(num(s, 'gigTax') * 0.25));
+              setFlag(s, 'gigSetAside');
+              setFlag(s, 'gigMiles');
+              energy(s, -2);
+              unlock(s, 'self-employment-tax');
+            },
+            result: (s) => `A free app tracks every trip. Your tax money sits in savings (${money(s.stats.savings)} total), where you won’t spend it by accident.`,
+            tip: 'Gig apps don’t withhold taxes. Saving about 25% of what you earn makes April boring instead of scary.',
+          },
+          {
+            label: 'Just start the mileage log',
+            hint: '✓ Lower taxes · ✗ Nothing set aside for the bill',
+            bot: 1,
+            do: (s) => {
+              setFlag(s, 'gigMiles');
+              unlock(s, 'self-employment-tax');
+            },
+            result: 'Every trip logged. Future you will thank you. Future you will also need to find the money.',
+          },
+          {
+            label: '“Taxes? It’s side money.”',
+            hint: '✓ Spend it all · ✗ The app reports it to the IRS',
+            bot: -2,
+            result: 'Side money, main-character spending.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'off-movein',
+    title: 'Move-in checklist',
+    art: 'apartment',
+    kind: 'offer',
+    steps: {
+      start: {
+        text: 'Cleaning out a drawer, you find the “Move-In Condition Checklist” from your lease. You never filled it out.\n\nLandlords can keep deposit money for damage. Without proof of what was already there, it’s your word against theirs.',
+        speaker: 'landlord',
+        choices: [
+          {
+            label: 'Photograph every room tonight and email the checklist',
+            hint: '✓ Protects your deposit · ✓ Dated proof · ✗ A dull evening (−4 energy)',
+            bot: 2,
+            do: (s) => {
+              setFlag(s, 'moveInPhotos');
+              energy(s, -4);
+              unlock(s, 'deposit-return');
+            },
+            result: '214 photos, including a carpet stain shaped like Ohio. You email them to your landlord and to yourself so the date is on record.',
+            tip: 'Take dated photos on move-in day and move-out day. They’re the best evidence you’ll ever have in a deposit fight.',
+          },
+          {
+            label: 'Nah, the place is fine',
+            hint: '✓ Free evening · ✗ No proof later',
+            bot: -1,
+            result: 'Back in the drawer it goes.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'off-carinsshop',
+    title: 'Insurance renewal',
+    art: 'office',
+    kind: 'offer',
+    steps: {
+      start: {
+        text: (s) =>
+          `Your car insurance renewal arrived: ${money(s.car?.insurance ?? 0)}/month. Rae says she saved $300 a year just by getting quotes. Your insurer also offers a “SafeDrive” app that tracks your braking and speed for a discount.`,
+        choices: [
+          {
+            label: 'Spend an evening getting three quotes',
+            hint: '✓ Same coverage, lower price (−$20/month) · ✗ An evening on the phone (−4 energy)',
+            bot: 3,
+            do: (s) => {
+              if (s.car) s.car.insurance = Math.max(50, s.car.insurance - 20);
+              energy(s, -4);
+              unlock(s, 'insurance-shopping');
+            },
+            result: (s) => `Company #3 offers the exact same coverage for less. Switched: ${money(s.car?.insurance ?? 0)}/month.`,
+            tip: 'Insurance companies price the same driver very differently. Get new quotes every year.',
+          },
+          {
+            label: 'Try the SafeDrive tracking app',
+            hint: (s) => (num(s, 'ticketPoints') ? '✓ Discount for careful driving · ✗ Your driving record says… maybe not' : '✓ Discount for careful driving · ✗ It sees every hard brake'),
+            bot: (s) => (num(s, 'ticketPoints') ? -1 : 1),
+            do: (s, d) => {
+              d.bad = num(s, 'ticketPoints') ? 1 : 0;
+              if (s.car) s.car.insurance = Math.max(50, s.car.insurance + (d.bad ? 10 : -12));
+              unlock(s, 'insurance-shopping');
+            },
+            result: (_s, d) =>
+              d.bad ? 'Six weeks of data later: “Frequent hard braking detected.” Your rate goes UP $10/month.' : 'Six weeks of smooth driving: −$12/month. You now stop for yellow lights like a grandparent.',
+          },
+          {
+            label: 'Just renew',
+            hint: '✓ No effort · ✗ Probably overpaying',
+            bot: -1,
+            result: 'Renewed. Same price as always, which is the problem.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'off-warranty',
+    title: 'Extended warranty',
+    art: 'carlot',
+    kind: 'offer',
+    steps: {
+      start: {
+        text: 'The dealership calls: “Your vehicle is out of factory warranty! Our Platinum Protection Plan covers major repairs for just $45 a month.”\n\nYou ask what isn’t covered. They talk very fast.',
+        speaker: 'dealer',
+        choices: [
+          {
+            label: 'Sign up: $45/month',
+            hint: '✓ Covers big repairs after a $100 deductible · ✗ $540 a year · ✗ Claims can be denied',
+            bot: -1,
+            do: (s) => {
+              setFlag(s, 'carWarranty');
+              s.subs.push({ id: 'warranty', label: 'Extended car warranty', cost: 45 });
+              unlock(s, 'extended-warranty');
+            },
+            result: 'Signed. The contract is 14 pages. Page 9 is just a list of “wear items” it doesn’t cover.',
+          },
+          {
+            label: 'Auto-save $25 every paycheck into a car repair fund',
+            hint: '✓ Covers any repair · ✓ Stays yours if nothing breaks · ✗ Small fund at first',
+            bot: 3,
+            do: (s) => {
+              s.autoSave += 25;
+              unlock(s, 'pay-yourself-first');
+              unlock(s, 'extended-warranty');
+            },
+            result: 'Every payday, $25 slides into savings automatically. If the car never breaks, you keep all of it.',
+            tip: 'An extended warranty is repair insurance with a profit margin built in. Saving the same money yourself often works out better.',
+          },
+          {
+            label: 'No thanks',
+            hint: '✓ No new bill · ✗ No plan for the next repair, either',
+            bot: 0,
+            result: '“Are you sure? Repairs can cost THOUSANDS!” Click.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'off-gymcancel',
+    title: 'Gym price hike',
+    art: 'street',
+    kind: 'offer',
+    steps: {
+      start: {
+        text: 'Email from the gym: “Exciting news! Your membership rate is adjusting to $40/month.”\n\nYou try to cancel online. There’s no button. The fine print: cancel in person with a manager, weekdays 10 to 2, or by certified letter.',
+        choices: [
+          {
+            label: 'Keep it at $40/month',
+            hint: '✓ Still +3 energy a week · ✗ $120 more per year',
+            bot: (s) => (s.stats.energy < 50 ? 2 : 0),
+            do: (s) => {
+              const g = s.subs.find((x) => x.id === 'gym');
+              if (g) g.cost = 40;
+            },
+            result: 'You grumble and keep lifting. At least you actually go.',
+          },
+          {
+            label: 'Cancel by certified letter: $9',
+            pay: 9,
+            hint: '✓ Proof you canceled · ✗ Lose the gym energy boost',
+            bot: (s) => (s.stats.energy < 50 ? 0 : 2),
+            do: (s) => {
+              s.subs = s.subs.filter((x) => x.id !== 'gym');
+              setFlag(s, 'gym', false);
+              unlock(s, 'cancel-trap');
+            },
+            result: 'Certified letter sent, receipt saved. Next month you check your statement: no charge. Free runs in the park from now on.',
+            tip: 'Read how to cancel BEFORE you sign up. Keep proof you canceled, then check your statement to make sure the charges stop.',
+          },
+          {
+            label: 'Just stop paying',
+            hint: '✓ No hassle today · ✗ You still owe under the contract',
+            bot: -2,
+            do: (s) => {
+              s.subs = s.subs.filter((x) => x.id !== 'gym');
+              setFlag(s, 'gym', false);
+              charge(s, 80, 'Gym dues in collections');
+              unlock(s, 'cancel-trap');
+              unlock(s, 'collections');
+            },
+            result: 'Two months later, a collection agency calls about $80 in “unpaid dues and fees.” You pay it fast to keep it off your credit report.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'off-dataplan',
+    title: 'Phone bill check-up',
+    art: (s) => s.housing.art,
+    kind: 'offer',
+    steps: {
+      start: {
+        text: (s) => {
+          const c = s.subs.find((x) => x.id === 'phone')?.cost ?? 0;
+          return `Your phone bill: ${money(c)}/month. Three months in a row, you’ve run out of data around the 20th and been slowed to a crawl.\n\nYour carrier suggests unlimited for +$15/month.${c > 30 && c < 95 ? ' A prepaid carrier offers 15 GB for $30 on the same towers.' : ''}`;
+        },
+        choices: [
+          {
+            label: 'Switch to the $30 prepaid plan with 15 GB',
+            hide: (s) => {
+              const c = s.subs.find((x) => x.id === 'phone')?.cost ?? 0;
+              return c <= 30 || c >= 95;
+            },
+            hint: '✓ More data AND cheaper · ✗ An evening moving your number (−4 energy)',
+            bot: 3,
+            do: (s) => {
+              const p = s.subs.find((x) => x.id === 'phone');
+              if (p) p.cost = 30;
+              energy(s, -4);
+              setFlag(s, 'dataPlanSet');
+            },
+            result: 'Number moved, new SIM in. Same towers, smaller bill, more data.',
+            tip: 'Prepaid carriers often run on the big networks for much less. Compare plans every year or two.',
+          },
+          {
+            label: 'Upgrade to unlimited (+$15/month)',
+            hint: '✓ Never slowed again · ✗ $180 more a year',
+            bot: 0,
+            do: (s) => {
+              const p = s.subs.find((x) => x.id === 'phone');
+              if (p) p.cost += 15;
+              setFlag(s, 'dataPlanSet');
+            },
+            result: 'Unlimited. Stream all you want.',
+          },
+          {
+            label: 'Use Wi-Fi more: download maps and music at home',
+            hint: '✓ Free · ✗ You might still run out (−2 energy)',
+            bot: 1,
+            do: (s) => {
+              energy(s, -2);
+              setFlag(s, 'dataTight');
+              setFlag(s, 'dataPlanSet');
+            },
+            result: 'Offline maps, downloaded playlists, autoplay off. You are now a Wi-Fi hunter.',
+          },
+        ],
+      },
+    },
+  },
+
   // ======================= STORY BEATS =======================
   {
     id: 'beat-curveball',
@@ -673,6 +943,12 @@ const OFFER_LIST = [
   { id: 'off-glasses', weight: 0.6, once: true, minWeek: 6 },
   { id: 'off-phoneplan', weight: (s: GameState) => (s.flags.familyPhone && s.week >= 6 ? 3 : 0), once: true },
   { id: 'off-battery', weight: (s: GameState) => (s.car && s.week >= 19 && s.week <= 26 ? 2 : 0), once: true },
+  { id: 'off-gigtax', weight: (s: GameState) => (num(s, 'gigTax') >= 150 && !s.flags.gigMiles ? 2.5 : 0), once: true, minWeek: 6 },
+  { id: 'off-movein', weight: (s: GameState) => (ownPlace(s) && s.week <= 12 && !s.flags.moveInPhotos ? 1.5 : 0), once: true, minWeek: 2 },
+  { id: 'off-carinsshop', weight: (s: GameState) => (s.car ? 1.2 : 0), once: true, minWeek: 19 },
+  { id: 'off-warranty', weight: (s: GameState) => (s.car && !s.flags.carWarranty ? 1 : 0), once: true, minWeek: 19 },
+  { id: 'off-gymcancel', weight: (s: GameState) => (s.flags.gym && s.subs.some((x) => x.id === 'gym') ? 2 : 0), once: true, minWeek: 19 },
+  { id: 'off-dataplan', weight: (s: GameState) => (s.subs.some((x) => x.id === 'phone') && !s.flags.dataPlanSet ? 1 : 0), once: true, minWeek: 19 },
 ];
 
 export { OFFER_LIST };
