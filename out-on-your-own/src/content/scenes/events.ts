@@ -1,0 +1,1348 @@
+// Random life events and their consequences. Every choice trades money, time, energy, or risk.
+import { achieve, chance, charge, earn, energy, inc, log, missWork, money, num, rep, schedule, setFlag, unlock, xp } from '../../engine/core.ts';
+import type { GameState } from '../../engine/types.ts';
+import type { Choice, Scene } from '../types.ts';
+import { CARD_USE } from './tasks.ts';
+
+export function medCost(s: GameState, kind: 'urgent' | 'er' | 'rx'): number {
+  const table = {
+    urgent: { none: 210, employer: 35, parents: 35, school: 20 },
+    er: { none: 3200, employer: 500, parents: 750, school: 600 },
+    rx: { none: 85, employer: 10, parents: 10, school: 10 },
+  };
+  return table[kind][s.health];
+}
+
+const insured = (s: GameState): boolean => s.health !== 'none';
+const hasCar = (s: GameState): boolean => !!s.car;
+const ownPlace = (s: GameState): boolean => s.housing.kind !== 'parents' && s.housing.kind !== 'dorm';
+
+const ok = (label: string, extra: Partial<Choice> = {}): Choice => ({ label, ...extra });
+
+export const EVENT_SCENES: Scene[] = [
+  // ====================== HEALTH ======================
+  {
+    id: 'ev-sick',
+    title: 'You’re sick',
+    art: (s) => s.housing.art,
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'You’ve been running on empty, and now your body is making you pay. Fever, sore throat, the works.',
+        choices: [
+          {
+            label: (s) => `Urgent care visit (${money(medCost(s, 'urgent') + medCost(s, 'rx'))} with ${insured(s) ? 'insurance' : 'NO insurance'})`,
+            pay: (s) => medCost(s, 'urgent') + medCost(s, 'rx'),
+            hint: '✓ Back on your feet fast (+20 energy)',
+            bot: (s) => (insured(s) ? 3 : 1),
+            do: (s) => {
+              energy(s, 20);
+              unlock(s, 'copay');
+            },
+            result: (s) => (insured(s) ? 'Strep throat. Antibiotics. Your insurance covered most of it.' : 'Strep throat. Antibiotics. Without insurance, that was the full price.'),
+            tip: 'A copay is the fixed amount you pay for a visit when you have insurance. Without insurance, you pay the whole bill.',
+          },
+          {
+            label: 'Call out and rest',
+            hint: (s) => `✓ Free · ✗ ${s.job && s.path !== 'college' ? 'Lose a day of pay' : 'Miss class'} · ✓ +12 energy`,
+            bot: 2,
+            do: (s) => {
+              missWork(s, 'Sick day');
+              energy(s, 12);
+            },
+            result: 'Soup, sleep, and bad TV. You feel human again by Sunday.',
+          },
+          {
+            label: 'Tough it out and go in anyway',
+            hint: '✓ No lost pay · ✗ −10 energy · ✗ Coworkers are not thrilled',
+            bot: -2,
+            do: (s) => {
+              energy(s, -10);
+              rep(s, -3);
+            },
+            result: 'You cough through your whole shift. Your boss sends you home early anyway.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-burnout',
+    title: 'Burnout',
+    art: (s) => s.housing.art,
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'You hit zero. Your alarm goes off and you just… can’t. You sleep through your shift, miss texts, and feel awful.',
+        choices: [
+          {
+            label: 'Take a real break',
+            do: (s) => {
+              missWork(s, 'Burnout');
+              missWork(s, 'Burnout');
+              rep(s, -4);
+              energy(s, 45);
+              inc(s, 'burnouts');
+              unlock(s, 'burnout');
+            },
+            result: 'Two missed days and an awkward talk with your boss. But you’re recovering.',
+            tip: 'Rest isn’t lazy. Schedule it like anything else, or your body will schedule it for you.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-injury',
+    title: 'Ow.',
+    art: 'clinic',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `${s.transport === 'bike' ? 'A car door opens right in front of your bike.' : s.path === 'trade' ? 'You slip off a ladder on a job site.' : s.path === 'work' ? 'A pallet jack rolls over your foot.' : 'You miss the last step on the stairs.'} Something is definitely broken.\n\nER visit: ${insured(s) ? `${money(medCost(s, 'er'))} (your insurance caps it)` : `${money(medCost(s, 'er'))}. You have NO insurance.`}`,
+        speaker: 'doctor',
+        choices: [
+          {
+            label: (s) => `Go to the ER (${money(medCost(s, 'er'))})`,
+            pay: (s) => medCost(s, 'er'),
+            bot: 2,
+            do: (s) => {
+              missWork(s, 'Injury');
+              energy(s, -10);
+              unlock(s, 'deductible');
+              inc(s, 'medicalBills', medCost(s, 'er'));
+            },
+            result: (s) =>
+              insured(s)
+                ? 'Cast, painkillers, and a bill you can actually handle. Insurance did its job.'
+                : 'Cast, painkillers, and a bill you’ll remember for years.',
+          },
+          {
+            label: 'Ask for a payment plan ($150/month)',
+            hide: (s) => insured(s),
+            bot: 1,
+            do: (s) => {
+              missWork(s, 'Injury');
+              energy(s, -10);
+              s.subs.push({ id: 'medplan', label: 'Hospital payment plan', cost: 150 });
+              setFlag(s, 'medPlanLeft', Math.round(medCost(s, 'er') / 150));
+              unlock(s, 'payment-plan');
+            },
+            result: 'The hospital billing office sets up $150/month. No interest, but it’ll take almost two years.',
+            tip: 'Hospitals often offer interest-free payment plans or financial assistance. Always ask before putting medical bills on a credit card.',
+          },
+          {
+            label: 'Wrap it up and skip the ER',
+            hint: '✓ Free · ✗ It heals wrong · ✗ −25 energy',
+            bot: -3,
+            do: (s) => {
+              energy(s, -25);
+              rep(s, -5);
+              setFlag(s, 'badHeal');
+            },
+            result: 'It heals… crooked. It aches every time it rains.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-toothache',
+    title: 'Toothache',
+    art: 'dentist',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          num(s, 'toothRisk') >= 2
+            ? 'That back molar is now throbbing so hard you can feel your heartbeat in your jaw. You can’t chew. You can’t sleep.'
+            : 'That back molar twinges every time you drink something cold.',
+        speaker: 'dentist',
+        choices: [
+          {
+            label: (s) => {
+              const big = num(s, 'toothRisk') >= 2;
+              return `Emergency dentist: ${big ? 'root canal + crown' : 'filling'} (${money(toothCost(s))})`;
+            },
+            pay: (s) => toothCost(s),
+            bot: 2,
+            do: (s) => {
+              if (num(s, 'toothRisk') >= 2) missWork(s, 'Root canal');
+              s.flags.toothRisk = 0;
+              setFlag(s, 'dentistDone');
+            },
+            result: (s) => (s.dental ? 'Fixed. Dental insurance covered a big chunk.' : 'Fixed. Your wallet is now also in pain.'),
+            tip: 'A $165 cleaning catches problems early. A root canal and crown can cost over $1,500 without insurance.',
+          },
+          {
+            label: 'Ibuprofen and hope',
+            hint: '✓ Free today · ✗ It WILL get worse',
+            bot: -3,
+            do: (s) => {
+              s.flags.toothRisk = num(s, 'toothRisk') + 1;
+              energy(s, -10);
+            },
+            result: 'The pain dulls. For now.',
+          },
+        ],
+      },
+    },
+  },
+
+  // ====================== CAR ======================
+  {
+    id: 'ev-tire',
+    title: 'Low tire',
+    art: 'road',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Your tire pressure light keeps coming on. At the shop: “Tread’s worn down to nothing, and there’s a nail in it. You need a new tire: $150.”',
+        speaker: 'mechanic',
+        choices: [
+          {
+            label: 'Replace it now: $150',
+            pay: 150,
+            hint: '✓ Safe, done · ✗ $150 today',
+            bot: 3,
+            do: (s) => {
+              if (s.car) s.car.condition = Math.min(100, s.car.condition + 8);
+              s.flags.tireBad = 0;
+            },
+            result: 'New tire. Smooth ride. That nagging light is off.',
+          },
+          {
+            label: 'Patch it for $25 and hope',
+            pay: 25,
+            hint: '✓ Cheap · ✗ Worn tread can still blow out',
+            bot: 0,
+            do: (s) => {
+              s.flags.tireBad = 1;
+            },
+            result: 'Patched. The mechanic says, “That tread won’t last.”',
+          },
+          {
+            label: 'Wait and save up for it',
+            hint: '✓ No money now · ✗ Each week risks a blowout: tow + tire + missed work',
+            bot: -2,
+            do: (s) => {
+              s.flags.tireBad = 2;
+            },
+            result: 'You add air and tell yourself you’ll deal with it on payday.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-blowout',
+    title: 'BLOWOUT',
+    art: 'road',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `BANG. Thump-thump-thump. That tire finally gave out on the highway on your way to ${s.path === 'college' ? 'class' : 'work'}.\n\nTow: ${s.flags.roadside ? '$0 (roadside assistance!)' : '$110'}. New tire: $150. And you’re very late.`,
+        speaker: 'mechanic',
+        choices: [
+          {
+            label: (s) => `Pay for the ${s.flags.roadside ? 'tire' : 'tow + tire'}: ${money(s.flags.roadside ? 150 : 260)}`,
+            pay: (s) => (s.flags.roadside ? 150 : 260),
+            bot: 2,
+            do: (s) => {
+              missWork(s, 'Blowout');
+              rep(s, -3);
+              s.flags.tireBad = 0;
+              inc(s, 'blowouts');
+            },
+            result: 'Waiting for the tow truck, you do the math: replacing it when the shop said so would have cost $150 and zero missed work.',
+            tip: 'Putting off maintenance usually costs more later, plus the time you lose when it breaks.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-ticket',
+    title: 'Pulled over',
+    art: 'night',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Blue and red lights in your mirror. “Do you know how fast you were going? 47 in a 35.”\n\nThe ticket: $175 fine + 3 points on your license. Points make your car insurance go up.',
+        speaker: 'cop',
+        choices: [
+          {
+            label: 'Pay the fine online: $175',
+            pay: 175,
+            hint: '✓ Done quickly · ✗ Points: insurance +$25/month',
+            bot: 0,
+            do: (s) => {
+              addPoints(s);
+            },
+            result: 'Paid. Then your insurance company finds out.',
+            tip: 'A moving violation can raise insurance rates for 3+ years. That often costs more than the ticket.',
+          },
+          {
+            label: 'Take a traffic safety class: $60 (two weekend slots)',
+            pay: 60,
+            hint: '✓ Fine reduced, no points · ✗ Costs next weekend',
+            bot: 3,
+            do: (s) => {
+              schedule(s, { week: s.week + 1, slot: 'saturday', kind: 'court', label: 'Traffic school' });
+              schedule(s, { week: s.week + 1, slot: 'sunday', kind: 'court', label: 'Traffic school' });
+              setFlag(s, 'trafficSchool');
+              charge(s, 50, 'Reduced fine');
+            },
+            result: 'Signed up. Two days of driving videos from 1997. No points on your record.',
+          },
+          {
+            label: 'Fight it in court (a weekday)',
+            hint: '✓ Might get reduced · ✗ Costs a day of work · ✗ Might lose',
+            bot: 1,
+            do: (s) => schedule(s, { week: s.week + 2, slot: 'weekday', kind: 'court', label: 'Traffic court' }),
+            result: 'Court date set.',
+          },
+          {
+            label: 'Ignore it',
+            hint: '✗ Late fees, license suspension',
+            bot: -5,
+            do: (s) => setFlag(s, 'ticketIgnored', s.week),
+            result: 'You stuff it in the glovebox. Out of sight…',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'appt-court',
+    title: (s) => (s.flags.trafficSchool ? 'Traffic school' : 'Traffic court'),
+    art: 'office',
+    kind: 'appt',
+    steps: {
+      start: {
+        text: (s) =>
+          s.flags.trafficSchool
+            ? 'Hour 6 of “RED MEANS STOP.” The instructor shows a crash test video for the fourth time.'
+            : 'The judge looks tired. The officer showed up. “How do you plead?”',
+        speaker: (s: GameState) => (s.flags.trafficSchool ? 'advisor' : 'cop'),
+        choices: [
+          {
+            label: 'Finish the class',
+            hide: (s) => !s.flags.trafficSchool,
+            do: (s) => {
+              energy(s, -5);
+              if (num(s, 'trafficDays') >= 1) setFlag(s, 'trafficSchool', false);
+              inc(s, 'trafficDays');
+            },
+            result: 'Done with this session.',
+          },
+          {
+            label: '“Guilty, with an explanation. I’d like a reduction.”',
+            hide: (s) => !!s.flags.trafficSchool,
+            bot: 2,
+            do: (s, d) => {
+              d.won = chance(s, 0.6) ? 1 : 0;
+              charge(s, d.won ? 90 : 215, 'Traffic court');
+              if (!d.won) addPoints(s);
+            },
+            result: (_s, d) => (d.won ? 'Reduced to a non-moving violation: $90, no points.' : 'Denied. $175 fine + $40 court costs, and the points stay.'),
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-ticketlate',
+    title: 'Notice from the court',
+    art: 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'FINAL NOTICE: The unpaid ticket is now $350 with late fees. If you don’t pay, your license will be suspended.',
+        speaker: 'cop',
+        choices: [
+          {
+            label: 'Pay $350',
+            pay: 350,
+            bot: 2,
+            do: (s) => {
+              setFlag(s, 'ticketIgnored', false);
+              addPoints(s);
+            },
+            result: 'Paid. Ignoring that ticket cost you double.',
+            tip: 'Ignored tickets turn into late fees, suspended licenses, and sometimes warrants.',
+          },
+          {
+            label: 'Ignore it again',
+            bot: -5,
+            do: (s) => {
+              setFlag(s, 'ticketIgnored', false);
+              setFlag(s, 'license', false);
+              s.credit.collections++;
+              if (s.car) setFlag(s, 'suspended');
+            },
+            result: 'Your license is suspended, and the debt goes to collections, which tanks your credit score. Driving now is a crime.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-checkengine',
+    title: 'Check engine light',
+    art: 'road',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'The little orange engine light comes on and stays on. The car seems… fine?',
+        speaker: 'mechanic',
+        choices: [
+          {
+            label: 'Get it diagnosed and fixed: $180',
+            pay: 180,
+            hint: '✓ Catch it early',
+            bot: 3,
+            do: (s) => {
+              if (s.car) s.car.condition = Math.min(100, s.car.condition + 20);
+            },
+            result: 'Bad oxygen sensor. Fixed. The light goes off.',
+          },
+          {
+            label: 'Put a piece of tape over the light',
+            hint: '✓ Free · ✗ Whatever it is, it’s still happening',
+            bot: -3,
+            do: (s) => {
+              if (s.car) s.car.condition = Math.max(0, s.car.condition - 18);
+            },
+            result: 'Problem solved. (Problem not solved.)',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-breakdown',
+    title: 'Breakdown',
+    art: 'road',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) => `Your car shudders, clunks, and dies at a stoplight. The mechanic’s verdict: ${repairCost(s) > 1000 ? 'transmission' : 'alternator and belts'}. ${money(repairCost(s))} to fix.`,
+        speaker: 'mechanic',
+        choices: [
+          {
+            label: (s) => `Fix it: ${money(repairCost(s))}`,
+            pay: (s) => repairCost(s),
+            bot: 1,
+            do: (s) => {
+              missWork(s, 'Car in the shop');
+              if (s.car) s.car.condition = 70;
+              inc(s, 'carRepairs');
+            },
+            result: 'Fixed. That one hurt.',
+          },
+          {
+            label: (s) => `Sell it for scrap (${money(Math.round((s.car?.value ?? 0) * 0.2))}) and take the bus`,
+            bot: 0,
+            hide: (s) => s.loans.some((l) => l.kind === 'car' && l.balance > 0),
+            do: (s) => {
+              earn(s, Math.round((s.car?.value ?? 0) * 0.2));
+              s.car = null;
+              s.transport = 'bus';
+              missWork(s, 'Car died');
+              s.subs.push({ id: 'buspass', label: 'Monthly bus pass', cost: 65 });
+            },
+            result: 'Goodbye, old friend. Hello, bus pass.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-repo',
+    title: 'Repossessed',
+    art: 'night',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'You walk outside. Your car is gone. A tow truck took it at 3 AM after two missed loan payments. You still owe what’s left on the loan.',
+        choices: [
+          {
+            label: 'Oh no.',
+            do: (s) => {
+              s.car = null;
+              s.transport = 'bus';
+              s.credit.late += 2;
+              s.subs.push({ id: 'buspass', label: 'Monthly bus pass', cost: 65 });
+              const l = s.loans.find((x) => x.kind === 'car');
+              if (l) {
+                l.balance = Math.max(0, l.balance - 3500);
+                l.name = 'Car loan (after repo)';
+              }
+              unlock(s, 'repossession');
+            },
+            result: 'They sold it at auction for less than you owe. You still have to pay the rest of the loan, and you don’t even have a car.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-parking',
+    title: 'Parking ticket',
+    art: 'street',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'An orange envelope under your wiper. $45. The meter ran out 6 minutes ago.',
+        choices: [
+          { label: 'Pay it: $45', pay: 45, bot: 2, result: 'Paid. Six minutes cost you three hours of work.' },
+          { label: 'Ignore it', bot: -3, do: (s) => setFlag(s, 'parkingIgnored', s.week), result: 'It goes in the glovebox with the others.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-parkinglate',
+    title: 'Collections letter',
+    art: 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'A collections agency writes: the $45 parking ticket is now $130.',
+        choices: [
+          {
+            label: 'Pay $130',
+            pay: 130,
+            bot: 2,
+            do: (s) => setFlag(s, 'parkingIgnored', false),
+            result: 'Paid. A $45 ticket became $130.',
+          },
+          {
+            label: 'Ignore it',
+            bot: -4,
+            do: (s) => {
+              setFlag(s, 'parkingIgnored', false);
+              s.credit.collections++;
+              unlock(s, 'collections');
+            },
+            result: 'It goes on your credit report as a collection. Your score drops hard.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-gasprice',
+    title: 'Gas prices jump',
+    art: 'road',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Gas just jumped 80 cents a gallon. Filling up costs $15 more this week.',
+        choices: [
+          { label: 'Pay at the pump', do: (s) => void charge(s, 15, 'Gas spike'), result: 'Ouch. Nothing to do but pay it.' },
+          {
+            label: 'Combine errands and skip a trip',
+            bot: 2,
+            do: (s) => energy(s, -3),
+            result: 'You plan your errands like a military operation. No extra gas spent.',
+          },
+        ],
+      },
+    },
+  },
+
+  // ====================== MONEY & ADMIN ======================
+  {
+    id: 'ev-subtrial',
+    title: 'Mystery charge',
+    art: (s) => s.housing.art,
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Checking your bank app, you spot: STREAMFLIX $15.99. Oh right, that “free trial” from two months ago. It’s been charging you.',
+        choices: [
+          {
+            label: 'Cancel it right now',
+            bot: 3,
+            do: (s) => charge(s, 16, 'StreamFlix'),
+            result: 'Canceled (after 4 screens of “Are you SURE?”). You still lost $16.',
+            tip: 'Set a reminder when you start a free trial. Companies count on you forgetting.',
+          },
+          {
+            label: 'Keep it: it’s your only fun',
+            hint: '✓ +1 energy/week · ✗ $16/month forever',
+            bot: -1,
+            do: (s) => {
+              charge(s, 16, 'StreamFlix');
+              s.subs.push({ id: 'streamflix', label: 'StreamFlix', cost: 16 });
+            },
+            result: 'You keep it. Another bill on the pile.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-scam',
+    title: 'Text message',
+    art: (s) => s.housing.art,
+    kind: 'event',
+    steps: {
+      start: {
+        text: '📱 “USPS: Your package is on hold due to an incomplete address. Pay $1.99 redelivery fee: usps-redeliver-help.co”\n\nYou ARE waiting on a package…',
+        choices: [
+          {
+            label: 'Tap the link and pay $1.99',
+            bot: -5,
+            do: (s) => {
+              const stolen = Math.min(400, Math.max(0, s.stats.cash));
+              s.stats.cash -= stolen;
+              setFlag(s, 'scammed', stolen);
+              energy(s, -12);
+              unlock(s, 'scams');
+            },
+            result: (s) =>
+              `Two hours later: ${money(num(s, 'scammed'))} in charges you didn’t make. You spend the evening on hold with your bank. They freeze your card and open a fraud claim. It may take weeks to get the money back.`,
+            tip: 'The real USPS never texts you asking for payment. Never pay through a link in a text. Go to the official website yourself.',
+          },
+          {
+            label: 'Delete it and report it as junk',
+            bot: 3,
+            do: (s) => {
+              unlock(s, 'scams');
+              achieve(s, 'scamdodger');
+            },
+            result: 'Deleted. Your real package shows up the next day.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-fraudrefund',
+    title: 'Fraud claim resolved',
+    art: 'bank',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) => `Your bank finished the fraud investigation. The ${money(num(s, 'scammed'))} is back in your account.`,
+        speaker: 'banker',
+        choices: [
+          {
+            label: 'Phew',
+            do: (s) => {
+              earn(s, num(s, 'scammed'));
+              setFlag(s, 'scammed', 0);
+            },
+            result: 'Lesson learned the hard way.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-jury',
+    title: 'Jury duty',
+    art: 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'An official envelope: you’ve been summoned for jury duty next week (a weekday). Your employer doesn’t pay for it. The court pays $15.',
+        choices: [
+          {
+            label: 'Serve',
+            hint: '✓ Civic duty · ✗ One weekday',
+            bot: 1,
+            do: (s) => schedule(s, { week: s.week + 1, slot: 'weekday', kind: 'court', label: 'Jury duty' }),
+            result: 'You’ll serve next week.',
+          },
+          {
+            label: 'Request a postponement online',
+            hint: '✓ Pick a better time · It comes back later',
+            bot: 2,
+            do: (s) => {
+              unlock(s, 'jury-duty');
+            },
+            result: 'Postponed six months. Allowed once. Just don’t ignore it—that can mean a fine.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-friendloan',
+    title: 'Can I borrow…',
+    art: 'party',
+    kind: 'event',
+    steps: {
+      start: {
+        text: '“Hey… I hate asking. I’m $200 short on rent. I’ll pay you back in two weeks, I swear.” — your friend Devon',
+        choices: [
+          {
+            label: 'Lend $200',
+            pay: 200,
+            methods: ['checking', 'savings'],
+            hint: '✓ Help a friend · ✗ Might never see it again',
+            bot: 0,
+            do: (s, d) => {
+              d.back = chance(s, 0.5) ? 1 : 0;
+              if (d.back) setFlag(s, 'devonRepay', s.week + 2);
+              energy(s, 5);
+            },
+            result: 'Devon is SO grateful. Two weeks, they said…',
+            tip: 'Only lend what you could afford to never get back.',
+          },
+          {
+            label: 'Give $40, no strings attached',
+            pay: 40,
+            bot: 2,
+            do: (s) => energy(s, 6),
+            result: 'You can’t do $200, but this helps a little. Devon understands.',
+          },
+          {
+            label: '“I’m sorry, I really can’t.”',
+            bot: 1,
+            do: (s) => energy(s, -4),
+            result: 'It’s awkward. But you were honest.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-devonrepay',
+    title: 'Devon came through',
+    art: 'party',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Devon sends you $200 with a thank-you GIF. Restoring faith in humanity.',
+        choices: [ok('🙌', { do: (s) => earn(s, 200) })],
+      },
+    },
+  },
+  {
+    id: 'ev-grandma',
+    title: 'A card from Grandma',
+    art: (s) => s.housing.art,
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'A card from Grandma: “Proud of you, sweetheart. Don’t spend it all in one place. Love, Grandma.” There’s a $50 check inside.',
+        speaker: 'grandma',
+        choices: [
+          { label: 'Deposit it in savings', bot: 2, do: (s) => void (s.stats.savings += 50), result: 'Saved. Grandma would approve.' },
+          { label: 'Pizza night!', bot: -1, do: (s) => energy(s, 8), result: 'Pizza for the whole floor. Legend.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-cardoffer',
+    title: 'You’re pre-approved!',
+    art: (s) => s.housing.art,
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'A shiny envelope: “CONGRATULATIONS! You’re PRE-APPROVED for a Platinum card with a $1,000 limit! 0% intro APR!”\n\nThe fine print: 0% for 3 months, then 29.24%. $95 annual fee.',
+        choices: [
+          {
+            label: 'Apply',
+            hint: '✓ Starts your credit history · ✗ $95 fee · ✗ 29% APR later',
+            bot: -1,
+            do: (s) => {
+              s.card = { name: 'Platinum Card', kind: 'rewards', limit: 1000, apr: 0.2924, balance: 95, deposit: 0, openedWeek: s.week };
+              s.credit.firstWeek ??= s.week;
+              s.credit.inquiries.push(s.week);
+              unlock(s, 'apr');
+              unlock(s, 'credit-score');
+            },
+            next: 'use',
+          },
+          { label: 'Shred it', bot: 2, result: 'Shredded. You’ll pick a card on your own terms.' },
+        ],
+      },
+      use: CARD_USE,
+    },
+  },
+  {
+    id: 'ev-promoend',
+    title: 'Deferred interest',
+    art: 'bank',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) => `Your ToolTown 0% promo ended with a balance still on it. Surprise: ALL the interest from the past 6 months gets added at once. +${money(Math.round((s.card?.balance ?? 0) * 0.15))}.`,
+        speaker: 'banker',
+        choices: [
+          {
+            label: 'That’s… legal?',
+            do: (s) => {
+              if (s.card) s.card.balance += Math.round(s.card.balance * 0.15);
+              setFlag(s, 'promoUntil', 0);
+            },
+            result: 'Yep. It’s called deferred interest, and it’s why “0% if paid in full” deals are tricky.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-phone',
+    title: 'Cracked screen',
+    art: 'street',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Your phone slips out of your pocket and lands face-down on concrete. The screen is a spiderweb. Half the touchscreen doesn’t work.',
+        choices: [
+          {
+            label: 'Screen repair: $129',
+            pay: 129,
+            hint: '✓ Phone works again',
+            bot: 2,
+            result: 'Good as new (it’s not, but close).',
+          },
+          {
+            label: 'Live with it',
+            hint: '✓ Free · ✗ You’ll miss texts and shift changes',
+            bot: -1,
+            do: (s) => setFlag(s, 'brokenPhone'),
+            result: 'You can still make calls… mostly.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-missedtext',
+    title: 'Missed shift change',
+    art: (s) => s.job?.art ?? 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Your boss changed your shift by text. Your cracked screen didn’t register it. You showed up two hours late.',
+        speaker: 'boss',
+        choices: [
+          { label: 'Apologize and fix the phone ($129)', pay: 129, bot: 2, do: (s) => {
+            rep(s, -4);
+            setFlag(s, 'brokenPhone', false);
+          }, result: 'Fixed. Your boss accepts the apology, barely.' },
+          { label: 'Apologize', do: (s) => rep(s, -6), result: 'Boss rating took a hit.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-laptop',
+    title: 'Laptop died',
+    art: 'dorm',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Blue screen. Then black screen. Then nothing. Your laptop is dead the week a paper is due.',
+        choices: [
+          { label: 'New laptop: $550', pay: 550, hint: '✓ Fast, reliable', bot: 0, result: 'New laptop. You back everything up this time.' },
+          { label: 'Refurbished laptop: $220', pay: 220, hint: '✓ Good enough', bot: 2, result: 'Refurbished and works fine.' },
+          {
+            label: 'Use the library computers',
+            hint: '✓ Free · ✗ −3 energy every week',
+            bot: -1,
+            do: (s) => {
+              setFlag(s, 'noLaptop');
+              xp(s, -4);
+            },
+            result: 'You get very familiar with the library’s hours.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-bikestolen',
+    title: 'Bike stolen',
+    art: 'street',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Your bike is gone. Just the cut lock is left, still attached to the rack. Rude.',
+        choices: [
+          {
+            label: (s) => (s.flags.rentersIns ? 'File a renters insurance claim' : 'Buy another used bike: $150'),
+            pay: (s) => (s.flags.rentersIns ? 0 : 150),
+            bot: 2,
+            result: (s) => (s.flags.rentersIns ? 'Renters insurance covers it! New bike, $0.' : 'New bike. Better lock.'),
+          },
+          {
+            label: 'Switch to the bus ($65/month)',
+            bot: 0,
+            do: (s) => {
+              s.transport = 'bus';
+              s.subs.push({ id: 'buspass', label: 'Monthly bus pass', cost: 65 });
+            },
+            result: 'Bus life.',
+          },
+        ],
+      },
+    },
+  },
+
+  // ====================== WORK ======================
+  {
+    id: 'ev-cover',
+    title: 'Can you cover?',
+    art: (s) => s.job?.art ?? 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Your boss texts: “Hey, can you cover a shift Saturday? Kayla called out.”',
+        speaker: 'boss',
+        choices: [
+          {
+            label: 'Sure, I’ll be there',
+            hint: (s) => `✓ +${money(6 * (s.job?.wage ?? 0))} pay · ✓ Boss rating · ✗ −12 energy`,
+            bot: (s) => (s.stats.energy > 45 ? 2 : -1),
+            do: (s) => {
+              s.hoursThisPeriod += 6;
+              rep(s, 4);
+              energy(s, -12);
+            },
+            result: 'Your boss sends a thumbs up. You’ll remember this, Kayla.',
+          },
+          {
+            label: '“Sorry, I have plans.”',
+            bot: (s) => (s.stats.energy > 45 ? 0 : 2),
+            do: (s) => rep(s, -1),
+            result: '“No worries.” (It’s a little bit of worries.)',
+            tip: 'It’s okay to say no sometimes. Protecting your rest is part of being reliable long-term.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-raise',
+    title: 'Ask for a raise?',
+    art: (s) => s.job?.art ?? 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'It’s been a few months. You’ve been reliable. Coworker Jess says she just got a $1/hour raise… because she asked.',
+        speaker: 'boss',
+        choices: [
+          {
+            label: 'Ask for a $1/hour raise',
+            bot: 2,
+            do: (s, d) => {
+              d.yes = s.stats.rep >= 65 ? 1 : 0;
+              if (d.yes && s.job) {
+                s.job.wage += 1;
+                achieve(s, 'raise');
+              }
+              unlock(s, 'raise');
+            },
+            result: (_s, d) => (d.yes ? '“You’ve earned it.” +$1/hour, starting next paycheck!' : '“Let’s revisit in a few months. Keep showing up.” (Boss rating 65+ needed.)'),
+            tip: 'If you don’t ask, the answer is always no. Come with specifics: what you’ve done, how reliable you’ve been.',
+          },
+          { label: 'Don’t rock the boat', bot: -1, result: 'You stay quiet. Jess is now making more than you.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-fired',
+    title: 'Let go',
+    art: 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) => `Your manager calls you into the office. “We’ve talked about attendance and reliability. I’m sorry, ${s.name}. Today is your last day.”`,
+        speaker: 'boss',
+        choices: [
+          {
+            label: 'Pack your things',
+            do: (s) => {
+              s.job = null;
+              if (s.health === 'employer') s.health = 'none';
+              inc(s, 'firings');
+              unlock(s, 'unemployment');
+            },
+            result: 'No more paychecks. No more health insurance. You need to find a new job, fast (Job hunt is now on your schedule menu).',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-bonus',
+    title: 'Attendance bonus',
+    art: (s) => s.job?.art ?? 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Perfect attendance this quarter! Here’s a $100 bonus.',
+        speaker: 'boss',
+        choices: [
+          { label: 'Save it', bot: 2, do: (s) => void (s.stats.savings += 100), result: 'Into savings.' },
+          { label: 'Spend it on a fun weekend', do: (s) => energy(s, 12), result: 'Great weekend.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-mentor',
+    title: 'A good mentor',
+    art: (s) => s.job?.art ?? 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          s.path === 'college'
+            ? 'Your econ professor notices your question in class and invites you to office hours.'
+            : 'An older coworker offers to show you the ropes after your shift.',
+        choices: [
+          {
+            label: 'Stay late and learn',
+            bot: (s) => (s.stats.energy > 35 ? 2 : 0),
+            do: (s) => {
+              xp(s, 6);
+              energy(s, -6);
+              rep(s, 2);
+            },
+            result: 'Two hours of real wisdom. +6 career progress.',
+          },
+          { label: 'Too tired, maybe next time', do: (s) => energy(s, 2), result: 'Next time.' },
+        ],
+      },
+    },
+  },
+
+  // ====================== HOME LIFE ======================
+  {
+    id: 'ev-curfew',
+    title: 'House rules',
+    art: 'bedroom',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'You came home at 1:15 AM. Your mom was waiting in the dark, like a movie villain. “My house, my rules.”',
+        speaker: 'mom',
+        choices: [
+          {
+            label: 'Apologize and offer to do extra chores',
+            bot: 2,
+            do: (s) => energy(s, -4),
+            result: 'You mow the lawn. Peace restored.',
+          },
+          {
+            label: 'Argue that you’re an adult now',
+            bot: -1,
+            do: (s) => {
+              energy(s, -10);
+              inc(s, 'momArguments');
+            },
+            result: 'It goes badly. Very quiet dinner tonight.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-roomfood',
+    title: 'Who ate my food',
+    art: 'apartment',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'The leftovers you were saving for lunch are gone. Your roommate’s plate is in the sink.',
+        speaker: 'roommate',
+        choices: [
+          { label: 'Talk to them about it, calmly', bot: 2, do: (s) => energy(s, -2), result: 'Awkward, but it works. They Venmo you $10.' },
+          { label: 'Leave a passive-aggressive note', bot: -1, do: (s) => energy(s, -6), result: 'They leave a note back. This could escalate.' },
+          { label: 'Buy a mini-fridge for your room: $90', pay: 90, do: (s) => energy(s, 3), result: 'Problem solved with money. Not the cheapest way.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-samrent',
+    title: 'Sam is short',
+    art: 'apartment',
+    kind: 'event',
+    steps: {
+      start: {
+        text: '“Hey roomie… tips were slow this month. Can you cover my half of rent? I’ll pay you back. When I can.”',
+        speaker: 'roommate',
+        choices: [
+          {
+            label: 'Cover Sam’s half: $725',
+            pay: 725,
+            hint: '✓ You don’t get evicted together · ✗ $725',
+            bot: 1,
+            result: 'Covered. Sam promises it won’t happen again.',
+          },
+          {
+            label: 'Refuse. The landlord charges you both a late fee.',
+            bot: 0,
+            do: (s) => {
+              charge(s, 75, 'Late fee');
+              s.credit.late++;
+            },
+            result: 'You both get a late fee. Your name is on the lease too, so it’s on your record.',
+            tip: 'On a shared lease, you’re usually each responsible for the WHOLE rent. Choose roommates carefully.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-heat',
+    title: 'Heat wave',
+    art: 'apartment',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'It’s 98°F inside. The AC is running nonstop.',
+        choices: [
+          { label: 'Keep the AC blasting (+$60 utilities)', do: (s) => void charge(s, 60, 'Utility spike'), result: 'Cool and comfy. Expensive.' },
+          { label: 'Fans and cold showers', bot: 2, do: (s) => energy(s, -8), result: 'Sweaty, cranky, but you saved $60.' },
+          { label: 'Spend afternoons at the library', bot: 1, do: (s) => xp(s, 2), result: 'Free AC, plus some reading.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-package',
+    title: 'Package stolen',
+    art: 'street',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Your new work boots were “delivered”… and gone from the doorstep. $110.',
+        choices: [
+          {
+            label: 'Contact the seller and request a replacement',
+            bot: 2,
+            do: (s, d) => {
+              d.ok = chance(s, 0.6) ? 1 : 0;
+              if (!d.ok) charge(s, 110, 'Replacement boots');
+            },
+            result: (_s, d) => (d.ok ? 'They send a replacement. Customer service win.' : 'They refuse. You buy them again.'),
+            tip: 'Ship valuable packages to a locker, a pickup point, or your workplace.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-concert',
+    title: 'Concert!',
+    art: 'party',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Rae got tickets to see your favorite band this Saturday: $85. “YOU HAVE TO COME.”',
+        speaker: 'rae',
+        choices: [
+          {
+            label: 'Go!',
+            pay: 85,
+            hint: '✓ +25 energy · ✗ $85',
+            bot: (s) => (s.stats.energy < 40 && s.stats.savings > 300 ? 2 : -1),
+            do: (s) => {
+              energy(s, 25);
+              inc(s, 'friendTime');
+            },
+            result: 'You lose your voice singing. Best night in months.',
+          },
+          { label: 'Skip it, save the money', bot: (s) => (s.stats.energy < 40 ? 0 : 2), do: (s) => energy(s, -3), result: 'You watch their stories. FOMO is real.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-wedding',
+    title: 'Cousin’s wedding',
+    art: 'party',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Your cousin is getting married in two weeks. There’s a registry. Gifts start at $40. The wedding is on a Saturday.',
+        speaker: 'mom',
+        choices: [
+          {
+            label: 'Go and bring a gift: $40',
+            pay: 40,
+            bot: 1,
+            do: (s) => {
+              energy(s, 10);
+              schedule(s, { week: s.week + 2, slot: 'saturday', kind: 'trip', label: 'Cousin’s wedding' });
+            },
+            result: 'RSVP sent. Family will be there. Questions about your future will be there.',
+          },
+          {
+            label: 'Send a nice card',
+            bot: 1,
+            do: (s) => energy(s, -2),
+            result: 'A heartfelt card. Your mom says it’s “fine.”',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'appt-trip',
+    title: (s) => (s.flags.roadTripBooked ? 'Road trip!' : 'Family wedding'),
+    art: (s) => (s.flags.roadTripBooked ? 'beach' : 'party'),
+    kind: 'appt',
+    steps: {
+      start: {
+        text: (s) =>
+          s.flags.roadTripBooked
+            ? 'Rae’s playlist. Gas station snacks. Then the ocean comes into view and you both scream.\n\nOne year ago you were tossing your cap. Look at you now.'
+            : 'You dance badly. Your aunt tells everyone you’re “doing so well.” Free cake.',
+        speaker: (s: GameState) => (s.flags.roadTripBooked ? 'rae' : 'mom'),
+        choices: [
+          {
+            label: '❤️',
+            do: (s) => {
+              energy(s, s.flags.roadTripBooked ? 20 : 10);
+              if (s.flags.roadTripBooked) {
+                setFlag(s, 'roadTrip');
+                achieve(s, 'roadtrip');
+              }
+            },
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-overdrawn',
+    title: 'Account overdrawn',
+    art: 'bank',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `A letter from your bank: your checking account has been NEGATIVE (${money(s.stats.cash)}) for weeks. If it isn\u2019t brought back above zero, they\u2019ll close it and send the debt to collections.`,
+        speaker: 'banker',
+        choices: [
+          {
+            label: 'Cover it from savings',
+            req: (s) => (s.stats.savings >= -s.stats.cash ? true : 'Not enough saved'),
+            bot: 3,
+            do: (s) => {
+              const a = -s.stats.cash;
+              s.stats.savings = Math.round((s.stats.savings - a) * 100) / 100;
+              s.stats.cash = 0;
+            },
+            result: 'Back to zero. Phew.',
+          },
+          {
+            label: 'Wait for payday',
+            bot: -1,
+            do: (s) => {
+              s.credit.collections++;
+              charge(s, 50, 'Account closing fee');
+              unlock(s, 'collections');
+            },
+            result: 'The bank closes your account and sends the balance to collections. That drops your credit score hard, and it stays on your report for years.',
+            tip: 'An overdrawn account that stays negative can get you reported to ChexSystems, which can stop you from opening a new bank account for up to 5 years.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-rentlate',
+    title: 'Late rent',
+    art: (s) => s.housing.art,
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          s.housing.kind === 'parents'
+            ? 'Your mom: “Rent was due on the 1st. That’s our deal. If it happens again, we need a serious talk about whether you’re ready for this.”'
+            : 'A notice is taped to your door: PAY RENT OR QUIT. You were charged a $75 late fee. If you miss next month too, the landlord can start an eviction.',
+        speaker: (s: GameState) => (s.housing.kind === 'parents' ? 'mom' : 'landlord'),
+        choices: [
+          {
+            label: 'Pay what I owe now',
+            pay: (s) => s.housing.rent,
+            hide: (s) => s.housing.rent <= 0,
+            bot: 3,
+            do: (s) => {
+              s.housing.missed = 0;
+            },
+            result: 'Caught up. Rent always comes first.',
+            tip: 'Housing comes first in a budget. Then utilities, food, and transportation to work. Then everything else.',
+          },
+          { label: 'I’ll catch up next month', bot: -3, result: 'One more missed payment and you’re out.' },
+        ],
+      },
+    },
+  },
+];
+
+function toothCost(s: GameState): number {
+  const big = num(s, 'toothRisk') >= 2;
+  if (s.dental) return big ? 450 : 50;
+  return big ? 1450 : 220;
+}
+
+function repairCost(s: GameState): number {
+  return (s.car?.condition ?? 0) < 15 ? 1600 : 750;
+}
+
+function addPoints(s: GameState): void {
+  inc(s, 'ticketPoints');
+  if (s.car) s.car.insurance += 25;
+  unlock(s, 'insurance-points');
+  log(s, 'Your car insurance went up $25/month because of the ticket.', 'bad');
+}
+
+// Weights for random events.
+export const EVENTS = [
+  { id: 'ev-tire', weight: (s: GameState) => (hasCar(s) && !s.flags.tireBad && !s.flags.tireDone ? 3 : 0), once: true, minWeek: 3 },
+  { id: 'ev-blowout', weight: (s: GameState) => (hasCar(s) ? [0, 4, 8][num(s, 'tireBad')] ?? 0 : 0) },
+  { id: 'ev-ticket', weight: (s: GameState) => (hasCar(s) ? 1.5 : 0), cooldown: 12 },
+  { id: 'ev-ticketlate', weight: (s: GameState) => (num(s, 'ticketIgnored') && s.week - num(s, 'ticketIgnored') >= 3 ? 20 : 0) },
+  { id: 'ev-parking', weight: (s: GameState) => (hasCar(s) || s.transport === 'borrow' ? 1 : 0), cooldown: 10 },
+  { id: 'ev-parkinglate', weight: (s: GameState) => (num(s, 'parkingIgnored') && s.week - num(s, 'parkingIgnored') >= 4 ? 20 : 0) },
+  { id: 'ev-checkengine', weight: (s: GameState) => (hasCar(s) && (s.car?.condition ?? 100) < 70 ? 2 : 0), cooldown: 8 },
+  { id: 'ev-breakdown', weight: (s: GameState) => (hasCar(s) && (s.car?.condition ?? 100) < 35 ? 4 : 0), cooldown: 6 },
+  { id: 'ev-gasprice', weight: (s: GameState) => (hasCar(s) ? 1 : 0), cooldown: 10 },
+  { id: 'ev-subtrial', weight: 1, once: true, minWeek: 5 },
+  { id: 'ev-scam', weight: 1, once: true, minWeek: 4 },
+  { id: 'ev-fraudrefund', weight: (s: GameState) => (num(s, 'scammed') > 0 ? 6 : 0) },
+  { id: 'ev-jury', weight: 0.6, once: true, minWeek: 10 },
+  { id: 'ev-friendloan', weight: 0.8, once: true, minWeek: 6 },
+  { id: 'ev-devonrepay', weight: (s: GameState) => (num(s, 'devonRepay') && s.week >= num(s, 'devonRepay') && !s.flags['seen:ev-devonrepay'] ? 30 : 0), once: true },
+  { id: 'ev-grandma', weight: 0.7, once: true, minWeek: 8 },
+  { id: 'ev-cardoffer', weight: (s: GameState) => (!s.card ? 0.8 : 0), once: true, minWeek: 6 },
+  { id: 'ev-promoend', weight: (s: GameState) => (num(s, 'promoUntil') && s.week >= num(s, 'promoUntil') && (s.card?.balance ?? 0) > 0 ? 50 : 0) },
+  { id: 'ev-phone', weight: 0.8, once: true, minWeek: 5 },
+  { id: 'ev-missedtext', weight: (s: GameState) => (s.flags.brokenPhone && s.job ? 2 : 0), cooldown: 6 },
+  { id: 'ev-laptop', weight: (s: GameState) => (s.path === 'college' ? 1 : 0), once: true, minWeek: 8 },
+  { id: 'ev-bikestolen', weight: (s: GameState) => (s.transport === 'bike' ? 1 : 0), once: true },
+  { id: 'ev-cover', weight: (s: GameState) => (s.job && s.path !== 'college' ? 1.4 : 0), cooldown: 4 },
+  { id: 'ev-raise', weight: (s: GameState) => (s.job && s.path !== 'college' && s.week >= 14 ? 1.2 : 0), once: true },
+  { id: 'ev-bonus', weight: (s: GameState) => (s.job && s.path !== 'college' && num(s, 'daysOff') === 0 && s.week >= 10 ? 1.5 : 0), once: true },
+  { id: 'ev-mentor', weight: 0.8, cooldown: 10 },
+  { id: 'ev-injury', weight: (s: GameState) => (s.path === 'trade' || s.path === 'work' || s.transport === 'bike' ? (s.flags.boots ? 0.4 : 0.9) : 0.35), cooldown: 15, minWeek: 5 },
+  { id: 'ev-toothache', weight: (s: GameState) => (num(s, 'toothRisk') > 0 ? 2.5 * num(s, 'toothRisk') : 0), cooldown: 3 },
+  { id: 'ev-curfew', weight: (s: GameState) => (s.housing.kind === 'parents' ? 1.2 : 0), cooldown: 6 },
+  { id: 'ev-roomfood', weight: (s: GameState) => (s.housing.roommate && ownPlace(s) ? 1 : 0), cooldown: 10 },
+  { id: 'ev-samrent', weight: (s: GameState) => (s.flags.roommate === 'sam' ? 3 : 0), cooldown: 8 },
+  { id: 'ev-heat', weight: (s: GameState) => (ownPlace(s) && s.week < 14 ? 1 : 0), once: true },
+  { id: 'ev-package', weight: 0.5, once: true, minWeek: 10 },
+  { id: 'ev-concert', weight: 1, cooldown: 12, minWeek: 4 },
+  { id: 'ev-wedding', weight: 0.6, once: true, minWeek: 14 },
+  { id: 'ev-overdrawn', weight: (s: GameState) => (s.stats.cash < -150 ? 25 : 0), cooldown: 6 },
+];
+

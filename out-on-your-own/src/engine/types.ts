@@ -1,0 +1,242 @@
+// Core game types. The engine is pure: state in, state out, no DOM.
+
+export type PathId = 'home' | 'college' | 'trade' | 'work';
+export type SlotId = 'weekday' | 'evening' | 'saturday' | 'sunday';
+export const SLOTS: readonly SlotId[] = ['weekday', 'evening', 'saturday', 'sunday'];
+
+export type PayMethod = 'checking' | 'savings' | 'card';
+export type FoodPlan = 'ramen' | 'cook' | 'takeout' | 'parents' | 'mealplan';
+export type HealthPlan = 'none' | 'employer' | 'parents' | 'school';
+export type BankKind = 'teen' | 'bigbank' | 'creditunion' | 'online';
+export type Transport = 'borrow' | 'bus' | 'bike' | 'car' | 'carpool';
+
+export type ArtId =
+  | 'bedroom'
+  | 'dorm'
+  | 'apartment'
+  | 'dmv'
+  | 'bank'
+  | 'dentist'
+  | 'clinic'
+  | 'grocery'
+  | 'warehouse'
+  | 'jobsite'
+  | 'campus'
+  | 'carlot'
+  | 'street'
+  | 'office'
+  | 'library'
+  | 'party'
+  | 'road'
+  | 'night'
+  | 'beach'
+  | 'stage';
+
+export type NpcId =
+  | 'mom'
+  | 'rae'
+  | 'clerk'
+  | 'banker'
+  | 'boss'
+  | 'dentist'
+  | 'doctor'
+  | 'landlord'
+  | 'roommate'
+  | 'dealer'
+  | 'cop'
+  | 'advisor'
+  | 'mechanic'
+  | 'grandma'
+  | 'taxpro'
+  | 'hr';
+
+export interface Card {
+  name: string;
+  kind: 'secured' | 'store' | 'student' | 'rewards';
+  limit: number;
+  apr: number; // e.g. 0.27
+  balance: number;
+  deposit: number; // secured deposit held by bank
+  openedWeek: number;
+}
+
+export interface Loan {
+  name: string;
+  balance: number;
+  apr: number;
+  payment: number; // monthly
+  kind: 'car' | 'student' | 'personal';
+  deferred?: boolean; // student loans: no payments while in school
+}
+
+export interface Car {
+  name: string;
+  condition: number; // 0..100
+  value: number;
+  insurance: number; // monthly
+}
+
+export interface Job {
+  title: string;
+  place: string;
+  wage: number; // hourly
+  hours: number; // weekly base hours
+  healthOffered: boolean;
+  premium: number; // per paycheck if enrolled
+  dentalPremium: number; // per paycheck if enrolled
+  match: number; // 401k match fraction (0 = none)
+  art: ArtId;
+}
+
+export interface Housing {
+  kind: 'parents' | 'dorm' | 'shared' | 'studio' | 'room';
+  name: string;
+  rent: number; // monthly
+  utilities: number; // monthly
+  missed: number; // consecutive missed housing payments
+  roommate: boolean;
+  art: ArtId;
+}
+
+export interface Appointment {
+  week: number;
+  slot: SlotId;
+  kind: string; // runs scene appt-<kind>
+  label: string;
+}
+
+export interface Stats {
+  cash: number; // checking
+  savings: number;
+  energy: number; // 0..100
+  rep: number; // boss / teacher opinion 0..100
+  xp: number; // career progress 0..100+
+}
+
+export interface CreditFile {
+  firstWeek: number | null; // week the first account opened
+  onTime: number;
+  late: number;
+  inquiries: number[]; // weeks
+  collections: number;
+}
+
+// One line in the week journal.
+export interface LogLine {
+  text: string;
+  tone?: 'good' | 'bad' | 'info' | 'tip';
+}
+
+export interface Deltas {
+  cash?: number;
+  savings?: number;
+  card?: number;
+  debt?: number;
+  energy?: number;
+  rep?: number;
+  xp?: number;
+  retire?: number;
+}
+
+// A result panel shown after a choice.
+export interface ResultView {
+  text: string;
+  tip?: string;
+  deltas: Deltas;
+}
+
+// Things the player must deal with, one at a time.
+export type Step =
+  | { t: 'slot'; slot: SlotId }
+  | { t: 'food' }
+  | { t: 'upkeep' }
+  | { t: 'events' }
+  | { t: 'payday' }
+  | { t: 'bills' }
+  | { t: 'summary' }
+  | { t: 'chapterEnd' }
+  | { t: 'scene'; id: string; step: string; data?: Record<string, number | string>; result?: ResultView; resultNext?: string | null }
+  | { t: 'paycheck'; stub: PayStub; offer: string | null; resolved?: ResultView }
+  | { t: 'billsDue'; bills: Bill[] }
+  | { t: 'gameOver'; reason: string }
+  | { t: 'ending' };
+
+export interface PayStub {
+  hours: number;
+  wage: number;
+  gross: number;
+  federal: number;
+  fica: number;
+  state: number;
+  health: number;
+  dental: number;
+  retire: number;
+  match: number;
+  net: number;
+  autoSaved: number;
+  overdraftCleared: number;
+}
+
+export interface Bill {
+  id: string;
+  label: string;
+  amount: number;
+  kind: 'housing' | 'phone' | 'utilities' | 'insurance' | 'carloan' | 'card' | 'sub' | 'tuition' | 'fee' | 'gym' | 'other';
+  minimum?: number; // card statements
+  paid?: number;
+  status?: 'paid' | 'min' | 'skipped';
+}
+
+export interface Plan {
+  slots: Record<SlotId, string>; // activity ids
+  food: FoodPlan;
+}
+
+export interface GameState {
+  v: 1;
+  seed: number;
+  name: string;
+  look: Look;
+  path: PathId;
+  week: number; // 1-based
+  chapter: number; // 0-based
+  stats: Stats;
+  retire: number; // 401k balance
+  card: Card | null;
+  loans: Loan[];
+  car: Car | null;
+  transport: Transport;
+  job: Job | null;
+  housing: Housing;
+  health: HealthPlan;
+  dental: boolean;
+  retirePct: number; // 0 or 0.04
+  bank: BankKind;
+  overdraftOptIn: boolean;
+  credit: CreditFile;
+  appointments: Appointment[];
+  subs: { id: string; label: string; cost: number }[];
+  flags: Record<string, number | string | boolean>;
+  tasksDone: Record<string, boolean>;
+  tasksFailed: Record<string, boolean>;
+  plan: Plan;
+  queue: Step[];
+  log: LogLine[]; // this week's journal
+  hoursThisPeriod: number; // hours worked since last paycheck
+  autoSave: number; // per paycheck
+  chapterStars: number[];
+  handbook: string[]; // unlocked handbook entries
+  achievements: string[];
+  history: { week: number; net: number; energy: number; score: number | null }[];
+  checkpoint: string | null; // JSON of state at chapter start
+  weekSnap: Record<string, number> | null; // stats when the week started
+  over: boolean;
+  won: boolean;
+}
+
+export interface Look {
+  skin: number;
+  hair: number;
+  hairStyle: number;
+  shirt: number;
+}

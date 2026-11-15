@@ -1,0 +1,59 @@
+// The Adulting Handbook: real-life explanations unlocked as you run into them.
+export interface Entry {
+  id: string;
+  term: string;
+  text: string;
+}
+
+export const HANDBOOK: Entry[] = [
+  { id: 'paystub', term: 'Pay stub', text: 'Your gross pay is what you earned. Your net (take-home) pay is what’s left after taxes and deductions. Federal income tax, Social Security and Medicare (“FICA”, 7.65%), and state tax all come out before you see a dime.' },
+  { id: 'w4', term: 'W-4', text: 'The form that tells your employer how much federal income tax to withhold. Withhold too little and you owe in April. Withhold too much and you get a refund.' },
+  { id: 'direct-deposit', term: 'Direct deposit', text: 'Your paycheck goes straight into your bank account. Faster and safer than a paper check.' },
+  { id: 'health-insurance', term: 'Health insurance', text: 'You pay a monthly premium so a big medical bill doesn’t wipe you out. You can stay on a parent’s plan until age 26. Without insurance, one ER visit can cost thousands.' },
+  { id: 'premium', term: 'Premium', text: 'What you pay for insurance every month (or every paycheck), whether you use it or not.' },
+  { id: 'copay', term: 'Copay', text: 'A flat fee you pay for a doctor visit or prescription when you have insurance, like $35 for urgent care.' },
+  { id: 'deductible', term: 'Deductible', text: 'What you pay out of pocket before insurance starts paying. A $500 deductible means you pay the first $500 of a covered bill.' },
+  { id: '401k', term: '401(k) & employer match', text: 'A retirement account through work. If your employer “matches” 4%, putting in 4% of your pay gets you another 4% free. Skipping the match is turning down part of your pay.' },
+  { id: 'overdraft', term: 'Overdraft', text: 'Spending more than what’s in your checking account. If you opt in to overdraft coverage, the bank lets it go through and charges about $35. If you opt out, the purchase is just declined.' },
+  { id: 'credit-union', term: 'Credit union', text: 'A nonprofit bank owned by its members. Usually lower fees and better rates than big banks.' },
+  { id: 'hysa', term: 'High-yield savings', text: 'A savings account (often at an online bank) that pays much more interest than a regular one: about 4% instead of 0.1%.' },
+  { id: 'license', term: 'Driver’s license', text: 'You need a birth certificate, Social Security card, and proofs of address. Book a DMV appointment online to avoid an all-day wait.' },
+  { id: 'fafsa', term: 'FAFSA', text: 'The Free Application for Federal Student Aid. File it every year, as early as possible. It’s how you get grants (free money), work-study, and federal loans.' },
+  { id: 'student-loan', term: 'Student loans', text: 'Subsidized loans don’t build interest while you’re in school. Unsubsidized loans do. Borrow only what you need: you repay it all with interest.' },
+  { id: 'deferred-interest', term: 'Deferred interest', text: '“0% if paid in full in 6 months” deals charge ALL the interest from day one if any balance is left when the promo ends.' },
+  { id: 'car-insurance', term: 'Car insurance', text: 'Required by law to drive. Young drivers pay the most. Liability-only is cheaper. Lenders require full coverage if you have a car loan. Tickets raise your rate.' },
+  { id: 'insurance-points', term: 'Points on your license', text: 'Moving violations add points to your driving record. Insurers raise your rates for years. Traffic school can often keep points off.' },
+  { id: 'car-loan', term: 'Car loan & APR', text: 'APR is the yearly interest rate. Compare the TOTAL you’ll pay, not just the monthly payment. A better credit score can save thousands.' },
+  { id: 'inspection', term: 'Pre-purchase inspection', text: 'Paying a mechanic about $100 to check a used car before you buy it. It can save you from buying a lemon.' },
+  { id: 'transport-cost', term: 'True cost of a car', text: 'Price + insurance + gas + maintenance + repairs + parking. A $2,400 car can easily cost $400+ a month to own.' },
+  { id: 'maintenance', term: 'Maintenance', text: 'Oil changes, tire rotations, and brakes. Cheap now, expensive if you skip them.' },
+  { id: 'preventive-care', term: 'Preventive care', text: 'Checkups and cleanings catch small problems before they become big ones. Most insurance covers them for free.' },
+  { id: 'security-deposit', term: 'Security deposit', text: 'Money (often one month’s rent) you pay when you sign a lease. You get it back when you move out, minus any damage. No credit history often means a bigger deposit.' },
+  { id: 'lease', term: 'Lease', text: 'A legal contract for renting. Read it: how long it lasts, penalties for leaving early, who fixes what, and whether pets or guests are allowed.' },
+  { id: 'roommate-agreement', term: 'Roommate agreement', text: 'A written plan for rent splits, bills, chores, guests, and quiet hours. Awkward to write, but it prevents much more awkward fights.' },
+  { id: 'renters-insurance', term: 'Renters insurance', text: 'Covers YOUR stuff from theft, fire, and water damage. Usually $10–20/month. Your landlord’s insurance only covers the building.' },
+  { id: 'budget', term: 'Budget & 50/30/20', text: 'A plan for your money before you spend it. A common starting point: 50% needs, 30% wants, 20% savings and debt payoff.' },
+  { id: 'pay-yourself-first', term: 'Pay yourself first', text: 'Move money to savings automatically on payday, before you can spend it.' },
+  { id: 'emergency-fund', term: 'Emergency fund', text: 'Savings for surprises: car repairs, medical bills, losing a job. Start with $500–$1,000. Eventually aim for 3–6 months of expenses.' },
+  { id: 'credit-score', term: 'Credit score', text: 'A number (300–850) that tells lenders how risky you are. It’s built by paying on time, keeping balances low, and having accounts open a long time. It affects apartments, car loans, even some jobs.' },
+  { id: 'apr', term: 'APR (credit cards)', text: 'Credit card interest is usually 20–30% a year. Pay your FULL statement balance every month and you pay zero interest.' },
+  { id: 'utilization', term: 'Credit utilization', text: 'How much of your credit limit you’re using. Under 30% is good. Under 10% is great. Maxing out your card hurts your score even if you pay on time.' },
+  { id: 'secured-card', term: 'Secured credit card', text: 'A starter card backed by a deposit. Easy approval. Use it lightly and pay in full to build credit.' },
+  { id: 'minimum-payment', term: 'Minimum payment', text: 'The smallest amount you can pay without a late fee. Paying only the minimum means the rest collects interest. It can take years to pay off.' },
+  { id: 'late-payment', term: 'Late payments', text: 'Paying a credit card or loan late brings a fee and a mark on your credit report that can stay for 7 years. Set up autopay for at least the minimum.' },
+  { id: 'collections', term: 'Collections', text: 'Unpaid bills can be sold to a collection agency and reported on your credit, which drops your score a lot.' },
+  { id: 'repossession', term: 'Repossession', text: 'Miss enough car payments and the lender takes the car. You still owe whatever the auction doesn’t cover.' },
+  { id: 'taxes', term: 'Filing taxes', text: 'Every spring you report last year’s income to the IRS. Your W-2 shows what you earned and what was withheld. Free filing options exist: IRS Free File and VITA volunteer sites.' },
+  { id: 'refund', term: 'Tax refund', text: 'Money withheld beyond what you owed, returned to you. It’s your money, not a bonus. Using it to pay off debt or build savings is a power move.' },
+  { id: 'scams', term: 'Scams', text: 'Fake texts about packages, bank alerts, or prizes try to get your money or info. Never pay or log in through a link in a text. Go to the official site yourself.' },
+  { id: 'jury-duty', term: 'Jury duty', text: 'A legal civic duty. You can usually postpone once. Ignoring a summons can bring a fine. Some employers pay you while you serve, some don’t.' },
+  { id: 'raise', term: 'Asking for a raise', text: 'Come prepared: how long you’ve been there, what you’ve done, how reliable you are. The worst they can say is “not yet.”' },
+  { id: 'unemployment', term: 'Losing a job', text: 'You lose your paycheck and usually your health insurance. You may qualify for unemployment benefits. An emergency fund buys you time to find the next job.' },
+  { id: 'payment-plan', term: 'Medical payment plans', text: 'Hospitals usually offer interest-free payment plans. That’s far better than putting a bill on a 25% credit card.' },
+  { id: 'charity-care', term: 'Hospital financial assistance', text: 'Nonprofit hospitals must offer financial help to lower-income patients. Ask the billing office. It can cut a bill by half or more.' },
+  { id: 'burnout', term: 'Burnout', text: 'Working nonstop without rest eventually costs you sick days, mistakes, and missed work. Rest is part of the plan.' },
+  { id: 'compound-interest', term: 'Compound interest', text: 'Earning interest on your interest. Money invested at 18 has decades to grow. Small amounts early can beat big amounts later.' },
+  { id: 'invest-in-yourself', term: 'Investing in yourself', text: 'Certifications, classes, and skills that raise your earning power can pay back many times over.' },
+];
+
+export const HANDBOOK_BY_ID: Record<string, Entry> = Object.fromEntries(HANDBOOK.map((e) => [e.id, e]));
