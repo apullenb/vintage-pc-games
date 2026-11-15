@@ -8,7 +8,7 @@ export const PATHS: StartPath[] = [
     name: 'Stay Home & Work',
     tagline: 'Live with your parents, work part-time at the grocery store, and stack cash.',
     perks: ['Cheap rent ($200/mo to your parents)', 'Home-cooked meals', 'Stay on your parents’ health plan'],
-    risks: ['Part-time pay, no benefits', 'House rules and a curfew', 'You have to borrow the family car', 'Slowest career growth'],
+    risks: ['Part-time pay, no benefits', 'House rules and a curfew', 'You borrow the family car (and chip in on its insurance)', 'Slowest career growth'],
     art: 'bedroom',
     difficulty: 1,
   },
@@ -17,7 +17,7 @@ export const PATHS: StartPath[] = [
     name: 'College Bound',
     tagline: 'Move into the dorms at State U. Work at the library. Study hard.',
     perks: ['Biggest payoff at the end', 'Free bus with student ID', 'Meal plan included'],
-    risks: ['Tiny paycheck (12 hrs/week)', 'Must file the FAFSA or pay tuition yourself', 'Student loans grow with interest', 'Skipping class hurts your grades'],
+    risks: ['Tiny paycheck (15 hrs/week)', 'Must file the FAFSA or pay tuition yourself', 'Student loans grow with interest', 'Skipping class hurts your grades'],
     art: 'dorm',
     difficulty: 2,
   },
@@ -42,8 +42,8 @@ export const PATHS: StartPath[] = [
 ];
 
 const JOBS: Record<PathId, Job> = {
-  home: { title: 'Cashier', place: 'Fresh Fields Market', wage: 15, hours: 28, healthOffered: false, premium: 0, dentalPremium: 0, match: 0, art: 'grocery' },
-  college: { title: 'Library Assistant', place: 'State U Library', wage: 15, hours: 12, healthOffered: false, premium: 0, dentalPremium: 0, match: 0, art: 'library' },
+  home: { title: 'Cashier', place: 'Fresh Fields Market', wage: 15, hours: 26, healthOffered: false, premium: 0, dentalPremium: 0, match: 0, art: 'grocery' },
+  college: { title: 'Library Assistant', place: 'State U Library', wage: 16, hours: 15, healthOffered: false, premium: 0, dentalPremium: 0, match: 0, art: 'library' },
   trade: { title: 'Electrician Apprentice', place: 'Brightline Electric', wage: 19, hours: 40, healthOffered: true, premium: 48, dentalPremium: 6, match: 0, art: 'jobsite' },
   work: { title: 'Warehouse Associate', place: 'ParcelPoint', wage: 18, hours: 40, healthOffered: true, premium: 52, dentalPremium: 6, match: 0.04, art: 'warehouse' },
 };
@@ -60,7 +60,7 @@ export function pathName(id: PathId): string {
 }
 
 export function newState(name: string, look: Look, path: PathId, seed: number): GameState {
-  const cash = { home: 650, college: 900, trade: 700, work: 800 }[path];
+  const cash = { home: 650, college: 1200, trade: 900, work: 650 }[path];
   const s: GameState = {
     v: 1,
     seed: seed | 0,
@@ -105,6 +105,8 @@ export function newState(name: string, look: Look, path: PathId, seed: number): 
   if (path === 'home') {
     s.plan.food = 'parents';
     s.flags.familyPhone = true;
+    // Adding a teen driver raises the family's insurance; parents usually ask you to chip in.
+    s.subs.push({ id: 'carshare', label: 'Your share of Mom’s car insurance', cost: 85 });
   }
   if (path === 'college') {
     s.plan.food = 'mealplan';
@@ -114,5 +116,7 @@ export function newState(name: string, look: Look, path: PathId, seed: number): 
   if (path === 'trade' || path === 'work') s.subs.push({ id: 'phone', label: 'Phone plan', cost: 45 });
   if (path === 'work') s.subs.push({ id: 'buspass', label: 'Monthly bus pass', cost: 65 });
   if (path === 'trade') s.subs.push({ id: 'nightclass', label: 'Apprentice night class', cost: 125 });
+  // Aid and the scholarship don't cover everything: student fees land on a monthly payment plan.
+  if (path === 'college') s.subs.push({ id: 'schoolbal', label: 'Student account payment plan', cost: 125 });
   return s;
 }

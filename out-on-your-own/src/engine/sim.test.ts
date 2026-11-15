@@ -9,30 +9,42 @@ import { SLOTS, type GameState, type PayMethod } from './types.ts';
 
 const PATHS: PathId[] = ['home', 'college', 'trade', 'work'];
 
+const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+
 describe('full playthroughs', () => {
   for (const path of PATHS) {
-    it(`${path}: a sensible player finishes the year`, () => {
+    it(`${path}: a sensible player finishes the year, with money tight but manageable`, () => {
       const results = [];
-      for (let seed = 1; seed <= 12; seed++) results.push(playGame(path, seed * 7919, 'wise'));
+      for (let seed = 1; seed <= 16; seed++) results.push(playGame(path, seed * 7919, 'wise'));
       const wins = results.filter((r) => r.outcome === 'won');
       const scores = wins.map((r) => finalScore(r.s).total);
-      const avg = scores.reduce((a, b) => a + b, 0) / Math.max(1, scores.length);
-      console.log(path, 'wise wins', wins.length, '/', results.length, 'avg', Math.round(avg), 'min', Math.min(...scores), results.filter((r) => r.outcome === 'lost').map((r) => r.reason));
+      const avg = mean(scores);
+      const saved = mean(wins.map((r) => r.s.stats.savings));
+      console.log(path, 'wise wins', wins.length, '/', results.length, 'avg', Math.round(avg), 'min', Math.min(...scores), 'saved', Math.round(saved), results.filter((r) => r.outcome === 'lost').map((r) => r.reason));
       expect(wins.length).toBe(results.length);
-      expect(avg).toBeGreaterThan(650);
+      // A good year, not a perfect one: around $1,500–$3,500 saved (a bit more living at home) and a B+/A score.
+      expect(avg).toBeGreaterThan(780);
+      expect(avg).toBeLessThan(900);
+      expect(saved).toBeGreaterThan(1500);
+      expect(saved).toBeLessThan(path === 'home' ? 4500 : 3800);
     });
     it(`${path}: reckless choices cost you`, () => {
       const wise = [];
       const reckless = [];
-      for (let seed = 1; seed <= 8; seed++) {
+      for (let seed = 1; seed <= 20; seed++) {
         wise.push(playGame(path, seed * 104729, 'wise'));
         reckless.push(playGame(path, seed * 104729, 'reckless'));
       }
       const score = (r: ReturnType<typeof playGame>) => (r.outcome === 'won' ? finalScore(r.s).total : 0);
-      const w = wise.reduce((a, r) => a + score(r), 0) / wise.length;
-      const k = reckless.reduce((a, r) => a + score(r), 0) / reckless.length;
-      console.log(path, 'wise', Math.round(w), 'reckless', Math.round(k), 'reckless losses', reckless.filter((r) => r.outcome === 'lost').length);
-      expect(w - k).toBeGreaterThan(200);
+      const w = mean(wise.map(score));
+      const k = mean(reckless.map(score));
+      const losses = reckless.filter((r) => r.outcome === 'lost').length;
+      console.log(path, 'wise', Math.round(w), 'reckless', Math.round(k), 'reckless losses', losses, '/', reckless.length);
+      expect(w - k).toBeGreaterThan(250);
+      // Takeout, two nights out a week, and card minimums: some careless players lose their housing
+      // (or their classes), but not most of them.
+      if (path !== 'home') expect(losses).toBeGreaterThan(0);
+      expect(losses).toBeLessThan(reckless.length * 0.6);
     });
   }
 });

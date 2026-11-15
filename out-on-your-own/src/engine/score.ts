@@ -21,24 +21,30 @@ export interface FinalScore {
 const pts = (v: number, max: number): number => Math.max(0, Math.min(max, Math.round(v)));
 const usd = (v: number): string => `$${Math.round(v).toLocaleString('en-US')}`;
 
+// A full emergency fund is 3–6 months of real expenses; for someone on their own that's ~$6,000.
+// Few people get there in year one, so points rise fastest for the first dollars saved
+// (going from $0 to $1,000 matters most).
+export const FUND_GOAL = 6000;
+
 export function finalScore(s: GameState): FinalScore {
   const sc = creditScore(s);
   const stars = s.chapterStars.reduce((a, b) => a + (b ?? 0), 0);
   const misses = num(s, 'rentMissed') + s.credit.late;
+  const saved = Math.max(0, s.stats.savings);
   const lines: ScoreLine[] = [
-    { label: 'Mission stars', value: `${stars} / ${CHAPTERS.length * 3}`, points: pts((stars / (CHAPTERS.length * 3)) * 300, 300), max: 300 },
-    { label: 'Emergency fund', value: usd(s.stats.savings), points: pts((s.stats.savings / 2000) * 150, 150), max: 150 },
-    { label: 'Debt (cards & loans)', value: usd(badDebt(s)), points: pts(150 - (s.card?.balance ?? 0) / 8 - (badDebt(s) - (s.card?.balance ?? 0)) / 60, 150), max: 150 },
-    { label: 'Credit score', value: sc === null ? 'None' : String(sc), points: sc === null ? 0 : pts(((sc - 550) / 200) * 100, 100), max: 100 },
-    { label: 'Retirement savings', value: usd(s.retire), points: pts((s.retire / 1500) * 50, 50), max: 50 },
+    { label: 'Mission stars', value: `${stars} / ${CHAPTERS.length * 3}`, points: pts((stars / (CHAPTERS.length * 3)) * 250, 250), max: 250 },
+    { label: 'Emergency fund', value: `${usd(saved)} / ${usd(FUND_GOAL)}`, points: pts(Math.sqrt(Math.min(1, saved / FUND_GOAL)) * 260, 260), max: 260 },
+    { label: 'Debt (cards & loans)', value: usd(badDebt(s)), points: pts(100 - (s.card?.balance ?? 0) / 6 - (badDebt(s) - (s.card?.balance ?? 0)) / 50, 100), max: 100 },
+    { label: 'Credit score', value: sc === null ? 'None' : String(sc), points: sc === null ? 0 : pts(((sc - 600) / 200) * 100, 100), max: 100 },
+    { label: 'Retirement savings', value: usd(s.retire), points: pts((s.retire / 4000) * 40, 40), max: 40 },
     { label: 'Bills paid on time', value: misses ? `${misses} missed` : 'All of them', points: pts(100 - misses * 25 - num(s, 'overdrafts') * 5, 100), max: 100 },
     { label: 'Career milestone', value: s.flags.careerDone ? 'Achieved' : 'Not yet', points: s.flags.careerDone ? 100 : 0, max: 100 },
     { label: 'Well-being', value: num(s, 'burnouts') ? `${num(s, 'burnouts')} burnout${num(s, 'burnouts') > 1 ? 's' : ''}` : 'No burnouts', points: pts(50 - num(s, 'burnouts') * 25, 50), max: 50 },
   ];
   const total = lines.reduce((a, l) => a + l.points, 0);
-  const grade = total >= 900 ? 'A+' : total >= 820 ? 'A' : total >= 720 ? 'B' : total >= 600 ? 'C' : total >= 480 ? 'D' : 'F';
+  const grade = total >= 920 ? 'A+' : total >= 840 ? 'A' : total >= 740 ? 'B' : total >= 620 ? 'C' : total >= 480 ? 'D' : 'F';
   const title =
-    total >= 860 ? 'Thriving Adult' : total >= 720 ? 'Doing Great' : total >= 600 ? 'Holding It Together' : total >= 480 ? 'Scraping By' : 'Still Figuring It Out';
+    total >= 880 ? 'Thriving Adult' : total >= 760 ? 'Doing Great' : total >= 620 ? 'Holding It Together' : total >= 480 ? 'Scraping By' : 'Still Figuring It Out';
   return { total, grade, title, lines, epilogue: epilogue(s) };
 }
 
