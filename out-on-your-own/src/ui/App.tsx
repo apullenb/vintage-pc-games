@@ -68,7 +68,7 @@ function Title({ meta, canContinue, g, onContinue, onNew, onMute }: { meta: Meta
       </div>
       <div className="title-card">
         <h1>
-          <span>Out on</span> <span>Your Own</span>
+          <span>Out in the</span> <span>Real World</span>
         </h1>
         <p className="tagline">You just graduated. Now the bills have your name on them.</p>
         <div className="title-btns">

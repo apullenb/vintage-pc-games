@@ -1,4 +1,4 @@
-# Out on Your Own
+# Out in the Real World
 
 A pixel-art life sim about the first year after high school, built with React, TypeScript, and Vite.
 It's part Oregon Trail, part Game of Life: pick a starting path, then make it through 36 weeks of

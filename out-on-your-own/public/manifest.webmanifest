@@ -1,6 +1,6 @@
 {
-  "name": "Out on Your Own",
-  "short_name": "On Your Own",
+  "name": "Out in the Real World",
+  "short_name": "Real World",
   "description": "A pixel-art life sim about your first year after high school.",
   "start_url": "./",
   "scope": "./",

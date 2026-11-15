@@ -39,7 +39,7 @@ jobs:
           npm ci
           npx vitest run
           npm run build
-      - name: Test and build Out on Your Own
+      - name: Test and build Out in the Real World
         working-directory: out-on-your-own
         run: |
           npm ci
