@@ -1,17 +1,18 @@
 // Shared UI bits: pixel scene canvas, icons, delta chips, typewriter text.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { CAST, drawPerson, playerPerson, type Person } from '../art/people.ts';
+import { CAST, castFor, drawPerson, playerPerson, type Person } from '../art/people.ts';
 import { H, W } from '../art/px.ts';
 import { sceneDef } from '../art/scenes.ts';
 import { money } from '../engine/core.ts';
-import type { ArtId, Deltas, Look, NpcId } from '../engine/types.ts';
+import type { ArtId, Deltas, Look, NpcId, PathId } from '../engine/types.ts';
 import { sfx } from './audio.ts';
 
 // ---------- scene canvas ----------
-export function SceneCanvas({ art, look, speaker, talking, hidePlayer }: { art: ArtId; look: Look; speaker?: NpcId | null; talking?: boolean; hidePlayer?: boolean }) {
+// path picks per-path NPC looks (the boss); night tints home scenes for evening.
+export function SceneCanvas({ art, look, speaker, talking, hidePlayer, path, night }: { art: ArtId; look: Look; speaker?: NpcId | null; talking?: boolean; hidePlayer?: boolean; path?: PathId | null; night?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const props = useRef({ art, look, speaker, talking, hidePlayer });
-  props.current = { art, look, speaker, talking, hidePlayer };
+  const props = useRef({ art, look, speaker, talking, hidePlayer, path, night });
+  props.current = { art, look, speaker, talking, hidePlayer, path, night };
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
@@ -28,14 +29,15 @@ export function SceneCanvas({ art, look, speaker, talking, hidePlayer }: { art: 
       if (frame === lastFrame) return; // 8 fps, like the old days
       lastFrame = frame;
       const p = props.current;
-      const def = sceneDef(p.art);
+      const def = sceneDef(p.art, { night: p.night, path: p.path });
       x.clearRect(0, 0, W, H);
       def.paint(x, t);
       const top = def.floor - 30;
-      if (!p.hidePlayer) drawPerson(x, playerPerson(p.look), def.player - 7, top, Math.floor(t * 1.5) % 2, false);
-      if (p.speaker && CAST[p.speaker]) {
+      const npc = p.speaker && CAST[p.speaker] ? castFor(p.speaker, p.path).p : null;
+      if (!p.hidePlayer) drawPerson(x, playerPerson(p.look), def.player - 7, top, Math.floor(t * 1.5) % 2, false, { blink: frame % 37 === 0, face: npc ? 1 : 0 });
+      if (npc) {
         const talk = !!p.talking && Math.floor(t * 6) % 2 === 0;
-        drawPerson(x, CAST[p.speaker].p, def.npc - 7, top, Math.floor(t * 1.5 + 1) % 2, talk);
+        drawPerson(x, npc, def.npc - 7, top, Math.floor(t * 1.5 + 1) % 2, talk, { blink: frame % 43 === 20, face: -1 });
       }
       def.extras?.(x, t);
     };
