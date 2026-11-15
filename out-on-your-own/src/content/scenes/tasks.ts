@@ -491,14 +491,14 @@ export const TASK_SCENES: Scene[] = [
         choices: [
           {
             label: '2008 Hatchback, 160k miles: $2,400 cash',
-            hint: '✓ No loan · ✗ Old car, repairs likely · Insurance ~$95/mo',
+            hint: '✓ No loan · ✗ Old car, repairs likely · Insurance ~$160/mo',
             req: (s) => (s.flags.license ? true : 'Needs a license'),
             bot: (s) => (s.stats.cash + s.stats.savings > 2900 ? 1 : -5),
             next: 'inspect',
           },
           {
             label: '2016 Sedan, 70k miles: $7,800 (financed)',
-            hint: '✓ Reliable · ✗ Monthly loan payment · ✗ Full coverage insurance ~$165/mo',
+            hint: '✓ Reliable · ✗ Monthly loan payment · ✗ Full coverage insurance ~$320/mo',
             req: (s) => (s.flags.license ? true : 'Needs a license'),
             bot: (s) => (s.path === 'trade' ? 1 : -1),
             next: 'loan',
@@ -561,7 +561,7 @@ export const TASK_SCENES: Scene[] = [
             methods: ['checking', 'savings'],
             bot: -2,
             do: (s, d) => {
-              buyCar(s, 'Old Hatchback', chance(s, 0.5) ? 25 : 55, 2000, 95);
+              buyCar(s, 'Old Hatchback', chance(s, 0.5) ? 25 : 55, 2000, 160);
               d.done = 1;
             },
             result: (s) => (s.car && s.car.condition < 30 ? 'You drive it home. The transmission makes a noise like a sad whale. Uh oh.' : 'You drive it home. It runs! For now.'),
@@ -577,8 +577,8 @@ export const TASK_SCENES: Scene[] = [
             pay: 2400,
             methods: ['checking', 'savings'],
             bot: 2,
-            do: (s) => buyCar(s, 'Old Hatchback', 60, 2000, 95),
-            result: 'It’s yours. Insurance is about $95/month (liability only).',
+            do: (s) => buyCar(s, 'Old Hatchback', 60, 2000, 160),
+            result: 'It’s yours. Insurance is about $160/month (liability only). Teen drivers pay a lot.',
           },
           { label: 'Walk away', next: 'start' },
         ],
@@ -592,7 +592,7 @@ export const TASK_SCENES: Scene[] = [
             pay: 1700,
             methods: ['checking', 'savings'],
             bot: 1,
-            do: (s) => buyCar(s, 'Old Hatchback', 35, 1500, 95),
+            do: (s) => buyCar(s, 'Old Hatchback', 35, 1500, 160),
             result: 'The seller grumbles but takes it. You saved $700 by knowing what you were buying.',
           },
           { label: 'Walk away. The inspection just saved you.', bot: 2, next: 'start', result: 'You walk. $100 well spent.' },
@@ -601,7 +601,7 @@ export const TASK_SCENES: Scene[] = [
       loan: {
         text: (s) => {
           const t = carLoanTerms(s);
-          return `The finance office runs your credit.\n\n${t.note}\n\nTerms: ${money(t.down)} down, ${(t.apr * 100).toFixed(1)}% APR, 48 months → ${money(t.payment)}/month. Total paid over the loan: about ${money(t.payment * 48 + t.down)} for a $7,800 car.\nFull-coverage insurance (required with a loan): ~$165/month.`;
+          return `The finance office runs your credit.\n\n${t.note}\n\nTerms: ${money(t.down)} down, ${(t.apr * 100).toFixed(1)}% APR, 48 months → ${money(t.payment)}/month. Total paid over the loan: about ${money(t.payment * 48 + t.down)} for a $7,800 car.\nFull-coverage insurance (required with a loan): ~$320/month. Young drivers pay the most.`;
         },
         speaker: 'dealer',
         choices: [
@@ -612,7 +612,7 @@ export const TASK_SCENES: Scene[] = [
             bot: (s) => (s.path === 'trade' ? 2 : -1),
             do: (s) => {
               const t = carLoanTerms(s);
-              buyCar(s, '2016 Sedan', 85, 7000, 165);
+              buyCar(s, '2016 Sedan', 85, 7000, 320);
               s.loans.push({ name: 'Car loan', balance: 7800 - t.down, apr: t.apr, payment: t.payment, kind: 'car' });
               openCredit(s);
               unlock(s, 'car-loan');
@@ -848,16 +848,17 @@ export const TASK_SCENES: Scene[] = [
         text: (s) => {
           const net = monthlyNet(s);
           const bills = monthlyBills(s);
-          const food = s.housing.kind === 'parents' || s.housing.kind === 'dorm' ? 40 : 200;
+          const food = budgetFood(s);
+          const stuff = Math.round(personalCost(s) * 4.33);
           const gas = s.car ? 150 : s.transport === 'borrow' ? 110 : s.transport === 'carpool' ? 110 : 0;
-          const left = net - bills - food - gas;
-          return `MONTHLY BUDGET\nTake-home pay: ~${money(net)}\nFixed bills: −${money(bills)}\nFood: −${money(food)}\nGas/transport: −${money(gas)}\n\nLeft over: ${money(left)}\n\nThe 50/30/20 rule: about 50% for needs, 30% for wants, 20% for savings and debt. How much should automatically move to savings every paycheck?`;
+          const left = net - bills - food - stuff - gas;
+          return `MONTHLY BUDGET\nTake-home pay: ~${money(net)}\nFixed bills: −${money(bills)}\nFood: −${money(food)}\nToiletries, laundry, household: −${money(stuff)}\nGas/transport: −${money(gas)}\n\nLeft over: ${money(left)}\n\nThe 50/30/20 rule: about 50% for needs, 30% for wants, 20% for savings and debt. How much should automatically move to savings every paycheck?`;
         },
         choices: [25, 50, 100, 150, 250].map((amt) => ({
           label: `$${amt} per paycheck`,
           hint: `≈ ${money(amt * 2.17)}/month into savings`,
           bot: (s: GameState) => {
-            const left = monthlyNet(s) - monthlyBills(s) - (s.housing.kind === 'parents' || s.housing.kind === 'dorm' ? 40 : 200) - (s.car ? 150 : 0);
+            const left = monthlyNet(s) - monthlyBills(s) - budgetFood(s) - Math.round(personalCost(s) * 4.33) - (s.car ? 150 : 0);
             const ideal = Math.max(25, left * 0.4) / 2.17;
             return 3 - Math.abs(amt - ideal) / 50;
           },
@@ -1230,6 +1231,15 @@ export const TASK_SCENES: Scene[] = [
 ];
 
 // ---------- helpers ----------
+// Mirrors the weekly food and personal costs in engine.ts (kept here to avoid an import cycle).
+const sharedHome = (s: GameState): boolean => s.housing.kind === 'parents' || s.housing.kind === 'dorm';
+function budgetFood(s: GameState): number {
+  return Math.round((sharedHome(s) ? 25 : 85) * 4.33);
+}
+function personalCost(s: GameState): number {
+  return sharedHome(s) ? 25 : 45;
+}
+
 
 function buyCar(s: GameState, name: string, condition: number, value: number, insurance: number): void {
   s.car = { name, condition, value, insurance: insurance + (s.flags.ticketPoints ? 25 : 0) };
