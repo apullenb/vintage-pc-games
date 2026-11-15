@@ -1,0 +1,263 @@
+/* Grocery Run + Haggle: shopping list chips, phone D-pad, tactic cards. Scoped under .gh-mini. */
+.gh-mini {
+  gap: 6px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.gh-canvas {
+  width: min(100%, calc(56vh * var(--ar, 1.78)));
+  width: min(100%, calc(56dvh * var(--ar, 1.78)));
+  align-self: center;
+  line-height: 0;
+}
+.gh-canvas .mini-canvas {
+  max-height: none;
+}
+
+/* ---------- shopping list ---------- */
+.gh-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+.gh-list li {
+  font: 18px/1 var(--font-body);
+  background: #fffaf0;
+  border: 2px solid var(--line);
+  padding: 2px 6px 3px 3px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.gh-list .gh-check {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--line);
+  background: #fff;
+  font: 11px/9px var(--font-ui);
+  text-align: center;
+  color: var(--good);
+}
+.gh-list li.got {
+  background: #d8f0dc;
+  color: var(--ink2);
+}
+.gh-list li.got em {
+  font-style: normal;
+  color: var(--good);
+}
+.gh-list li.go {
+  background: var(--gold);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  animation: gh-pulse 0.7s steps(2) infinite;
+}
+@keyframes gh-pulse {
+  50% {
+    background: #fff3c4;
+  }
+}
+
+/* ---------- phone D-pad ---------- */
+.gh-pad {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+  touch-action: none;
+}
+.gh-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 50px);
+  grid-template-rows: repeat(3, 44px);
+  gap: 3px;
+  grid-template-areas:
+    '. up .'
+    'left . right'
+    '. down .';
+}
+.gh-btn {
+  font: 16px var(--font-ui);
+  color: var(--ink);
+  background: var(--panel2);
+  border: 3px solid var(--line);
+  box-shadow: 0 3px 0 var(--line);
+  border-radius: 0;
+  padding: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.gh-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--line);
+  background: #fff3c4;
+}
+.gh-btn.up {
+  grid-area: up;
+}
+.gh-btn.left {
+  grid-area: left;
+}
+.gh-btn.right {
+  grid-area: right;
+}
+.gh-btn.down {
+  grid-area: down;
+}
+.gh-btn.act {
+  width: 116px;
+  height: 92px;
+  font-size: 20px;
+  background: var(--gold);
+  border-radius: 50%;
+}
+.gh-btn.act.glow {
+  animation: gh-glow 0.5s steps(2) infinite;
+}
+@keyframes gh-glow {
+  50% {
+    background: #fff3c4;
+    box-shadow:
+      0 3px 0 var(--line),
+      0 0 0 4px #f2b632;
+  }
+}
+.gh-keys {
+  font-size: 17px;
+}
+/* Desktop with a mouse: keyboard hint instead of the pad. Touch: the pad instead of the hint. */
+@media (hover: hover) and (pointer: fine) {
+  .gh-pad {
+    display: none;
+  }
+}
+@media (pointer: coarse), (hover: none) {
+  .gh-keys {
+    display: none;
+  }
+}
+
+/* ---------- haggle ---------- */
+.gh-say {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: #fffaf0;
+  border: 3px solid var(--line);
+  padding: 6px 8px;
+  min-height: 52px;
+  font: 21px/1.05 var(--font-body);
+}
+.gh-say b {
+  font: 11px var(--font-ui);
+  background: var(--ink);
+  color: #fff;
+  padding: 3px 5px;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.gh-say.you b {
+  background: var(--accent);
+}
+.gh-tactics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px;
+}
+.gh-tac {
+  text-align: left;
+  font: 13px var(--font-ui);
+  background: var(--panel);
+  color: var(--ink);
+  border: 3px solid var(--line);
+  box-shadow: 0 3px 0 var(--line);
+  padding: 6px 8px;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 48px;
+  -webkit-tap-highlight-color: transparent;
+}
+.gh-tac small {
+  font: 16px/1 var(--font-body);
+  color: var(--ink2);
+  text-transform: none;
+}
+.gh-tac.hi {
+  background: #fff3c4;
+  outline: 3px solid var(--gold);
+  outline-offset: -6px;
+}
+.gh-tac:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+  text-decoration: line-through;
+}
+.gh-tac:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--line);
+}
+.gh-tac .k {
+  font: 10px var(--font-ui);
+  color: var(--muted);
+}
+.gh-deliver {
+  width: 100%;
+  min-height: 64px;
+  font: 20px var(--font-ui);
+  background: var(--gold);
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line);
+  border-radius: 0;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.gh-deliver:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--line);
+}
+.gh-bottom {
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.gh-wait {
+  min-height: 64px;
+  display: grid;
+  place-items: center;
+  font: 14px var(--font-ui);
+  color: var(--muted);
+}
+@media (max-width: 600px) {
+  .gh-list li {
+    font-size: 16px;
+  }
+  .gh-tactics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .gh-tac {
+    font-size: 11px;
+    padding: 5px 6px;
+  }
+  .gh-tac small {
+    font-size: 14px;
+  }
+  .gh-say {
+    font-size: 18px;
+    min-height: 44px;
+  }
+  .gh-bottom {
+    min-height: 236px;
+    justify-content: flex-start;
+  }
+}
