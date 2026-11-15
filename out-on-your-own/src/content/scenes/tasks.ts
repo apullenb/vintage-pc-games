@@ -1,6 +1,7 @@
 // Mission scenes: bank, DMV, FAFSA, tools, transportation, dentist, housing, budget, credit, taxes, career.
 import {
   achieve,
+  minigame,
   chance,
   charge,
   creditScore,
@@ -322,23 +323,13 @@ export const TASK_SCENES: Scene[] = [
         ],
       },
       road: {
-        text: 'ROAD TEST. The examiner clicks a pen. You pull out of the lot. Ahead, a light turns yellow while you’re still a good distance back.',
+        text: 'ROAD TEST. The examiner clicks a pen and climbs into the passenger seat. \u201cWhenever you\u2019re ready.\u201d',
         speaker: 'clerk',
         choices: [
           {
-            label: 'Brake smoothly and stop',
+            label: 'Start the engine',
             bot: 3,
-            do: (s) => {
-              setFlag(s, 'license');
-              unlock(s, 'license');
-              achieve(s, 'licensed');
-            },
-            result: '“Nice judgment.” The rest goes fine, even the parallel parking (mostly).\n\nYOU PASSED! Your license photo looks like a hostage photo. It’s valid for 8 years.',
-          },
-          {
-            label: 'Floor it to make the light',
-            bot: -3,
-            result: 'The examiner writes for a long time. “Automatic fail. You can retest in a week.”',
+            do: (s) => minigame(s, 'roadtest'),
           },
         ],
       },
@@ -579,6 +570,27 @@ export const TASK_SCENES: Scene[] = [
             bot: 2,
             do: (s) => buyCar(s, 'Old Hatchback', 60, 2000, 160),
             result: 'It’s yours. Insurance is about $160/month (liability only). Teen drivers pay a lot.',
+          },
+          {
+            label: 'Haggle on the price',
+            hint: '\u2713 Could save hundreds \u00b7 Mini-game',
+            bot: 3,
+            do: (s) => minigame(s, 'haggle', { item: 'car', price: 2400 }),
+          },
+          { label: 'Walk away', next: 'start' },
+        ],
+      },
+      haggled: {
+        text: (_s, d) => `The seller shakes your hand. \u201cFine. ${money(Number(d.price ?? 2400))}, and that\u2019s my final offer.\u201d`,
+        speaker: 'dealer',
+        choices: [
+          {
+            label: (_s, d) => `Buy it: ${money(Number(d.price ?? 2400))}`,
+            pay: (_s, d) => Number(d.price ?? 2400),
+            methods: ['checking', 'savings'],
+            bot: 2,
+            do: (s) => buyCar(s, 'Old Hatchback', 60, 2000, 160),
+            result: 'It’s yours, for less than the sticker price. Insurance is about $160/month (liability only).',
           },
           { label: 'Walk away', next: 'start' },
         ],
@@ -1304,6 +1316,7 @@ function housingOption(
         unlock(s, 'security-deposit');
         unlock(s, 'lease');
         achieve(s, 'movedout');
+        minigame(s, 'moving');
       }
       setFlag(s, 'housingDone');
     },

@@ -4,7 +4,7 @@ import { finalScore } from './score.ts';
 import type { PathId } from './types.ts';
 import { activitiesFor } from '../content/activities.ts';
 import { newState } from '../content/paths.ts';
-import { begin, choose, defaultPlan, foodOptions, payBills, proceed, retryChapter, sceneChoices, startWeek } from './engine.ts';
+import { begin, choose, defaultPlan, finishMinigame, foodOptions, payBills, proceed, retryChapter, sceneChoices, startWeek } from './engine.ts';
 import { SLOTS, type GameState, type PayMethod } from './types.ts';
 
 const PATHS: PathId[] = ['home', 'college', 'trade', 'work'];
@@ -67,6 +67,10 @@ function chaos(path: PathId, seed: number): { s: GameState; retries: number } {
       const foods = foodOptions(s);
       plan.food = foods[Math.floor(rnd() * foods.length)];
       s = startWeek(s, plan);
+      continue;
+    }
+    if (h.t === 'minigame') {
+      s = h.result ? proceed(s) : finishMinigame(s, { score: rnd(), played: rnd() < 0.7 });
       continue;
     }
     if (h.t === 'scene') {

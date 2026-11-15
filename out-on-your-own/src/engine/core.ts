@@ -287,3 +287,8 @@ export function missWork(s: GameState, why: string): void {
   inc(s, 'daysOff');
   log(s, `Missed a day of work (${why.toLowerCase()}): 8 unpaid hours.`, 'info');
 }
+
+// Queue an action mini-game to run next.
+export function minigame(s: GameState, id: string, data?: Record<string, number | string>): void {
+  s.queue.unshift({ t: 'minigame', id, data });
+}

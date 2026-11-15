@@ -158,6 +158,7 @@ export type Step =
   | { t: 'scene'; id: string; step: string; data?: Record<string, number | string>; result?: ResultView; resultNext?: string | null }
   | { t: 'paycheck'; stub: PayStub; offer: string | null; resolved?: ResultView }
   | { t: 'billsDue'; bills: Bill[] }
+  | { t: 'minigame'; id: string; data?: Record<string, number | string>; result?: ResultView }
   | { t: 'gameOver'; reason: string }
   | { t: 'ending' };
 
@@ -239,4 +240,11 @@ export interface Look {
   hair: number;
   hairStyle: number;
   shirt: number;
+}
+
+// Outcome of an action mini-game. score: 0 (disaster) .. 1 (perfect).
+export interface MiniResult {
+  score: number;
+  played: boolean; // false = skipped (auto-played)
+  stats?: Record<string, number>; // game-specific numbers (tips, items broken, tickets...)
 }

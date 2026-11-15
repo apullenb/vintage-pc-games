@@ -1,5 +1,5 @@
 // Random life events and their consequences. Every choice trades money, time, energy, or risk.
-import { achieve, chance, charge, earn, energy, inc, log, missWork, money, num, openCredit, rep, schedule, setFlag, unlock, xp } from '../../engine/core.ts';
+import { achieve, chance, charge, minigame, earn, energy, inc, log, missWork, money, num, openCredit, rep, schedule, setFlag, unlock, xp } from '../../engine/core.ts';
 import type { GameState, SlotId } from '../../engine/types.ts';
 import type { Choice, Scene } from '../types.ts';
 import { CARD_USE } from './tasks.ts';
@@ -956,19 +956,39 @@ export const EVENT_SCENES: Scene[] = [
         choices: [
           {
             label: 'Ask for a $1/hour raise',
+            hint: '\u2713 More money every paycheck \u00b7 Mini-game \u00b7 Works best with a good boss rating',
             bot: 2,
-            do: (s, d) => {
-              d.yes = s.stats.rep >= 65 ? 1 : 0;
-              if (d.yes && s.job) {
-                s.job.wage += 1;
-                achieve(s, 'raise');
-              }
-              unlock(s, 'raise');
-            },
-            result: (_s, d) => (d.yes ? '“You’ve earned it.” +$1/hour, starting next paycheck!' : '“Let’s revisit in a few months. Keep showing up.” (Boss rating 65+ needed.)'),
-            tip: 'If you don’t ask, the answer is always no. Come with specifics: what you’ve done, how reliable you’ve been.',
+            do: (s) => minigame(s, 'haggle', { item: 'raise' }),
           },
           { label: 'Don’t rock the boat', bot: -1, result: 'You stay quiet. Jess is now making more than you.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-latebus',
+    title: 'Running late',
+    art: 'street',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) => `Your alarm didn\u2019t go off. It\u2019s 7:52. The bus to ${s.path === 'college' ? 'campus' : 'work'} leaves the corner at 7:55.`,
+        choices: [
+          { label: 'RUN!', hint: '\u2713 Free \u00b7 Mini-game', bot: 3, do: (s) => minigame(s, 'busdash') },
+          {
+            label: 'Call a rideshare: $22',
+            pay: 22,
+            hint: '\u2713 On time \u00b7 \u2717 $22 for a 10-minute ride',
+            bot: -1,
+            result: 'You arrive on time and $22 poorer. The driver\u2019s air freshener was intense.',
+          },
+          {
+            label: 'Text your boss that you\u2019ll be late',
+            hint: '\u2717 Boss rating drops',
+            bot: -2,
+            do: (s) => rep(s, -3),
+            result: '\u201cOk.\u201d Just \u201cok.\u201d With a period. That\u2019s bad.',
+          },
         ],
       },
     },
@@ -2324,6 +2344,7 @@ export const EVENTS = [
   { id: 'ev-package', weight: 0.5, once: true, minWeek: 10 },
   { id: 'ev-concert', weight: 1, cooldown: 12, minWeek: 4 },
   { id: 'ev-wedding', weight: 0.6, once: true, minWeek: 14 },
+  { id: 'ev-latebus', weight: (s: GameState) => (s.transport === 'bus' && (s.job || s.path === 'college') ? 1.3 : 0), cooldown: 5, minWeek: 2 },
   { id: 'ev-overdrawn', weight: (s: GameState) => (s.stats.cash < -150 ? 25 : 0), cooldown: 6 },
   // Money traps
   { id: 'ev-paydayloan', weight: (s: GameState) => (s.job && s.stats.cash < 150 && s.stats.savings < 250 ? 3 : 0), minWeek: 4, cooldown: 10 },

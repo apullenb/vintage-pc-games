@@ -1,5 +1,5 @@
 // What you can do with each time slot of the week.
-import { charge, earn, energy, inc, log, money, num, rep, scene, xp } from '../engine/core.ts';
+import { charge, energy, inc, log, minigame, money, num, rep, scene, xp } from '../engine/core.ts';
 import type { GameState, SlotId } from '../engine/types.ts';
 import type { Activity } from './types.ts';
 
@@ -75,9 +75,9 @@ const LIST: Activity[] = [
       const h = s.path === 'college' ? 4 : 6;
       s.hoursThisPeriod += h;
       energy(s, -12);
-      rep(s, 2);
       inc(s, 'extraShifts');
       log(s, `Extra shift: +${h} hours on your next paycheck.`, 'good');
+      minigame(s, 'shift');
     },
   },
   {
@@ -120,14 +120,9 @@ const LIST: Activity[] = [
         work: 'Free company training. Managers notice who finishes them.',
         home: 'Build skills for a better job.',
       })[s.path],
-    hint: (s) => `+Career progress · −8 energy${s.path === 'work' ? ' · Boss notices' : ''}`,
+    hint: (s) => `+Career progress (mini-game) · −8 energy${s.path === 'work' ? ' · Boss notices' : ''}`,
     run: (s) => {
-      const gain = s.path === 'home' && !s.flags.certEnrolled ? 4 : 6;
-      xp(s, gain);
-      energy(s, -8);
-      if (s.path === 'work') rep(s, 1);
-      inc(s, 'studySessions');
-      log(s, `${studyName(s)}: career progress +${gain}.`, 'good');
+      minigame(s, 'flashcards');
     },
   },
   {
@@ -136,34 +131,22 @@ const LIST: Activity[] = [
     icon: 'food',
     slots: ['sunday'],
     desc: 'Cook a week of meals. Takes your Sunday, saves a lot of money.',
-    hint: () => 'Unlocks the cheap, healthy food plan · Takes the slot',
+    hint: () => 'Unlocks the cheap, healthy food plan (mini-game) · Takes the slot',
     hide: (s) => s.housing.kind === 'parents' || s.housing.kind === 'dorm',
     run: (s) => {
       log(s, 'Spent Sunday meal-prepping. Containers everywhere.');
+      minigame(s, 'grocery');
     },
   },
   {
     id: 'gig',
-    name: (s) => (s.car ? 'Food delivery gig' : 'Pet-sitting gig'),
+    name: (s) => (s.car ? 'Food delivery gig' : 'Bike delivery gig'),
     icon: 'money',
     slots: ['saturday', 'sunday'],
-    desc: (s) => (s.car ? 'Deliver burritos in your own car. Tips vary. Gas doesn’t.' : 'Walk dogs and feed cats for neighbors.'),
-    hint: (s) => (s.car ? '≈ +$85 cash (minus gas, wear on car) · −12 energy' : '≈ +$50 cash · −8 energy'),
+    desc: (s) => (s.car ? 'Deliver burritos in your own car. Tips vary. Gas doesn\u2019t.' : 'Deliver food on your bike. Great for your legs, less great in the rain.'),
+    hint: (s) => (s.car ? '+$35\u2013120 in tips (mini-game) \u00b7 \u2212$12 gas \u00b7 \u221212 energy' : '+$20\u201375 in tips (mini-game) \u00b7 \u221214 energy'),
     run: (s) => {
-      if (s.car) {
-        const tips = 70 + Math.round((num(s, 'gigs') * 37) % 40);
-        earn(s, tips);
-        charge(s, 12, 'Delivery gas');
-        s.car.condition = Math.max(0, s.car.condition - 1.5);
-        energy(s, -12);
-        log(s, `Delivery gig: +${money(tips)} cash, −$12 gas.`, 'good');
-        inc(s, 'gigTax', tips);
-      } else {
-        earn(s, 50);
-        energy(s, -8);
-        log(s, 'Pet-sitting: +$50. A cat judged you the whole time.', 'good');
-      }
-      inc(s, 'gigs');
+      minigame(s, 'delivery', { vehicle: s.car ? 'car' : 'bike' });
     },
   },
   {

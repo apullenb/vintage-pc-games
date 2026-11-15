@@ -12,6 +12,7 @@ import {
   billsFor,
   chapterEndWeek,
   choose,
+  finishMinigame,
   moveMoney,
   payBills,
   proceed,
@@ -30,6 +31,7 @@ import { Bar, Icon, Modal, SceneCanvas } from './common.tsx';
 import { BillsPanel, ChapterEndPanel, PaycheckPanel, Planner, ScenePanel, SummaryPanel } from './Panels.tsx';
 import type { Meta } from './save.ts';
 import { Tutorial } from './Tutorial.tsx';
+import { MiniGameHost } from './MiniGame.tsx';
 
 type ModalId = 'money' | 'handbook' | 'awards' | 'missions' | 'menu' | null;
 
@@ -109,6 +111,10 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
       <Hud g={g} onOpen={setModal} muted={meta.muted} onMute={() => setMeta({ ...meta, muted: !meta.muted })} />
       <div className="stage">
         <section className="main-col">
+          {h?.t === 'minigame' ? (
+            <MiniGameHost g={g} head={h} onFinish={(r) => commit(finishMinigame(g, r))} onContinue={() => commit(proceed(g))} />
+          ) : (
+          <>
           <div className="scene-frame">
             <SceneCanvas art={art} look={g.look} speaker={speaker} talking={talking} hidePlayer={hidePlayer} path={g.path} night={h?.t === 'summary'} />
             <div className="scene-tag">
@@ -116,6 +122,8 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
             </div>
           </div>
           <div className="panel">{panel}</div>
+          </>
+          )}
           {h?.t !== 'ending' && <MissionStrip g={g} onOpen={() => setModal('missions')} />}
         </section>
         {h?.t !== 'ending' && (

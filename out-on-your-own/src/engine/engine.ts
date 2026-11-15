@@ -3,6 +3,7 @@ import { ACTIVITIES, activityFor } from '../content/activities.ts';
 import { CHAPTERS, TASKS, chapterOf, chapterStartWeek, tasksFor } from '../content/chapters.ts';
 import { EVENTS, OFFERS, storyBeats } from '../content/events.ts';
 import { SCENES } from '../content/scenes.ts';
+import { MINIGAMES } from '../content/minigames/index.ts';
 import type { Choice, Data, Scene } from '../content/types.ts';
 import { checkAchievements } from '../content/achievements.ts';
 import {
@@ -29,7 +30,7 @@ import {
   xp,
   type Snap,
 } from './core.ts';
-import type { Bill, GameState, PayMethod, PayStub, Plan, SlotId, Step } from './types.ts';
+import type { Bill, GameState, MiniResult, PayMethod, PayStub, Plan, SlotId, Step } from './types.ts';
 import { SLOTS } from './types.ts';
 
 export const TOTAL_WEEKS = CHAPTERS.reduce((a, c) => a + c.weeks, 0);
@@ -134,7 +135,7 @@ export function chapterEndWeek(ch: number): number {
 
 // ---------- the queue ----------
 function interactive(st: Step): boolean {
-  return st.t === 'scene' || st.t === 'paycheck' || st.t === 'billsDue' || st.t === 'summary' || st.t === 'chapterEnd' || st.t === 'gameOver' || st.t === 'ending';
+  return st.t === 'scene' || st.t === 'minigame' || st.t === 'paycheck' || st.t === 'billsDue' || st.t === 'summary' || st.t === 'chapterEnd' || st.t === 'gameOver' || st.t === 'ending';
 }
 
 export function advance(s: GameState): GameState {
@@ -208,12 +209,15 @@ export function spend(s: GameState, amount: number, label: string, kind: 'small'
 
 function runFood(s: GameState): void {
   const f = FOOD[s.plan.food];
-  if (f.cost > 0) spend(s, f.cost, 'Food', 'all');
+  // The grocery run mini-game sets this week's actual grocery bill.
+  const bill = s.plan.food === 'cook' && num(s, 'groceryBill') > 0 ? num(s, 'groceryBill') : f.cost;
+  s.flags.groceryBill = 0;
+  if (bill > 0) spend(s, bill, 'Food', 'all');
   const misc = personalCost(s);
   spend(s, misc, 'Personal stuff', 'small');
   log(s, `Toiletries, laundry, and life stuff: ${money(misc)}.`);
   energy(s, f.energy);
-  log(s, `Food: ${f.name.toLowerCase()}${f.cost ? ` (${money(f.cost)})` : ''}.`, f.energy < 0 ? 'bad' : undefined);
+  log(s, `Food: ${f.name.toLowerCase()}${bill ? ` (${money(bill)})` : ''}.`, f.energy < 0 ? 'bad' : undefined);
   if (s.plan.food === 'takeout') inc(s, 'takeoutWeeks');
   if (s.plan.food === 'cook') inc(s, 'cookWeeks');
 }
@@ -716,6 +720,11 @@ export function proceed(s0: GameState): GameState {
       if (head.resultNext) s.queue.unshift({ t: 'scene', id: head.id, step: head.resultNext, data: head.data });
       break;
     }
+    case 'minigame': {
+      if (!head.result) return s;
+      s.queue.shift();
+      break;
+    }
     case 'paycheck': {
       s.queue.shift();
       if (head.offer) s.queue.unshift({ t: 'scene', id: head.offer, step: 'start' });
@@ -876,3 +885,25 @@ export function chapterInfo(s: GameState) {
 
 export { TASKS, chapterOf, missWork };
 export type { Snap };
+
+// ---------- mini-games ----------
+export const SKIP_SCORE = 0.4; // auto-play result when a player skips: playing pays off
+
+export function finishMinigame(s0: GameState, r: MiniResult): GameState {
+  const s = clone(s0);
+  const head = s.queue[0];
+  if (!head || head.t !== 'minigame' || head.result) return s;
+  const def = MINIGAMES[head.id];
+  if (!def) throw new Error(`unknown minigame ${head.id}`);
+  const score = Math.max(0, Math.min(1, Number.isFinite(r.score) ? r.score : 0));
+  const before = snap(s);
+  const d = head.data ?? {};
+  s.queue.shift();
+  const out = def.apply(s, { ...r, score }, d);
+  const deltas = diff(before, snap(s));
+  inc(s, 'minigamesPlayed', r.played ? 1 : 0);
+  const title = txt(def.title, s, d);
+  log(s, `${title}: ${out.text.split('\n')[0].slice(0, 110)}`, score >= 0.6 ? 'good' : score < 0.35 ? 'bad' : undefined);
+  s.queue.unshift({ ...head, data: d, result: { text: out.text, tip: out.tip, deltas } });
+  return advance(s);
+}

@@ -5,6 +5,8 @@ import { TASKS } from './chapters.ts';
 import { EVENTS, OFFERS } from './events.ts';
 import { HANDBOOK_BY_ID } from './handbook.ts';
 import { ALL_SCENES, SCENES } from './scenes.ts';
+import { MINIGAMES } from './minigames/index.ts';
+import { MINIGAME_UI } from '../minigames/index.ts';
 
 const sources = import.meta.glob(['../**/*.ts', '../**/*.tsx', '!../**/*.test.ts', '!../_scratch/**'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const all = Object.values(sources).join('\n');
@@ -49,5 +51,13 @@ describe('content wiring', () => {
     for (const m of all.matchAll(/unlock\(s, '([\w-]+)'\)/g)) expect(HANDBOOK_BY_ID[m[1]], `handbook ${m[1]}`).toBeTruthy();
     const ach = new Set(ACHIEVEMENTS.map((a) => a.id));
     for (const m of all.matchAll(/achieve\(s, '([\w-]+)'\)/g)) expect(ach.has(m[1]), `achievement ${m[1]}`).toBe(true);
+  });
+
+  it('every mini-game has a definition and a playable component', () => {
+    expect(Object.keys(MINIGAMES).sort()).toEqual(Object.keys(MINIGAME_UI).sort());
+    const used = [...all.matchAll(/minigame\(s, '([\w-]+)'/g)].map((m) => m[1]);
+    expect(used.length).toBeGreaterThan(5);
+    for (const id of used) expect(MINIGAMES[id], id).toBeTruthy();
+    for (const id of Object.keys(MINIGAMES)) expect(used, `${id} is reachable`).toContain(id);
   });
 });

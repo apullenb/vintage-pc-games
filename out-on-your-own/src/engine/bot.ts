@@ -4,7 +4,7 @@ import { CAREER_NEED } from '../content/chapters.ts';
 import { SCENES } from '../content/scenes.ts';
 import { newState } from '../content/paths.ts';
 import { canPay, round2 } from './core.ts';
-import { begin, choose, defaultPlan, foodOptions, moveMoney, payBills, proceed, sceneChoices, startWeek, taskStatus } from './engine.ts';
+import { begin, choose, finishMinigame, defaultPlan, foodOptions, moveMoney, payBills, proceed, sceneChoices, startWeek, taskStatus } from './engine.ts';
 import { monthlyBills } from '../content/scenes/tasks.ts';
 import type { GameState, PathId, PayMethod, Plan, SlotId } from './types.ts';
 import { SLOTS } from './types.ts';
@@ -182,6 +182,10 @@ export function playGame(path: PathId, seed: number, style: Style, maxSteps = 60
       continue;
     }
     switch (h.t) {
+      case 'minigame': {
+        s = h.result ? proceed(s) : finishMinigame(s, { score: style === 'wise' ? 0.75 : 0.35, played: true });
+        break;
+      }
       case 'scene': {
         if (h.result) {
           s = proceed(s);
