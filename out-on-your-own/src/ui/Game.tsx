@@ -1,6 +1,6 @@
 // The in-game screen: HUD, scene, interaction panel, missions sidebar, modals.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CAST } from '../art/people.ts';
+import { CAST, castFor } from '../art/people.ts';
 import { ACHIEVEMENTS } from '../content/achievements.ts';
 import { CHAPTERS } from '../content/chapters.ts';
 import { HANDBOOK, HANDBOOK_BY_ID } from '../content/handbook.ts';
@@ -112,7 +112,7 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
           <div className="scene-frame">
             <SceneCanvas art={art} look={g.look} speaker={speaker} talking={talking} hidePlayer={hidePlayer} path={g.path} night={h?.t === 'summary'} />
             <div className="scene-tag">
-              {speaker && CAST[speaker] ? <span className="speaker">{CAST[speaker].name}</span> : <span className="where">{g.housing.name}</span>}
+              {speaker && CAST[speaker] ? <span className="speaker">{castFor(speaker, g.path).name}</span> : <span className="where">{g.housing.name}</span>}
             </div>
           </div>
           <div className="panel">{panel}</div>

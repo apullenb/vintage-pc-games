@@ -117,7 +117,7 @@ function Swatches({ colors, value, onPick, label }: { colors: string[]; value: n
 
 function Create({ onBack, onStart }: { onBack: () => void; onStart: (name: string, look: Look, path: PathId) => void }) {
   const [name, setName] = useState('');
-  const [look, setLook] = useState<Look>({ skin: Math.floor(Math.random() * 6), hair: Math.floor(Math.random() * 6), hairStyle: Math.floor(Math.random() * 6), shirt: Math.floor(Math.random() * 8) });
+  const [look, setLook] = useState<Look>({ skin: Math.floor(Math.random() * 6), hair: Math.floor(Math.random() * 6), hairStyle: Math.floor(Math.random() * HAIR_STYLES.length), shirt: Math.floor(Math.random() * 8) });
   const [path, setPath] = useState<PathId | null>(null);
   const [step, setStep] = useState<1 | 2>(1);
   const person = playerPerson(look);
