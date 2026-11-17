@@ -1,0 +1,140 @@
+/* River Run: a tall river canvas with Rae's side panel on wide screens, thumb buttons on phones. */
+.mini.river-run {
+  overscroll-behavior: contain;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.river-run .mini-hud {
+  justify-content: space-between;
+}
+.rr-main {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  align-items: flex-start;
+}
+.rr-canvas-wrap {
+  line-height: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.rr-canvas-wrap .mini-canvas {
+  width: auto;
+  height: min(64vh, 600px);
+  max-width: 100%;
+  max-height: none;
+  background: #103848;
+}
+.rr-side {
+  width: 220px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rr-say {
+  position: relative;
+  background: #fffaf0;
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line);
+  padding: 4px 8px 6px;
+  min-height: 64px;
+  font-size: 21px;
+  line-height: 1.05;
+  display: flex;
+  flex-direction: column;
+  transition: background 0.15s;
+}
+.rr-say.on {
+  background: #ffe8f2;
+}
+.rr-say small {
+  font: 10px var(--font-ui);
+  color: #c04a80;
+}
+.rr-keys,
+.rr-tips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1.1;
+}
+.rr-keys li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.rr-keys b {
+  display: inline-block;
+  min-width: 46px;
+  text-align: center;
+  font: 11px var(--font-ui);
+  background: var(--panel2);
+  border: 2px solid var(--line);
+  padding: 3px 4px;
+}
+.rr-keys li + li {
+  margin-top: 4px;
+}
+.rr-tips li {
+  color: var(--muted);
+  padding-left: 12px;
+  position: relative;
+}
+.rr-tips li::before {
+  content: '~';
+  position: absolute;
+  left: 0;
+  color: #2f8b80;
+}
+.rr-tips li + li {
+  margin-top: 4px;
+}
+.rr-pad .touchpad {
+  flex-wrap: nowrap;
+}
+.rr-touch-note {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) and (min-width: 761px) {
+  .rr-pad {
+    display: none;
+  }
+}
+@media (hover: none), (pointer: coarse), (max-width: 760px) {
+  .rr-touch-note {
+    display: block;
+    font-size: 16px;
+  }
+}
+@media (max-width: 760px) {
+  .rr-side {
+    display: none;
+  }
+  .rr-canvas-wrap {
+    width: 100%;
+  }
+  .rr-canvas-wrap .mini-canvas {
+    width: 100%;
+    height: auto;
+    max-height: calc(100dvh - 380px);
+    object-fit: contain;
+  }
+  .river-run .mini-hud {
+    font-size: 18px;
+    gap: 4px 10px;
+  }
+  .rr-pad .tp-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 60px;
+    padding: 0 2px;
+    font-size: 13px;
+  }
+  .rr-pad .tp-btn:nth-child(2),
+  .rr-pad .tp-btn:nth-child(3) {
+    flex-grow: 1.5;
+  }
+}
