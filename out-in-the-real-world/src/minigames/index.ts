@@ -23,8 +23,46 @@ const LOADERS: Record<string, Loader> = {
   lawn: () => import('./Lawn.tsx').then((m) => m.Lawn),
 };
 
+// After a new version is deployed, a page that was already open asks for old chunk names that no longer
+// exist. The game is saved after every step, so reload once to pick up the new version.
+const RELOAD_KEY = 'out-in-the-real-world.chunk-reload';
+// Tells the app to go straight back into the game after that reload.
+export const RESUME_KEY = 'out-in-the-real-world.resume';
+function withReload<T>(load: () => Promise<T>): () => Promise<T> {
+  return () =>
+    load().then(
+      (v) => {
+        try {
+          sessionStorage.removeItem(RELOAD_KEY);
+        } catch {
+          // storage unavailable
+        }
+        return v;
+      },
+      (err: unknown) => {
+        let reloaded = true;
+        try {
+          reloaded = sessionStorage.getItem(RELOAD_KEY) === '1';
+          if (!reloaded) sessionStorage.setItem(RELOAD_KEY, '1');
+        } catch {
+          // storage unavailable: don't risk a reload loop
+        }
+        if (!reloaded && typeof location !== 'undefined') {
+          try {
+            sessionStorage.setItem(RESUME_KEY, '1');
+          } catch {
+            // ignore
+          }
+          location.reload();
+          return new Promise<T>(() => {}); // the page is reloading
+        }
+        throw err;
+      },
+    );
+}
+
 export const MINIGAME_UI: Record<string, ComponentType<MiniProps>> = Object.fromEntries(
-  Object.entries(LOADERS).map(([id, load]) => [id, lazy(() => load().then((C) => ({ default: C })))]),
+  Object.entries(LOADERS).map(([id, load]) => [id, lazy(() => withReload(load)().then((C) => ({ default: C })))]),
 );
 
 // Start fetching a game's chunk early (e.g. while the title card is up). Safe to call repeatedly.

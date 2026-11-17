@@ -10,6 +10,7 @@ import { setMuted, sfx } from './audio.ts';
 import { reducedMotion } from './a11y.ts';
 import { Icon, PersonCanvas, Portrait, SceneCanvas, TitleCanvas, type Expr } from './common.tsx';
 import { Game } from './Game.tsx';
+import { RESUME_KEY } from '../minigames/index.ts';
 import { loadGame, loadMeta, mergeMeta, saveGame, saveMeta, type Meta } from './save.ts';
 
 type Screen = 'title' | 'create' | 'game';
@@ -17,7 +18,18 @@ type Screen = 'title' | 'create' | 'game';
 export function App() {
   const [meta, setMetaRaw] = useState<Meta>(loadMeta);
   const [g, setGRaw] = useState<GameState | null>(loadGame);
-  const [screen, setScreen] = useState<Screen>('title');
+  const [screen, setScreen] = useState<Screen>(() => {
+    // Coming back from an automatic reload (a new version was deployed mid-game): resume play.
+    try {
+      if (sessionStorage.getItem(RESUME_KEY) === '1') {
+        sessionStorage.removeItem(RESUME_KEY);
+        if (loadGame()) return 'game';
+      }
+    } catch {
+      // storage unavailable
+    }
+    return 'title';
+  });
 
   useEffect(() => setMuted(meta.muted), [meta.muted]);
   useEffect(() => applyBigText(meta.bigText), [meta.bigText]);
