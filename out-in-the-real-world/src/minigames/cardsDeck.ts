@@ -54,6 +54,7 @@ export const HANDBOOK_CARDS: Record<string, [string, string]> = {
   repossession: ['Repossession', 'The lender takes your car after missed payments.'],
   taxes: ['Filing taxes', 'Reporting last year’s income to the IRS every spring.'],
   refund: ['Tax refund', 'Extra withholding sent back to you. Your money, not a bonus.'],
+  pests: ['Pest repairs', 'Usually the landlord\u2019s job to fix. Ask in writing.'],
   scams: ['Scam', 'A fake text about a prize or package that wants your info.'],
   'jury-duty': ['Jury duty', 'Civic duty to serve at a trial. Ignoring the summons risks a fine.'],
   raise: ['Raise', 'More pay for the same job. Ask with proof of what you’ve done.'],

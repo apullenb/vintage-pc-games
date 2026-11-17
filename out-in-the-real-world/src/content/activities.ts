@@ -86,12 +86,14 @@ const LIST: Activity[] = [
     icon: 'friends',
     slots: ['evening', 'saturday'],
     desc: 'Tacos, games, a drive to nowhere. You remember why life is fun.',
-    hint: () => '+18 energy · About $50',
+    hint: (s) => (num(s, 'friendTime') % 2 === 0 ? '+12–22 energy · About $50 · Laser tag night!' : '+18 energy · About $50'),
     run: (s) => {
       charge(s, 50, 'Night out');
-      energy(s, 18);
+      const tag = num(s, 'friendTime') % 2 === 0;
+      energy(s, tag ? 12 : 18);
       inc(s, 'friendTime');
-      log(s, 'Hung out with Rae and the crew (−$50: food, gas, a movie). Worth it.', 'good');
+      log(s, tag ? 'Laser tag and tacos with Rae and the crew (−$50).' : 'Hung out with Rae and the crew (−$50: food, gas, a movie). Worth it.', 'good');
+      if (tag) minigame(s, 'lasertag');
     },
   },
   {
@@ -147,6 +149,18 @@ const LIST: Activity[] = [
     hint: (s) => (s.car ? '+$35\u2013120 in tips (mini-game) \u00b7 \u2212$12 gas \u00b7 \u221212 energy' : '+$20\u201375 in tips (mini-game) \u00b7 \u221214 energy'),
     run: (s) => {
       minigame(s, 'delivery', { vehicle: s.car ? 'car' : 'bike' });
+    },
+  },
+  {
+    id: 'yardgig',
+    name: 'Mow lawns for neighbors',
+    icon: 'money',
+    slots: ['saturday', 'sunday'],
+    desc: 'Borrow the neighbor\u2019s mower, knock on doors, cut grass for cash.',
+    hint: () => '+$25\u201380 cash (mini-game) \u00b7 \u221212 energy',
+    hide: (s) => s.housing.kind === 'dorm',
+    run: (s) => {
+      minigame(s, 'lawn');
     },
   },
   {

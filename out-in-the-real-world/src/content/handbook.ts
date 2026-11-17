@@ -46,6 +46,7 @@ export const HANDBOOK: Entry[] = [
   { id: 'repossession', term: 'Repossession', text: 'Miss enough car payments and the lender takes the car. You still owe whatever the auction doesn’t cover.' },
   { id: 'taxes', term: 'Filing taxes', text: 'Every spring you report last year’s income to the IRS. Your W-2 shows what you earned and what was withheld. Free filing options exist: IRS Free File and VITA volunteer sites.' },
   { id: 'refund', term: 'Tax refund', text: 'Money withheld beyond what you owed, returned to you. It’s your money, not a bonus. Using it to pay off debt or build savings is a power move.' },
+  { id: 'pests', term: 'Pests & repairs', text: 'Landlords usually have to fix pests, heat, water, and safety problems. Ask in writing, keep a copy, and give them a reasonable time to fix it.' },
   { id: 'scams', term: 'Scams', text: 'Fake texts about packages, bank alerts, or prizes try to get your money or info. Never pay or log in through a link in a text. Go to the official site yourself.' },
   { id: 'jury-duty', term: 'Jury duty', text: 'A legal civic duty. You can usually postpone once. Ignoring a summons can bring a fine. Some employers pay you while you serve, some don’t.' },
   { id: 'raise', term: 'Asking for a raise', text: 'Come prepared: how long you’ve been there, what you’ve done, how reliable you are. The worst they can say is “not yet.”' },

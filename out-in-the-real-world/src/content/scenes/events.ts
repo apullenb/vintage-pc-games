@@ -1248,15 +1248,156 @@ export const EVENT_SCENES: Scene[] = [
         speaker: (s: GameState) => (s.flags.roadTripBooked ? 'rae' : 'mom'),
         choices: [
           {
-            label: '❤️',
+            label: (s) => (s.flags.roadTripBooked ? 'Rent tubes and float the river' : '❤️'),
             do: (s) => {
-              energy(s, s.flags.roadTripBooked ? 20 : 10);
+              energy(s, s.flags.roadTripBooked ? 12 : 10);
               if (s.flags.roadTripBooked) {
                 setFlag(s, 'roadTrip');
                 achieve(s, 'roadtrip');
+                minigame(s, 'river');
               }
             },
           },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-roaches',
+    title: 'Uninvited roommates',
+    art: (s) => s.housing.art,
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          num(s, 'roaches')
+            ? 'They\u2019re BACK. More of them this time. One ran across your toothbrush.'
+            : 'You flip on the kitchen light at midnight. Something brown and fast runs under the fridge. Where there\u2019s one\u2026',
+        choices: [
+          { label: 'Grab the spray and go to war', hint: '\u2713 $12 for spray \u00b7 Mini-game', pay: 12, bot: 2, do: (s) => minigame(s, 'roaches') },
+          {
+            label: 'Email the landlord (in writing)',
+            hint: '\u2713 Free, it\u2019s their job \u00b7 \u2717 Takes a couple of weeks',
+            bot: 1,
+            hide: (s) => s.housing.kind === 'parents',
+            do: (s) => {
+              energy(s, -6);
+              setFlag(s, 'roaches', 0);
+              unlock(s, 'pests');
+            },
+            result: 'Two weeks later, an exterminator shows up. Problem solved, but they were a long two weeks.',
+            tip: 'Put repair and pest requests in writing (email or text) so there\u2019s a record.',
+          },
+          {
+            label: 'Hire an exterminator: $150',
+            pay: 150,
+            hint: '\u2713 Fast and thorough \u00b7 \u2717 Expensive',
+            bot: -1,
+            do: (s) => setFlag(s, 'roaches', 0),
+            result: 'A guy in a jumpsuit sprays everything. Gone by morning.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-inbox',
+    title: '214 unread',
+    art: (s) => s.housing.art,
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Your phone is a disaster: 214 unread emails and texts. Somewhere in there is a message from your boss about next week\u2019s schedule. Also somewhere in there: scams.',
+        choices: [
+          { label: 'Clean it out', hint: '\u2713 Catch the scams \u00b7 Mini-game', bot: 3, do: (s) => minigame(s, 'phishing') },
+          {
+            label: 'Select all \u2192 delete',
+            hint: '\u2713 Fast \u00b7 \u2717 You\u2019ll miss the real stuff',
+            bot: -2,
+            do: (s) => rep(s, -3),
+            result: 'Satisfying. Until you show up for a shift that was moved to Tuesday.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-furnish',
+    title: 'An empty apartment',
+    art: 'apartment',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Your new place echoes. You own one chair, a lamp, and a box labeled \u201cmisc cables.\u201d You need a bed, a table, and somewhere to sit.',
+        choices: [
+          {
+            label: 'Hit the thrift stores and garage sales (about $150)',
+            hint: '\u2713 Cheap if you hunt well \u00b7 Mini-game',
+            bot: 3,
+            do: (s) => {
+              setFlag(s, 'needFurniture', false);
+              minigame(s, 'thrift', { budget: 150, goal: 'furniture' });
+            },
+          },
+          {
+            label: 'Buy it all new at a big-box store: $650',
+            pay: 650,
+            hint: '\u2713 Everything matches \u00b7 \u2717 Expensive',
+            bot: -2,
+            do: (s) => {
+              setFlag(s, 'needFurniture', false);
+              energy(s, 6);
+            },
+            result: 'It arrives flat-packed. You spend a whole Sunday with an Allen wrench and 400 tiny screws.',
+          },
+          {
+            label: 'Air mattress for now: $40',
+            pay: 40,
+            hint: '\u2713 Cheap \u00b7 \u2717 \u22122 energy every week (your back)',
+            bot: 0,
+            do: (s) => {
+              setFlag(s, 'needFurniture', false);
+              setFlag(s, 'airMattress');
+            },
+            result: 'It slowly deflates every night. You wake up on the floor. Every. Night.',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-float',
+    title: 'River day',
+    art: 'beach',
+    kind: 'event',
+    steps: {
+      start: {
+        text: 'Rae: \u201cMy cousin is floating the river Saturday!! Tubes are $20 to rent. It\u2019s going to be 95 degrees. COME.\u201d',
+        speaker: 'rae',
+        choices: [
+          { label: 'I\u2019m in! ($20)', pay: 20, hint: '\u2713 Big energy boost \u00b7 Mini-game', bot: (s) => (s.stats.energy < 70 ? 2 : 0), do: (s) => minigame(s, 'river') },
+          { label: 'Can\u2019t this time', bot: 0, do: (s) => energy(s, -3), result: 'You watch the photos come in all afternoon.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'off-clothes',
+    title: 'Winter is coming',
+    art: 'street',
+    kind: 'offer',
+    steps: {
+      start: {
+        text: 'It\u2019s getting cold, and your hoodie isn\u2019t cutting it. You also need a couple of work-appropriate outfits that aren\u2019t from 10th grade.',
+        choices: [
+          {
+            label: 'Thrift hunt (about $80)',
+            hint: '\u2713 Cheap if you hunt well \u00b7 Mini-game',
+            bot: 3,
+            do: (s) => minigame(s, 'thrift', { budget: 80, goal: 'clothes' }),
+          },
+          { label: 'Buy new at the mall: $220', pay: 220, hint: '\u2713 Easy \u00b7 \u2717 Pricey', bot: -1, do: (s) => energy(s, 4), result: 'New coat, new clothes, lighter wallet.' },
+          { label: 'Layer up and tough it out', hint: '\u2713 Free \u00b7 \u2717 You\u2019ll get sick more', bot: -2, do: (s) => energy(s, -8), result: 'Three shirts and a scarf. You can\u2019t feel your toes.' },
         ],
       },
     },
@@ -2320,6 +2461,10 @@ export const EVENTS = [
   { id: 'ev-gasprice', weight: (s: GameState) => (hasCar(s) ? 1 : 0), cooldown: 10 },
   { id: 'ev-subtrial', weight: 1, once: true, minWeek: 5 },
   { id: 'ev-scam', weight: 1, once: true, minWeek: 4 },
+  { id: 'ev-roaches', weight: (s: GameState) => (s.housing.kind === 'parents' ? 0.3 : num(s, 'roaches') && s.week - num(s, 'roaches') >= 3 ? 6 : 0.9), cooldown: 6, minWeek: 5 },
+  { id: 'ev-inbox', weight: 0.9, cooldown: 12, minWeek: 6 },
+  { id: 'ev-furnish', weight: (s: GameState) => (s.flags.needFurniture === true ? 40 : 0) },
+  { id: 'ev-float', weight: (s: GameState) => (s.week >= 3 && s.week <= 14 ? 1.2 : 0), once: true },
   { id: 'ev-fraudrefund', weight: (s: GameState) => (num(s, 'scammed') > 0 ? 6 : 0) },
   { id: 'ev-jury', weight: 0.6, once: true, minWeek: 10 },
   { id: 'ev-friendloan', weight: 0.8, once: true, minWeek: 6 },

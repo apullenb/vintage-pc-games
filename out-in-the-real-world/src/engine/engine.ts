@@ -261,6 +261,7 @@ function runUpkeep(s: GameState): void {
   if (s.car) s.car.condition = clamp(s.car.condition - 1.5, 0, 100);
   if (s.flags.gym) energy(s, 3);
   if (s.flags.headaches) energy(s, -2);
+  if (s.flags.airMattress) energy(s, -2);
   if (s.flags.noLaptop) energy(s, -3);
   if (s.flags.badHeal) energy(s, -1);
   if (s.subs.some((x) => x.id === 'streamflix')) energy(s, 1);

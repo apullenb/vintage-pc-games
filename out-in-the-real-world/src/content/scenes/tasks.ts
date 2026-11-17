@@ -1317,6 +1317,7 @@ function housingOption(
         unlock(s, 'lease');
         achieve(s, 'movedout');
         minigame(s, 'moving');
+        setFlag(s, 'needFurniture');
       }
       setFlag(s, 'housingDone');
     },

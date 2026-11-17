@@ -4,11 +4,17 @@ import { delivery } from './delivery.ts';
 import { flashcards } from './flashcards.ts';
 import { grocery } from './grocery.ts';
 import { haggle } from './haggle.ts';
+import { lasertag } from './lasertag.ts';
+import { lawn } from './lawn.ts';
+import { phishing } from './phishing.ts';
+import { river } from './river.ts';
+import { roaches } from './roaches.ts';
+import { thrift } from './thrift.ts';
 import { moving } from './moving.ts';
 import { roadtest } from './roadtest.ts';
 import { shift } from './shift.ts';
 import type { MiniGameDef } from './types.ts';
 
-export const MINIGAME_LIST: MiniGameDef[] = [roadtest, delivery, shift, busdash, grocery, haggle, flashcards, moving];
+export const MINIGAME_LIST: MiniGameDef[] = [roadtest, delivery, shift, busdash, grocery, haggle, flashcards, moving, lasertag, roaches, phishing, thrift, river, lawn];
 export const MINIGAMES: Record<string, MiniGameDef> = Object.fromEntries(MINIGAME_LIST.map((m) => [m.id, m]));
 export type { MiniGameDef };

@@ -932,6 +932,7 @@ export const OFFER_SCENES: Scene[] = [
 
 const OFFER_LIST = [
   { id: 'off-save', weight: 0.8 },
+  { id: 'off-clothes', weight: (s: GameState) => (s.week >= 15 && s.week <= 24 ? 2.5 : 0), once: true },
   { id: 'off-oil', weight: (s: GameState) => (s.car && s.car.condition < 85 ? 3 : 0), cooldown: 6 },
   { id: 'off-gym', weight: 0.8, once: true, minWeek: 4 },
   { id: 'off-renters', weight: (s: GameState) => (ownPlace(s) && !s.flags.rentersIns ? 2 : 0), cooldown: 10 },
