@@ -20,10 +20,10 @@ export interface FxParams {
 
 const GRADES: Record<TimeOfDay, Pick<FxParams, 'lift' | 'gain' | 'sat' | 'contrast' | 'bloom' | 'threshold'>> = {
   day: { lift: [0.0, 0.0, 0.015], gain: [1.02, 1.01, 0.99], sat: 1.14, contrast: 1.05, bloom: 0.3, threshold: 0.9 },
-  morning: { lift: [0.02, 0.01, 0.035], gain: [1.03, 1.0, 1.0], sat: 1.1, contrast: 1.03, bloom: 0.4, threshold: 0.86 },
-  golden: { lift: [0.03, 0.0, 0.03], gain: [1.07, 0.99, 0.9], sat: 1.18, contrast: 1.06, bloom: 0.5, threshold: 0.8 },
-  evening: { lift: [0.035, 0.0, 0.05], gain: [1.04, 0.95, 0.97], sat: 1.12, contrast: 1.06, bloom: 0.5, threshold: 0.74 },
-  night: { lift: [0.0, 0.01, 0.045], gain: [0.95, 0.98, 1.08], sat: 1.08, contrast: 1.08, bloom: 0.6, threshold: 0.62 },
+  morning: { lift: [0.008, 0.004, 0.02], gain: [1.03, 1.0, 1.0], sat: 1.1, contrast: 1.03, bloom: 0.4, threshold: 0.86 },
+  golden: { lift: [0.012, 0.0, 0.012], gain: [1.07, 0.99, 0.9], sat: 1.18, contrast: 1.06, bloom: 0.5, threshold: 0.8 },
+  evening: { lift: [0.015, 0.0, 0.03], gain: [1.04, 0.95, 0.97], sat: 1.12, contrast: 1.06, bloom: 0.5, threshold: 0.74 },
+  night: { lift: [0.0, 0.006, 0.03], gain: [0.95, 0.98, 1.08], sat: 1.08, contrast: 1.08, bloom: 0.6, threshold: 0.62 },
 };
 
 export function fxFor(tod: TimeOfDay, o: { fog?: number; fogColor?: string; horizon?: number; bloom?: number; night?: boolean } = {}): FxParams {
@@ -172,19 +172,33 @@ function fallback(src: HTMLCanvasElement, dst: CanvasRenderingContext2D, p: FxPa
   dst.restore();
 }
 
-let forced2D = false;
-// For testing/debug: force the 2D fallback.
-export function setPostFx2D(v: boolean): void {
-  forced2D = v;
+// 'auto' uses WebGL but drops to the 2D pass if the GL round trip proves slow on
+// this device (software GL, weak phones); 'gl' and '2d' pin a path (tests, debugging).
+export type FxMode = 'auto' | 'gl' | '2d';
+let mode: FxMode = 'auto';
+let slow = false;
+let samples = 0;
+let total = 0;
+export function setPostFxMode(m: FxMode): void {
+  mode = m;
+  slow = false;
+  samples = 0;
+  total = 0;
 }
+export function setPostFx2D(v: boolean): void {
+  setPostFxMode(v ? '2d' : 'auto');
+}
+export const postFxIsGL = (): boolean => mode !== '2d' && !(mode === 'auto' && slow) && !failed;
 
 // Render src through the post pass into dst (same size).
 export function postFx(src: HTMLCanvasElement, dst: CanvasRenderingContext2D, p: FxParams): void {
-  const g = forced2D ? null : initGL();
+  const use2D = mode === '2d' || (mode === 'auto' && slow);
+  const g = use2D ? null : initGL();
   if (!g) {
     fallback(src, dst, p);
     return;
   }
+  const t0 = performance.now();
   const { gl, u, c } = g;
   if (c.width !== src.width || c.height !== src.height) {
     c.width = src.width;
@@ -220,4 +234,9 @@ export function postFx(src: HTMLCanvasElement, dst: CanvasRenderingContext2D, p:
   dst.globalCompositeOperation = 'copy';
   dst.drawImage(c, 0, 0, dst.canvas.width, dst.canvas.height);
   dst.restore();
+  if (mode === 'auto' && samples < 40) {
+    // skip the first frames (shader compile, texture allocation)
+    if (++samples > 8) total += performance.now() - t0;
+    if (samples === 40 && total / 32 > 14) slow = true;
+  }
 }

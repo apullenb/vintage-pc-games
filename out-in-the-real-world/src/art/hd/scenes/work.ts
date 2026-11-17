@@ -305,7 +305,7 @@ function jobsite(): HDSpec {
     npc: 120,
     floor: 98,
     horizon: 64,
-    fog: 0.12,
+    fog: 0.07,
     fogColor: '#dcecf8',
     bg: (x) => {
       skyHD(x, 0, 66, ['#4a9ce4', '#7cbcf0', '#bfe0f8', '#e8f4fa']);
@@ -327,7 +327,7 @@ function jobsite(): HDSpec {
         const h = 6 + hash(i + 3) * 7;
         ell(x, i + 3, 62 - h / 2, h * 0.7, h * 0.65, rgrad(x, i + 1, 58 - h, h * 1.2, [[0, '#9ac0b0'], [1, '#6a9a8a']]));
       }
-      box(x, 0, 60, W, 6, '#6a9a8a');
+      box(x, 0, 60, W, 18, vgrad(x, 60, 78, ['#6a9a8a', '#7a9a6a', '#8a8a5a']));
       // crane lattice tower + jib
       x.strokeStyle = '#e0a020';
       x.lineWidth = 0.45;

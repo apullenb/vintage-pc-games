@@ -229,12 +229,16 @@ export interface StageState {
 }
 
 // The leads read a touch larger than the old 30px sprites, for chunky presence.
-const PEOPLE_SCALE = 1.1;
+const PEOPLE_SCALE = 1.16;
 const ease = (k: number): number => 1 - (1 - k) * (1 - k);
 
 // Draws the full scene into x (an HD canvas context, any transform) and returns the post-fx params.
 export function renderStage(x: CanvasRenderingContext2D, s: StageState, t: number): FxParams {
   const def = stageDef(s.art, { night: s.night, path: s.path });
+  x.setTransform(1, 0, 0, 1, 0, 0);
+  x.globalCompositeOperation = 'source-over';
+  x.fillStyle = '#0b0814';
+  x.fillRect(0, 0, x.canvas.width, x.canvas.height);
   x.setTransform(S, 0, 0, S, 0, 0);
   x.imageSmoothingEnabled = true;
   x.globalCompositeOperation = 'source-over';

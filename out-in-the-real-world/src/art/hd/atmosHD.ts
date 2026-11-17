@@ -12,9 +12,9 @@ interface Tint {
 }
 const TINTS: Record<TimeOfDay, Tint | null> = {
   day: null,
-  morning: { top: '#f4e4ff', bottom: '#fff2e2', glow: 'rgba(255,214,150,0.10)' },
-  golden: { top: '#ffc48c', bottom: '#ffe2bc', glow: 'rgba(255,170,80,0.16)' },
-  evening: { top: '#e2909a', bottom: '#d6a2c0', glow: 'rgba(255,130,90,0.10)' },
+  morning: { top: '#f4e4ff', bottom: '#fff2e2', glow: 'rgba(255,214,150,0.06)' },
+  golden: { top: '#ffc48c', bottom: '#ffe2bc', glow: 'rgba(255,170,80,0.08)' },
+  evening: { top: '#e2909a', bottom: '#d6a2c0', glow: 'rgba(255,130,90,0.06)' },
   night: { top: '#5656a0', bottom: '#7a70b4' },
 };
 const OVERCAST: Tint = { top: '#a2acc8', bottom: '#c6cadc' };
@@ -44,8 +44,8 @@ function sunbeam(x: Ctx, t: number, win: [number, number, number, number], floor
   x.save();
   x.globalCompositeOperation = 'screen';
   const g = x.createLinearGradient(0, wy, 0, by);
-  g.addColorStop(0, rgba(warm, 0.34));
-  g.addColorStop(0.55, rgba(warm, 0.16));
+  g.addColorStop(0, rgba(warm, 0.26));
+  g.addColorStop(0.55, rgba(warm, 0.12));
   g.addColorStop(1, rgba(warm, 0));
   for (const [k, w] of [
     [0, 1.15],
