@@ -1,12 +1,15 @@
 // Shared UI bits: pixel scene canvas, portraits, icons, tickers, delta chips, typewriter text.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { atmosAir, atmosGround, isHome, type TimeOfDay, type Weather } from '../art/atmos.ts';
+import { isHome, type TimeOfDay, type Weather } from '../art/atmos.ts';
 import { ICON_COLORS, ICON_GRID, iconPaths } from '../art/icons.ts';
-import { CAST, castFor, drawPerson, playerPerson, type Outfit, type Person } from '../art/people.ts';
-import { personKey, PH, portraitBackdrop, portraitCanvas, PW, type Expr } from '../art/portraits.ts';
-import { H, hash, W } from '../art/px.ts';
-import { sceneDef } from '../art/scenes.ts';
-import { paintTitle } from '../art/title.ts';
+import { CAST, type Outfit, type Person } from '../art/people.ts';
+import { drawPersonHD } from '../art/hd/person.ts';
+import { postFx } from '../art/hd/postfx.ts';
+import { renderStage, STAGE_H, STAGE_W } from '../art/hd/stage.ts';
+import { personKey, type Expr } from '../art/portraits.ts';
+import { PHD, portraitHDBackdrop, portraitHDCanvas } from '../art/hd/portraitHD.ts';
+import { hash } from '../art/px.ts';
+import { paintTitleHD } from '../art/hd/titleHD.ts';
 import { money } from '../engine/core.ts';
 import type { ArtId, Deltas, Look, NpcId, PathId } from '../engine/types.ts';
 import { reducedMotion } from './a11y.ts';
@@ -17,6 +20,7 @@ export type { TimeOfDay, Weather } from '../art/atmos.ts';
 export type { Expr } from '../art/portraits.ts';
 
 // ---------- scene canvas ----------
+const SCENE_FPS = 12;
 // path picks per-path NPC looks (the boss); night tints home scenes for evening.
 // tod/weather add time-of-day light and weather; outfit dresses the player.
 // When the location (or the speaker) changes, people walk in from the edges.
@@ -53,7 +57,12 @@ export function SceneCanvas({
     if (!c) return;
     const x = c.getContext('2d');
     if (!x) return;
-    x.imageSmoothingEnabled = false;
+    // The scene is composed off-screen, then run through the post pass onto the visible canvas.
+    const work = document.createElement('canvas');
+    work.width = STAGE_W;
+    work.height = STAGE_H;
+    const wx = work.getContext('2d');
+    if (!wx) return;
     const still = reducedMotion();
     let raf = 0;
     let lastFrame = -1;
@@ -61,13 +70,16 @@ export function SceneCanvas({
     let artT = 0;
     let curNpc: NpcId | null = null;
     let npcT = 0;
+    let visible = true;
+    const io = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver((es) => (visible = es.some((e) => e.isIntersecting))) : null;
+    io?.observe(c);
     const t0 = performance.now();
-    const ease = (k: number): number => 1 - (1 - k) * (1 - k);
     const loop = (now: number): void => {
       raf = requestAnimationFrame(loop);
       const t = (now - t0) / 1000;
-      const frame = Math.floor(t * 10);
-      if (frame === lastFrame) return; // 10 fps, like the old days
+      const frame = Math.floor(t * SCENE_FPS);
+      if (frame === lastFrame) return;
+      if (!visible && lastFrame >= 0) return; // off-screen: skip work
       lastFrame = frame;
       const p = props.current;
       const sp = p.speaker && CAST[p.speaker] ? p.speaker : null;
@@ -80,75 +92,73 @@ export function SceneCanvas({
         curNpc = sp;
         npcT = t;
       }
-      const homeNight = !!p.night || (p.tod === 'night' && isHome(p.art));
-      const def = sceneDef(p.art, { night: homeNight, path: p.path });
-      x.clearRect(0, 0, W, H);
-      def.paint(x, t);
-      const atm = { art: p.art, tod: p.tod ?? 'day', weather: p.weather ?? null, floor: def.floor, night: homeNight };
-      atmosGround(x, atm);
-      const top = def.floor - 30;
-      const npc = sp ? castFor(sp, p.path).p : null;
       const walkIn = !still && p.enter !== false;
-      const kP = walkIn ? Math.min(1, (t - artT) / 0.8) : 1;
-      const kN = walkIn ? Math.min(1, (t - npcT) / 0.8) : 1;
-      const step = Math.floor(t * 10) % 4;
-      if (!p.hidePlayer) {
-        const px = def.player - 7 - (1 - ease(kP)) * (def.player + 12);
-        drawPerson(x, playerPerson(p.look, p.outfit), px, top, kP < 1 ? 0 : Math.floor(t * 1.5) % 2, false, {
-          blink: frame % 37 === 0,
-          face: kP < 1 || npc ? 1 : 0,
-          walk: kP < 1 ? step : undefined,
-        });
-      }
-      if (npc) {
-        const nx = def.npc - 7 + (1 - ease(kN)) * (W - def.npc + 14);
-        const speaking = !!p.talking && kN >= 1;
-        const talk = speaking && Math.floor(t * 6) % 2 === 0;
-        const gesture = speaking ? [0, 1, 1, 0, 2, 2, 0, 0][Math.floor(t * 1.6) % 8] : 0;
-        drawPerson(x, npc, nx, top, kN < 1 ? 0 : Math.floor(t * 1.5 + 1) % 2, talk, {
-          blink: frame % 43 === 20,
-          face: -1,
-          walk: kN < 1 ? (step + 2) % 4 : undefined,
-          gesture,
-        });
-      }
-      def.extras?.(x, t);
-      atmosAir(x, still ? 0 : t, atm);
+      const fx = renderStage(
+        wx,
+        {
+          art: p.art,
+          look: p.look,
+          speaker: sp,
+          talking: !!p.talking,
+          hidePlayer: !!p.hidePlayer,
+          path: p.path ?? null,
+          night: !!p.night || (p.tod === 'night' && isHome(p.art)),
+          tod: p.tod ?? 'day',
+          weather: p.weather ?? null,
+          outfit: p.outfit,
+          kP: walkIn ? Math.min(1, (t - artT) / 0.9) : 1,
+          kN: walkIn ? Math.min(1, (t - npcT) / 0.9) : 1,
+          still,
+        },
+        t,
+      );
+      postFx(work, x, fx);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      io?.disconnect();
+    };
   }, []);
-  return <canvas ref={ref} className="scene-canvas" width={W} height={H} aria-hidden="true" />;
+  return <canvas ref={ref} className="scene-canvas hd" width={STAGE_W} height={STAGE_H} aria-hidden="true" />;
 }
 
 // A small standalone character render (character creator, portraits).
 export function PersonCanvas({ person, scale = 4, talk = false }: { person: Person; scale?: number; talk?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  // Rendered at twice the display size so the smooth shapes stay crisp on dense screens.
+  const k = scale * 2;
   useEffect(() => {
     const c = ref.current;
     const x = c?.getContext('2d');
     if (!c || !x) return;
-    x.imageSmoothingEnabled = false;
+    const still = reducedMotion();
     let raf = 0;
     let last = -1;
     const t0 = performance.now();
     const loop = (now: number): void => {
       raf = requestAnimationFrame(loop);
-      const f = Math.floor(((now - t0) / 1000) * 1.5) % 2;
-      const k = f * 2 + (talk && Math.floor((now - t0) / 160) % 2 ? 1 : 0);
-      if (k === last) return;
-      last = k;
+      const t = (now - t0) / 1000;
+      const f = Math.floor(t * 12);
+      if (f === last) return;
+      last = f;
+      x.setTransform(1, 0, 0, 1, 0, 0);
       x.clearRect(0, 0, c.width, c.height);
-      drawPerson(x, person, 2, 4, f, talk && k % 2 === 1);
+      x.setTransform(k, 0, 0, k, 0, 0);
+      drawPersonHD(x, person, 9, 35, {
+        t: still ? 0 : t,
+        talk: talk && Math.floor(t * 6) % 2 === 1,
+        blink: !still && t % 3.4 < 0.12,
+      });
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [person, talk]);
-  return <canvas ref={ref} className="person-canvas" width={18} height={36} style={{ width: 18 * scale, height: 36 * scale }} aria-hidden="true" />;
+  }, [person, talk, k]);
+  return <canvas ref={ref} className="person-canvas hd" width={18 * k} height={36 * k} style={{ width: 18 * scale, height: 36 * scale }} aria-hidden="true" />;
 }
 
 // ---------- portraits ----------
-// A shaded 48x48 bust that blinks, breathes, and moves its mouth while talking.
+// A smooth-shaded HD bust that blinks, breathes, and moves its mouth while talking.
 export function Portrait({
   person,
   expr = 'neutral',
@@ -194,8 +204,8 @@ export function Portrait({
       const sig = `${p.key}|${p.expr}|${mouth}|${blink}|${bob}|${p.look}|${p.bg}`;
       if (sig === last) return;
       last = sig;
-      x.drawImage(portraitBackdrop(p.bg ?? '#8aa8d0', p.key.length), 0, 0);
-      x.drawImage(portraitCanvas(p.person, { expr: p.expr, mouth, blink, look: p.look }, p.key), 0, bob);
+      x.drawImage(portraitHDBackdrop(p.bg ?? '#8aa8d0', p.key.length), 0, 0);
+      x.drawImage(portraitHDCanvas(p.person, { expr: p.expr, mouth, blink, look: p.look }, p.key), 0, bob * 2);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
@@ -203,7 +213,7 @@ export function Portrait({
   return (
     <figure className={`portrait ${side} ${talking ? 'is-talking' : ''} ${className}`}>
       <span className="portrait-frame">
-        <canvas ref={ref} width={PW} height={PH} aria-hidden="true" />
+        <canvas ref={ref} className="hd" width={PHD} height={PHD} aria-hidden="true" />
       </span>
       {name && <figcaption className="nameplate">{name}</figcaption>}
     </figure>
@@ -219,7 +229,11 @@ export function TitleCanvas({ look }: { look: Look }) {
     const c = ref.current;
     const x = c?.getContext('2d');
     if (!c || !x) return;
-    x.imageSmoothingEnabled = false;
+    const work = document.createElement('canvas');
+    work.width = STAGE_W;
+    work.height = STAGE_H;
+    const wx = work.getContext('2d');
+    if (!wx) return;
     const still = reducedMotion();
     let raf = 0;
     let last = -1;
@@ -227,15 +241,15 @@ export function TitleCanvas({ look }: { look: Look }) {
     const loop = (now: number): void => {
       raf = requestAnimationFrame(loop);
       const t = (now - t0) / 1000;
-      const f = Math.floor(t * 10);
+      const f = Math.floor(t * SCENE_FPS);
       if (f === last) return;
       last = f;
-      paintTitle(x, t, lookRef.current, still);
+      postFx(work, x, paintTitleHD(wx, t, lookRef.current, still));
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
-  return <canvas ref={ref} className="scene-canvas title-canvas" width={W} height={H} aria-hidden="true" />;
+  return <canvas ref={ref} className="scene-canvas title-canvas hd" width={STAGE_W} height={STAGE_H} aria-hidden="true" />;
 }
 
 // ---------- icons (crisp 12x12 pixel art) ----------
