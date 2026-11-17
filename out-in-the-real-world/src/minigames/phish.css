@@ -1,0 +1,62 @@
+/* Phishing Invaders: a tall phone-shaped canvas, thumb buttons on touch screens. Scoped under .ph-mini. */
+.ph-mini {
+  gap: 6px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: contain;
+}
+.ph-canvas {
+  width: min(100%, calc(64vh * var(--ar, 0.75)));
+  width: min(100%, calc(64dvh * var(--ar, 0.75)));
+  align-self: center;
+  line-height: 0;
+  padding: 6px 6px 10px;
+  background: linear-gradient(#2a2238, #1c1424);
+  border-radius: 22px;
+  box-shadow:
+    0 0 0 3px var(--line),
+    inset 0 0 0 2px #4a3e5e,
+    0 6px 0 3px var(--line);
+}
+.ph-canvas .mini-canvas {
+  max-height: none;
+  border-radius: 12px;
+  border-width: 2px;
+}
+.ph-mini .mini-hud {
+  gap: 4px 14px;
+  justify-content: center;
+}
+.ph-pad .touchpad {
+  flex-wrap: nowrap;
+}
+.ph-pad .tp-btn {
+  flex: 1 1 0;
+  min-height: 60px;
+  font-size: 20px;
+}
+.ph-pad .tp-btn.wide {
+  flex-grow: 2;
+  background: var(--gold);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ph-pad {
+    display: none;
+  }
+}
+@media (pointer: coarse), (hover: none) {
+  .ph-keys {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .ph-mini .mini-hud {
+    font-size: 19px;
+    gap: 2px 10px;
+  }
+  .ph-canvas {
+    width: min(100%, calc(56dvh * var(--ar, 0.75)));
+  }
+}
