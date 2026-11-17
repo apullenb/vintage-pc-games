@@ -391,3 +391,155 @@
     font-size: 26px;
   }
 }
+
+/* ---------- Delivery Rush extras ---------- */
+.dlv .drive-order {
+  font: inherit;
+  font-size: 18px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+.dlv .drive-order span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.dlv .drive-order em {
+  font-style: normal;
+  font-size: 15px;
+  color: var(--ink2);
+}
+.dlv .drive-order em:first-child {
+  font: 9px var(--font-ui);
+  color: var(--muted);
+}
+.dlv .drive-order.focus {
+  outline: 3px solid #f2b632;
+  outline-offset: -1px;
+  box-shadow: 0 3px 0 var(--line);
+}
+.dlv .drive-order .heat {
+  grid-column: 1 / -1;
+  height: 4px;
+  background: #cfe0f0;
+}
+.dlv .drive-order .heat > div {
+  height: 100%;
+  background: linear-gradient(90deg, #ff8a1e, #ff3a2a);
+}
+.dlv-boost {
+  min-width: 64px;
+}
+.dlv-boost em {
+  font-style: normal;
+  letter-spacing: 1px;
+}
+.dlv-stam {
+  display: block;
+  width: 64px;
+  height: 12px;
+  margin-top: 4px;
+  border: 2px solid var(--line);
+  background: #ddd3bb;
+}
+.dlv-stam b {
+  display: block;
+  height: 100%;
+  background: #4ab0e0;
+}
+.drive-pad .grp.slow {
+  flex-direction: column;
+}
+.drive-pad .grp.slow .drive-btn {
+  min-height: 50px;
+}
+.drive-btn.boost {
+  background: #ffe7a8;
+}
+.dlv-end {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  transform: translateY(-50%);
+  max-height: 96%;
+  background: #fffaf0;
+  border: 3px solid var(--line);
+  box-shadow: 0 5px 0 var(--line);
+  padding: 8px 12px;
+  line-height: 1.1;
+  font-size: 19px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: auto;
+}
+.dlv-end h4 {
+  margin: 0;
+  font: 16px var(--font-title);
+}
+.dlv-end p {
+  margin: 0;
+}
+.dlv-end .dlv-stars {
+  font-size: 30px;
+  color: #e0a020;
+  text-shadow: 2px 2px 0 var(--line);
+}
+.dlv-end .dlv-stars small {
+  font-size: 18px;
+  color: var(--ink2);
+  text-shadow: none;
+}
+.dlv-end .warn {
+  color: var(--bad);
+}
+.dlv-end blockquote {
+  margin: 2px 0;
+  padding: 4px 8px;
+  background: #fff3c4;
+  border-left: 4px solid #f2b632;
+  font-style: italic;
+}
+.dlv-end .btn {
+  align-self: center;
+  margin-top: 2px;
+}
+@media (max-width: 760px) {
+  .dlv .drive-orders {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .dlv .drive-order {
+    font-size: 16px;
+    padding: 1px 4px;
+    grid-template-columns: 10px 1fr auto;
+    gap: 4px;
+  }
+  .dlv .drive-order i {
+    width: 8px;
+    height: 8px;
+  }
+  .dlv .drive-order em {
+    font-size: 12px;
+  }
+  .dlv .drive-bubble {
+    min-height: 0;
+    font-size: 16px;
+  }
+  .dlv .drive-side {
+    gap: 4px;
+  }
+  .dlv-end {
+    left: 2%;
+    right: 2%;
+    font-size: 16px;
+    padding: 6px 8px;
+  }
+  .dlv-end .dlv-stars {
+    font-size: 22px;
+  }
+}
