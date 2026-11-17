@@ -1,0 +1,363 @@
+/* Laser Tag + Roach Patrol: arcade HUD strip, canvas sizing, thumb sticks, results card. Scoped under .tag-game. */
+.mini.tag-game {
+  gap: 6px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: contain;
+  -webkit-tap-highlight-color: transparent;
+}
+.tag-wrap {
+  position: relative;
+  line-height: 0;
+  display: flex;
+  justify-content: center;
+}
+.tag-game .tag-canvas {
+  width: min(100%, calc(60vh * 16 / 9));
+  max-height: none;
+  cursor: none;
+  background: #07040e;
+  box-shadow: 0 0 0 1px #3a2a5a inset;
+}
+.tag-game.kitchen .tag-canvas {
+  cursor: crosshair;
+}
+
+/* ---------- HUD strip ---------- */
+.tag-hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 4px;
+  background: #120c22;
+  border: 3px solid var(--line);
+  box-shadow: inset 0 0 0 1px #3b2c66;
+  padding: 4px;
+  color: #f4eedd;
+}
+.tag-cell {
+  flex: 1 1 0;
+  min-width: 58px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2px 6px 3px;
+  background: linear-gradient(#21183c, #181030);
+  border: 1px solid #3b2c66;
+  line-height: 1;
+}
+.tag-cell.wide {
+  flex-grow: 1.6;
+}
+.tag-cell small {
+  font: 9px var(--font-ui);
+  letter-spacing: 0.5px;
+  color: #a898c8;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+.tag-cell b {
+  font: 22px var(--font-body);
+  font-weight: normal;
+  color: #fff3c4;
+  white-space: nowrap;
+  text-shadow: 0 0 6px rgba(255, 228, 120, 0.45);
+}
+.tag-cell.good b {
+  color: #9cff9c;
+  text-shadow: 0 0 6px rgba(124, 240, 138, 0.6);
+}
+.tag-cell.hot b {
+  color: #ff9ae8;
+  text-shadow: 0 0 6px rgba(255, 79, 216, 0.6);
+}
+.tag-cell.cool b {
+  color: #9ae8ff;
+  text-shadow: 0 0 6px rgba(79, 216, 255, 0.6);
+}
+.tag-cell.warn b {
+  color: #ff8a6a;
+  text-shadow: 0 0 6px rgba(255, 90, 60, 0.8);
+  animation: tag-blink 0.5s steps(2) infinite;
+}
+@keyframes tag-blink {
+  50% {
+    opacity: 0.55;
+  }
+}
+.tag-meter {
+  display: block;
+  height: 5px;
+  margin-top: 3px;
+  background: #0a0614;
+  border: 1px solid #3b2c66;
+}
+.tag-meter > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #7cf08a, #c8ff6a);
+  box-shadow: 0 0 6px #7cf08a;
+  transition: width 0.08s linear;
+}
+.tag-cell.warn .tag-meter > i {
+  background: linear-gradient(90deg, #ff5a3a, #ffb04a);
+  box-shadow: 0 0 6px #ff5a3a;
+}
+.tag-chips {
+  flex-basis: 100%;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.tag-chips:empty {
+  display: none;
+}
+.tag-chip {
+  font: 10px var(--font-ui);
+  border: 1px solid;
+  padding: 2px 6px;
+  background: #0a0614;
+  line-height: 1.2;
+}
+
+/* ---------- touch controls ---------- */
+.tag-pad {
+  display: none;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  touch-action: none;
+}
+.tag-pad .mid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  flex: 1;
+}
+.tag-stick {
+  position: relative;
+  width: 124px;
+  height: 124px;
+  flex: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, #2a1f4a 0 55%, #1a1230 56%);
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line), inset 0 0 0 2px #4a3a7a;
+  touch-action: none;
+}
+.tag-stick.aim {
+  background: radial-gradient(circle, #4a1f3a 0 55%, #2a1226 56%);
+  box-shadow: 0 4px 0 var(--line), inset 0 0 0 2px #8a3a6a;
+}
+.tag-stick.on {
+  box-shadow: 0 2px 0 var(--line), inset 0 0 0 2px #7cf0ff, 0 0 14px rgba(124, 240, 255, 0.45);
+}
+.tag-stick.aim.on {
+  box-shadow: 0 2px 0 var(--line), inset 0 0 0 2px #ff6ad8, 0 0 14px rgba(255, 106, 216, 0.5);
+}
+.tag-stick-ring {
+  position: absolute;
+  inset: 22%;
+  border-radius: 50%;
+  border: 2px dashed rgba(200, 180, 255, 0.35);
+}
+.tag-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff8e0, #cfc0ff 40%, #6a58b0 75%);
+  border: 3px solid var(--line);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.tag-stick.aim .tag-knob {
+  background: radial-gradient(circle at 35% 30%, #fff0f8, #ff9ae0 40%, #b0387a 75%);
+}
+.tag-stick-label {
+  position: absolute;
+  left: -10px;
+  right: -10px;
+  top: -13px;
+  text-align: center;
+  font: 9px var(--font-ui);
+  color: var(--ink2);
+  line-height: 1;
+  pointer-events: none;
+}
+.tag-btn {
+  min-width: 84px;
+  min-height: 56px;
+  font: 16px var(--font-ui);
+  background: #ffe27a;
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line);
+  touch-action: none;
+}
+.tag-btn.ready {
+  background: #7cf08a;
+  animation: tag-pulse 0.6s ease-in-out infinite alternate;
+}
+.tag-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--line);
+}
+@keyframes tag-pulse {
+  to {
+    box-shadow: 0 4px 0 var(--line), 0 0 16px #7cf08a;
+  }
+}
+.tag-keys {
+  font-size: 17px;
+  color: var(--muted);
+  margin: 0;
+  text-align: center;
+  line-height: 1.15;
+}
+.tag-keys b {
+  color: var(--ink);
+  font-weight: normal;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  padding: 0 4px;
+}
+.tag-touch-note {
+  display: none;
+}
+@media (hover: none) and (pointer: coarse) {
+  .tag-pad {
+    display: flex;
+  }
+  .tag-keys {
+    display: none;
+  }
+  .tag-touch-note {
+    display: block;
+  }
+}
+@media (max-width: 560px) {
+  .tag-cell {
+    min-width: 0;
+    padding: 2px 4px 3px;
+  }
+  .tag-cell small {
+    font-size: 8px;
+  }
+  .tag-cell b {
+    font-size: 19px;
+  }
+  .tag-game .tag-canvas {
+    width: 100%;
+  }
+  .tag-stick {
+    width: 112px;
+    height: 112px;
+  }
+}
+
+/* ---------- results card ---------- */
+.tag-board {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 4, 18, 0.55);
+  line-height: 1.2;
+  padding: 6px;
+  z-index: 2;
+  animation: tag-in 0.25s ease-out;
+}
+@keyframes tag-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.tag-board-inner {
+  background: #140e26;
+  border: 3px solid #1c1424;
+  box-shadow: 0 0 0 2px #7cf0ff, 0 0 24px rgba(124, 240, 255, 0.35);
+  color: #f4eedd;
+  padding: 8px 12px 10px;
+  max-width: 460px;
+  width: 100%;
+  max-height: 100%;
+  overflow: auto;
+}
+.tag-game.kitchen .tag-board-inner {
+  box-shadow: 0 0 0 2px #ffd84f, 0 0 24px rgba(255, 216, 79, 0.3);
+}
+.tag-board h4 {
+  margin: 0;
+  font: 14px var(--font-title);
+  color: #ffe27a;
+  text-align: center;
+  text-shadow: 0 2px 0 #000;
+}
+.tag-board-sub {
+  margin: 2px 0 6px;
+  text-align: center;
+  font-size: 18px;
+  color: #c8b8f0;
+}
+.tag-board table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 20px;
+}
+.tag-board th {
+  font: 9px var(--font-ui);
+  color: #a898c8;
+  text-align: right;
+  padding: 0 4px 2px;
+}
+.tag-board td {
+  text-align: right;
+  padding: 1px 4px;
+  border-top: 1px solid #2a2048;
+}
+.tag-board .nm {
+  text-align: left;
+  width: 100%;
+}
+.tag-board tr.me td {
+  background: rgba(124, 240, 138, 0.14);
+  color: #b8ffb0;
+}
+.tag-board .sw {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 1px solid #000;
+  vertical-align: 0;
+}
+.tag-board .tag-continue {
+  display: block;
+  margin: 8px auto 0;
+}
+.tag-board .tag-foot {
+  margin: 6px 0 0;
+  text-align: center;
+  font-size: 18px;
+  color: #fff3c4;
+}
+@media (max-width: 560px) {
+  .tag-board {
+    position: fixed;
+    z-index: 50;
+  }
+  .tag-board h4 {
+    font-size: 12px;
+  }
+  .tag-board table {
+    font-size: 18px;
+  }
+}
