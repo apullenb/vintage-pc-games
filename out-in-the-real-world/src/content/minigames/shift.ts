@@ -1,6 +1,25 @@
 // Extra shift: a fast sorting game skinned for each job (cashier, library, job site, warehouse).
 import { earn, rep } from '../../engine/core.ts';
+import type { GameState } from '../../engine/types.ts';
 import type { MiniGameDef } from './types.ts';
+
+export type ShiftKind = 'home' | 'college' | 'trade' | 'work';
+
+// Which version of Shift Rush to play: follows the job you actually have, not the path you started on.
+export function shiftKind(s: GameState): ShiftKind {
+  switch (s.job?.art) {
+    case 'grocery':
+      return 'home';
+    case 'library':
+      return 'college';
+    case 'jobsite':
+      return 'trade';
+    case 'warehouse':
+      return 'work';
+    default:
+      return s.path;
+  }
+}
 
 const TITLE: Record<string, string> = { home: 'Checkout Rush', college: 'Book Return Rush', trade: 'Wire It Up', work: 'Package Sort' };
 
@@ -22,20 +41,20 @@ const TIP: Record<string, string> = {
 
 export const shift: MiniGameDef = {
   id: 'shift',
-  title: (s) => TITLE[s.path] ?? 'Shift Rush',
-  how: (s) => HOW[s.path] ?? HOW.work,
+  title: (s) => TITLE[shiftKind(s)] ?? 'Shift Rush',
+  how: (s) => HOW[shiftKind(s)] ?? HOW.work,
   stakes: 'A great shift impresses your boss (and sometimes earns a bonus). A sloppy one gets noticed too.',
-  art: (s) => ({ home: 'grocery', college: 'library', trade: 'jobsite', work: 'warehouse' } as const)[s.path],
+  art: (s) => ({ home: 'grocery', college: 'library', trade: 'jobsite', work: 'warehouse' } as const)[shiftKind(s)],
   apply: (s, r) => {
     const delta = r.score >= 0.85 ? 4 : r.score >= 0.6 ? 2 : r.score >= 0.35 ? 0 : -3;
     rep(s, delta);
     let bonus = 0;
-    if (r.score >= 0.9 && s.path === 'work') {
+    if (r.score >= 0.9 && shiftKind(s) === 'work') {
       bonus = 25;
       earn(s, bonus);
     }
     const n = r.played ? r.stats?.sorted : undefined;
-    const tally = n !== undefined ? ` (${n} ${DID[s.path] ?? 'done'}.)` : '';
+    const tally = n !== undefined ? ` (${n} ${DID[shiftKind(s)] ?? 'done'}.)` : '';
     const zapped = r.played && (r.stats?.zaps ?? 0) > 0;
     return {
       text:
@@ -46,7 +65,7 @@ export const shift: MiniGameDef = {
             : r.score >= 0.35
               ? 'You survived. Barely.'
               : 'That was chaos. Your boss is not impressed.') + tally,
-      tip: zapped ? TIP.trade : r.played && r.score < 0.6 ? TIP[s.path] : undefined,
+      tip: zapped ? TIP.trade : r.played && r.score < 0.6 ? TIP[shiftKind(s)] : undefined,
     };
   },
 };

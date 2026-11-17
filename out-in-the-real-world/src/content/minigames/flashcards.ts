@@ -7,7 +7,7 @@ export const flashcards: MiniGameDef = {
   title: 'Flashcard Cram',
   how: 'A meaning appears at the top and three term cards fall toward the DEADLINE. Move under the matching term and zap it with your highlighter before it lands: ◀ ▶ (or A/D) to move and SPACE to zap, or just tap the card. First-try hits build a combo. Cards fall faster and shuffle as you go.',
   stakes: 'Better studying means more career progress toward your big milestone. Terms from your Adulting Handbook show up, plus a few new ones.',
-  art: 'library',
+  art: (s) => (s.path === 'college' ? 'library' : s.housing.art),
   apply: (s, r) => {
     const base = s.path === 'home' && !s.flags.certEnrolled ? 3 : 4;
     const gain = Math.round(base + r.score * 5);

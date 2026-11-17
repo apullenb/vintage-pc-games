@@ -15,6 +15,7 @@ import { libraryMode } from './shiftLibrary.ts';
 import { warehouseMode } from './shiftWarehouse.ts';
 import { wiresMode } from './shiftWires.ts';
 import './shift.css';
+import { shiftKind } from '../content/minigames/shift.ts';
 
 const MODES: Record<PathId, (e: ModeEnv) => ShiftMode> = {
   home: checkoutMode,
@@ -45,7 +46,7 @@ export function Shift({ s, onDone, reducedMotion }: MiniProps) {
   if (!run.current) {
     const fx = new Fx(reducedMotion);
     const level = Math.max(0, Math.min(4, num(s, 'extraShifts') - 1));
-    const mode = (MODES[s.path] ?? warehouseMode)({ fx, level, look: s.look, rm: reducedMotion });
+    const mode = (MODES[shiftKind(s)] ?? warehouseMode)({ fx, level, look: s.look, rm: reducedMotion });
     run.current = { fx, mode, left: mode.duration, phase: 'count', endT: 0, lastLabel: null, lastSec: 99, res: null, sent: false };
   }
   const r = run.current;
