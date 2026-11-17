@@ -6,7 +6,7 @@ import { cached, disc, dither, dot, glow, grad, hash, INK, mix, rect, shade, sti
 import { drawPerson, playerPerson } from '../art/people.ts';
 import { buildRounds, type Card, type Round } from './cardsDeck.ts';
 import { bigText, burst, drawFloaters, drawParticles, once, outlined, rng, sound, soundInit, stepFloaters, stepParticles, type Floater, type Particle } from './cardsFx.ts';
-import { clamp01, ctxOf, MiniHud, PixelCanvas, TouchPad, useInput, useLoop, type MiniProps } from './kit.tsx';
+import { clamp01, ctxOf, MiniHud, motes, PixelCanvas, TouchPad, useInput, useLoop, vignette, type MiniProps } from './kit.tsx';
 import './cards.css';
 
 const W = 192;
@@ -106,7 +106,11 @@ export function Flashcards({ s, onDone, reducedMotion }: MiniProps) {
     st.t = 0;
     labels.current.forEach((el, k) => {
       const sp = el?.firstElementChild as HTMLElement | null;
-      if (sp) sp.textContent = r.options[k]?.label ?? '';
+      const label = r.options[k]?.label ?? '';
+      if (sp) sp.textContent = label;
+      // long words shrink instead of breaking mid-word ("PREVENTI / VE")
+      const longest = Math.max(0, ...label.split(/\s+/).map((w) => w.length));
+      if (el) el.style.fontSize = longest > 11 ? '3.3cqw' : longest > 9 ? '3.9cqw' : longest > 7 ? '4.5cqw' : '';
     });
     setClue({ text: r.answer.clue, status: 'ask', fresh: r.answer.fresh });
     setHud({ round: i + 1, streak: st.streak, points: st.points, best: st.best });
@@ -363,8 +367,28 @@ export function Flashcards({ s, onDone, reducedMotion }: MiniProps) {
       drawCard(x, b.x, b.y, b.w, b.h, c, b.a, c.card.id === answerId && st.phase === 'reveal');
     });
 
+    // first card only: if you hesitate, a bouncing arrow shows which card to zap
+    if (st.round === 0 && st.phase === 'play' && st.t > 2.4) {
+      const c = st.cards.find((q) => q.state === 'fall' && q.card.id === answerId);
+      if (c) {
+        const b = cardBox(c);
+        const bob = reducedMotion ? 0 : Math.round(Math.abs(Math.sin(st.time * 6)) * 3);
+        const ax = Math.round(b.x + b.w / 2);
+        const ay = Math.round(b.y + b.h + 3 + bob);
+        for (let k = 0; k < 4; k++) {
+          rect(x, ax - k - 1, ay + k, k * 2 + 3, 1, INK);
+          rect(x, ax - k, ay + k, k * 2 + 1, 1, '#fff36a');
+        }
+        outlined(x, 'THIS ONE!', ax - 17, ay + 6, '#fff36a');
+      }
+    }
+
     drawParticles(x, st.ps);
     drawFloaters(x, st.fl);
+
+    // dust in the lamplight + a soft vignette around the desk
+    if (!reducedMotion) motes(x, st.time, { x: 20, y: 6, w: 150, h: 70 }, 16, '#fff3c4', 2, -2);
+    vignette(x, W, H, 0.3);
 
     if (st.flash > 0) {
       x.fillStyle = `rgba(255,250,200,${(st.flash * 1.4).toFixed(3)})`;
@@ -418,6 +442,14 @@ export function Flashcards({ s, onDone, reducedMotion }: MiniProps) {
       // index card rules
       rect(x, px + 1, py + 4, ww - 2, 1, c.state === 'hit' ? '#e0b030' : '#e0707a');
       for (let ly = py + 9; ly < py + hh - 2; ly += 5) rect(x, px + 1, ly, ww - 2, 1, c.state === 'hit' ? '#f0d850' : '#cfe0f0');
+      if (c.state === 'fall' && !reducedMotion) {
+        // a glossy highlight sweeps across each card now and then
+        const sw = ((g.current.time * 30 + cx * 0.7) % (ww + 60)) - 10;
+        for (let j = 0; j < hh; j++) {
+          const sx = Math.round(px + sw - j * 0.6);
+          if (sx >= px && sx + 2 <= px + ww) rect(x, sx, py + j, 2, 1, 'rgba(255,255,255,0.6)');
+        }
+      }
       if (c.state === 'hit' && c.t < 0.2) {
         // highlighter swipe across
         const k = clamp01(c.t / 0.12);

@@ -166,3 +166,45 @@ export function MiniHud({ items, children }: { items: { label: string; value: st
 }
 
 export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+
+// ---------- shared lighting touches ----------
+// A stepped pixel vignette: darker toward the edges and corners, so the middle of the scene pops.
+export function vignette(x: CanvasRenderingContext2D, w: number, h: number, strength = 0.3, color = '20,12,32'): void {
+  const steps = 6;
+  for (let k = 0; k < steps; k++) {
+    const a = strength * Math.pow(1 - k / steps, 2) * 0.55;
+    x.fillStyle = `rgba(${color},${a.toFixed(3)})`;
+    const b = k * 2;
+    x.fillRect(b, b, w - b * 2, 2);
+    x.fillRect(b, h - b - 2, w - b * 2, 2);
+    x.fillRect(b, b + 2, 2, h - b * 2 - 4);
+    x.fillRect(w - b - 2, b + 2, 2, h - b * 2 - 4);
+  }
+  // corners get a little extra
+  const c = Math.round(Math.min(w, h) * 0.12);
+  for (let k = 0; k < c; k++) {
+    const a = strength * 0.35 * (1 - k / c);
+    x.fillStyle = `rgba(${color},${a.toFixed(3)})`;
+    const len = c - k;
+    x.fillRect(0, k, len, 1);
+    x.fillRect(w - len, k, len, 1);
+    x.fillRect(0, h - 1 - k, len, 1);
+    x.fillRect(w - len, h - 1 - k, len, 1);
+  }
+}
+
+// Slow drifting specks (dust in a sunbeam, pollen, snow). Deterministic per index, no state.
+export function motes(x: CanvasRenderingContext2D, t: number, box: { x: number; y: number; w: number; h: number }, n: number, color: string, drift = 4, rise = -3): void {
+  x.fillStyle = color;
+  for (let i = 0; i < n; i++) {
+    const r1 = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+    const r2 = Math.abs(Math.sin(i * 78.233) * 12543.123) % 1;
+    const sp = 0.5 + r2;
+    const px = box.x + ((((r1 * box.w + t * drift * sp + Math.sin(t * 0.8 + i) * 3) % box.w) + box.w) % box.w);
+    const py = box.y + ((((r2 * box.h + t * rise * sp) % box.h) + box.h) % box.h);
+    const tw = (Math.sin(t * 2 + i * 1.7) + 1) / 2;
+    x.globalAlpha = 0.25 + tw * 0.55;
+    x.fillRect(Math.round(px), Math.round(py), 1, 1);
+  }
+  x.globalAlpha = 1;
+}

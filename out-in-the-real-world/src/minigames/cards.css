@@ -76,7 +76,9 @@
 .cards-label span {
   display: block;
   padding-top: 0.32em;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  hyphens: none;
 }
 .cards-label[data-state='wrong'] span {
   color: #8a1f14;

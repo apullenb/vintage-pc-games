@@ -4,12 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { dot, INK, line, outlineRect, rect, type Ctx } from '../art/px.ts';
 import { drawPerson, playerPerson } from '../art/people.ts';
 import { bigText, burst, drawFloaters, drawParticles, once, outlined, rng, sound, soundInit, stepFloaters, stepParticles, type Floater, type Particle } from './cardsFx.ts';
-import { clamp01, ctxOf, MiniHud, PixelCanvas, useInput, useLoop, type Key, type MiniProps } from './kit.tsx';
+import { clamp01, ctxOf, MiniHud, PixelCanvas, useInput, useLoop, vignette, type Key, type MiniProps } from './kit.tsx';
 import { CELL, CX, CY, DCELL, drawBump, drawCity, drawNewPlace, drawRoad, drawSmallTruck, drawStreetside, drawTruck, driveSky, FLOOR, SMALL_BAY_W, itemSprite, packBackground, PH, PW, WEIGHT_COLOR, type BumpKind } from './movingArt.ts';
 import { anyFit, assess, COLS, dims, fits, jolt, landRow, movingScore, pickItems, preview, ROWS, type ItemDef, type Placed } from './movingLogic.ts';
 import './moving.css';
 
-const CLOCK = 70; // seconds of rental clock for packing
+const CLOCK = 64; // seconds of rental clock for packing
 const COUNTDOWN = 2.6;
 const LOADED_BEAT = 1.7;
 const ARRIVE_BEAT = 3.2;
@@ -327,6 +327,7 @@ export function Moving({ s, onDone, reducedMotion }: MiniProps) {
     drawParticles(x, st.ps);
     drawFloaters(x, st.fl);
     x.restore();
+    vignette(x, PW, PH, 0.22);
   }
 
   function itemXY(p: Placed): [number, number] {
@@ -335,6 +336,22 @@ export function Moving({ s, onDone, reducedMotion }: MiniProps) {
 
   function drawPack(x: Ctx, st: typeof g.current): void {
     x.drawImage(packBackground(), 0, 0);
+    // late-morning sun: a few slow light rays fanning down from it
+    if (!reducedMotion) {
+      x.save();
+      x.fillStyle = '#fff4c8';
+      for (let k = 0; k < 4; k++) {
+        const a = 2.2 + k * 0.2 + Math.sin(st.time * 0.5 + k) * 0.03;
+        x.globalAlpha = 0.08 + 0.03 * Math.sin(st.time * 1.3 + k * 2);
+        x.beginPath();
+        x.moveTo(176, 14);
+        x.lineTo(176 + Math.cos(a) * 260, 14 + Math.sin(a) * 260);
+        x.lineTo(176 + Math.cos(a + 0.07) * 260, 14 + Math.sin(a + 0.07) * 260);
+        x.closePath();
+        x.fill();
+      }
+      x.restore();
+    }
     drawTruck(x, 0, 0, 0);
     const risk = assess(st.placed);
     const blink = Math.floor(st.time * 5) % 2 === 0;

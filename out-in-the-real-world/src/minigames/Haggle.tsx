@@ -26,7 +26,7 @@ import {
   type Tactic,
   type Zone,
 } from './haggleData.ts';
-import { ctxOf, MiniHud, PixelCanvas, useInput, useLoop, type MiniProps } from './kit.tsx';
+import { ctxOf, MiniHud, PixelCanvas, useInput, useLoop, vignette, type MiniProps } from './kit.tsx';
 import './groceryHaggle.css';
 
 const W = 192;
@@ -353,9 +353,32 @@ export function Haggle({ s, data, onDone, reducedMotion }: MiniProps) {
       rect(x, ax + 3, ay + 1, 2, 4, '#e0503c');
       rect(x, ax - 1, ay + 6, 7, 1, INK);
     }
+    // reactions you can read at a glance: a sweat drop on you while the meter runs,
+    // a happy sparkle over them when a move lands, steam when their patience is nearly gone
+    if (g.phase === 'deliver' && !g.fx.reduced) {
+      const sy = top + 2 + Math.round(((g.t * 1.5) % 1) * 6);
+      rect(x, youX + 13 + step, sy, 1, 2, '#9ad0ff');
+      rect(x, youX + 12 + step, sy + 1, 3, 2, '#9ad0ff');
+    }
+    if (g.npcMood === 'happy' && g.phase === 'react' && g.pt < 1.2) {
+      const k = Math.floor(g.t * 8) % 2;
+      const sx = npcX + kick + 3;
+      rect(x, sx + 2, top - 7 - k, 1, 3, '#fff36a');
+      rect(x, sx + 1, top - 6 - k, 3, 1, '#fff36a');
+      rect(x, sx + 9, top - 5 + k, 1, 1, '#ffffff');
+    }
+    if (g.patience < 30 && !g.fx.reduced && g.phase !== 'final') {
+      for (let k = 0; k < 2; k++) {
+        const ph = (g.t * 0.9 + k * 0.5) % 1;
+        x.globalAlpha = 1 - ph;
+        rect(x, npcX + kick + 1 + k * 8 + Math.round(Math.sin(g.t * 4 + k) * 1), top - 3 - Math.round(ph * 8), 2, 2, '#e8e4f0');
+      }
+      x.globalAlpha = 1;
+    }
     def.extras?.(x, g.t);
     g.fx.drawParts(x);
     x.restore();
+    vignette(x, W, H, 0.3);
 
     // HUD on the canvas: round pips (left), their patience (right).
     x.fillStyle = 'rgba(28,20,36,0.55)';
@@ -596,7 +619,7 @@ export function Haggle({ s, data, onDone, reducedMotion }: MiniProps) {
             Deliver it! <small>(SPACE)</small>
           </button>
         ) : (
-          <div className="gh-wait">{g.phase === 'final' ? 'Tap the picture or press SPACE to finish' : g.phase === 'intro' ? 'Listen to what they say…' : '…'}</div>
+          <div className="gh-wait">{g.phase === 'final' ? 'Tap the picture or press SPACE to finish' : g.phase === 'intro' ? 'Listen… (SPACE or tap to go on)' : '…'}</div>
         )}
       </div>
     </div>

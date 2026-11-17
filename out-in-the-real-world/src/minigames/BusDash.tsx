@@ -8,13 +8,13 @@ import { INK, rect, text, textWidth } from '../art/px.ts';
 import { sfx } from '../ui/audio.ts';
 import { drawBackdrop, drawBranch, drawBus, drawCoffee, drawDog, drawHydrant, drawLadder, drawPigeon, drawPuddle, drawSign, drawSprinkler, drawStop, drawStroller, GROUND, passerby, STREET, type ObKind } from './busArt.ts';
 import { drawRunner, shadow } from './busRunner.ts';
-import { ctxOf, MiniHud, PixelCanvas, TouchPad, useInput, useLoop, type MiniProps } from './kit.tsx';
+import { ctxOf, MiniHud, motes, PixelCanvas, TouchPad, useInput, useLoop, vignette, type MiniProps } from './kit.tsx';
 import { centered, COUNT_TIME, countLabel, drawBanner, drawCount, Fx, hit, outlined, pick, rnd, type HudItem } from './shiftKit.ts';
 import './shift.css';
 
 const RX = 46; // runner's screen x
-const DEPART = 23; // seconds on the bus clock after GO
-const COURSE = 1660; // px from start to the bus door
+const DEPART = 31; // seconds on the bus clock after GO
+const COURSE = 2280; // px from start to the bus door
 const JUMP_V = 178;
 const GRAV = 560;
 const STAND_H = 26;
@@ -154,6 +154,7 @@ interface Run {
   sent: boolean;
   cleared: number;
   made: boolean | null;
+  freeze: number; // hit-stop: the world pauses for a beat on a hard bump
 }
 
 export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
@@ -194,6 +195,7 @@ export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
       sent: false,
       cleared: 0,
       made: null,
+      freeze: 0,
     };
   }
   const r = run.current;
@@ -207,8 +209,11 @@ export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
   };
 
   useLoop(
-    (dt, t) => {
+    (dt0, t) => {
       const { fx } = r;
+      // hit-stop: freeze the sim (not the drawing) for a moment after a hard bump
+      const dt = r.freeze > 0 ? 0 : dt0;
+      r.freeze = Math.max(0, r.freeze - dt0);
       fx.update(dt);
       const stopX = COURSE + 22; // bus front when parked
 
@@ -329,6 +334,7 @@ export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
             else {
               fx.burst(sx, GROUND - h, ['#ffe27a', '#ffffff'], 8, 40, 30, 0.5);
               fx.blink('#ff4a3a', 0.18);
+              if (!reducedMotion) r.freeze = 0.08;
             }
             fx.pop(sx + 4, GROUND - 44, pick(SAY[o.kind] ?? ['OOF!']), soft ? '#bfe8ff' : '#ff9a7a');
             if (!r.grounded && !soft) r.vy = Math.max(r.vy, 0);
@@ -443,6 +449,26 @@ export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
         else if (o.kind === 'hydrant') drawHydrant(x, sx);
         else if (o.kind === 'pigeons' && o.birds) for (const b of o.birds) drawPigeon(x, sx + b.x, b.y, b.vy !== 0 ? Math.floor(t * 12) % 2 : 0);
       }
+      // the first few obstacles get a JUMP / DUCK hint so you learn which is which
+      const hints = r.obs.filter((q) => q.kind !== 'coffee' && q.kind !== 'pigeons').slice(0, 6);
+      for (const o of hints) {
+        if (o.kind === 'coffee' || o.kind === 'pigeons' || o.passed || o.hit) continue;
+        const sx = Math.round(o.x - cam);
+        if (sx > 200 || sx < RX + 12) continue;
+        const duck = o.lo > 0;
+        const cx = sx + Math.round(o.w / 2);
+        const top = duck ? GROUND - o.lo + 4 : GROUND - o.hi - 13;
+        const bob = reducedMotion ? 0 : Math.round(Math.sin(t * 8) * 1.5);
+        const lab = duck ? 'DUCK' : 'JUMP';
+        const c = duck ? '#ffb070' : '#7cf08a';
+        const ay = top + bob;
+        for (let k = 0; k < 3; k++) {
+          const w = duck ? 5 - k * 2 : 1 + k * 2;
+          rect(x, cx - Math.floor(w / 2) - 1, ay + k, w + 2, 1, INK);
+          rect(x, cx - Math.floor(w / 2), ay + k, w, 1, c);
+        }
+        outlined(x, lab, cx - 7, duck ? ay + 5 : ay - 7, c);
+      }
       // you
       const boardU = r.made ? Math.min(1, r.endT / 0.45) : 0;
       if (!(r.made && r.endT > 0.5)) {
@@ -478,6 +504,9 @@ export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
       }
       fx.draw(x);
       x.restore();
+      // morning air: drifting pollen in the sunlight, then a soft vignette
+      if (!reducedMotion) motes(x, t, { x: 0, y: 20, w: 192, h: 70 }, 18, '#fff3c4', -14 - r.speed * 0.25, -2);
+      vignette(x, 192, 108, 0.28, '40,20,30');
 
       // progress strip
       rect(x, 4, 3, 184, 9, 'rgba(28,20,36,0.72)');

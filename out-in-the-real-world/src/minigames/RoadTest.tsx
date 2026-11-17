@@ -2,17 +2,52 @@
 // with a crosswalk, and a parallel park at the end, with an instructor marking a clipboard.
 import { useRef, useState } from 'react';
 import { drawPerson, HAIRS, playerPerson, SKINS, type Person } from '../art/people.ts';
-import { INK, rect, shade, type Ctx } from '../art/px.ts';
+import { glow, INK, rect, shade, text, type Ctx } from '../art/px.ts';
 import { sfx } from '../ui/audio.ts';
 import { PASS } from '../content/minigames/roadtest.ts';
 import { clamp, Fx, PadBtn, StartOverlay } from './driveKit.tsx';
-import { drawEnd, drawRoad, limitAt, MPH, newRoad, scoreOf, stepRoad, totalPts, VH, VW, type RoadSim, type SayKind } from './driveRoad.ts';
-import { ctxOf, MiniHud, PixelCanvas, useInput, useLoop, type MiniProps } from './kit.tsx';
+import { BLUE_D, drawEnd, drawRoad, limitAt, MPH, newRoad, PK, scoreOf, SS, stepRoad, SZ0, SZ1, TL, totalPts, VH, VW, type RoadSim, type SayKind } from './driveRoad.ts';
+import { ctxOf, MiniHud, PixelCanvas, useInput, useLoop, vignette, type MiniProps } from './kit.tsx';
 
 export const INSTRUCTOR: { name: string; p: Person } = {
   name: 'Mr. Okafor',
   p: { skin: SKINS[4], hair: HAIRS[6], style: 4, shirt: '#e8e8f0', pants: '#3a3a52', coat: '#3f6a8a', glasses: true, mustache: true, lanyard: '#f2b632', badge: true, holds: 'clipboard' },
 };
+
+// The test route as a strip down the right edge: what's coming up and how far along you are.
+const COURSE: { d: number; d1?: number; c: string; l: string }[] = [
+  { d: SS, c: '#e0403a', l: 'STOP' },
+  { d: (SS + TL) / 2, c: '#f2b632', l: 'LANE' },
+  { d: TL, c: '#7ee08a', l: 'LIGHT' },
+  { d: SZ0, d1: SZ1, c: '#f2d048', l: 'SCHOOL' },
+  { d: PK, d1: BLUE_D, c: '#4a9aff', l: 'PARK' },
+];
+function drawCourse(x: Ctx, g: RoadSim): void {
+  const top = 12;
+  const bot = VH - 10;
+  const sx = VW - 6;
+  const yOf = (d: number): number => Math.round(bot - (Math.max(0, Math.min(BLUE_D, d)) / BLUE_D) * (bot - top));
+  rect(x, sx - 2, top - 2, 5, bot - top + 4, 'rgba(28,20,36,0.7)');
+  rect(x, sx, top, 1, bot - top, '#8a7a9a');
+  const you = yOf(g.p.d);
+  rect(x, sx, you, 1, bot - you, '#fff3c4');
+  for (const m of COURSE) {
+    const y0 = yOf(m.d1 ?? m.d);
+    const y1 = yOf(m.d);
+    rect(x, sx - 1, y0, 3, Math.max(2, y1 - y0), m.c);
+    const passed = g.p.d > (m.d1 ?? m.d);
+    const next = !passed && COURSE.find((q) => g.p.d <= (q.d1 ?? q.d)) === m;
+    if (next) {
+      const w = m.l.length * 4 + 1;
+      rect(x, sx - 4 - w, y1 - 3, w + 1, 7, INK);
+      text(x, m.l, sx - 3 - w, y1 - 2, m.c);
+    }
+  }
+  // you: a little arrow
+  rect(x, sx - 3, you - 1, 7, 3, INK);
+  rect(x, sx - 2, you, 5, 1, '#ffffff');
+  rect(x, sx, you - 2, 1, 1, '#ffffff');
+}
 
 interface Hud {
   mph: number;
@@ -138,7 +173,15 @@ export function RoadTest({ s, onDone, reducedMotion }: MiniProps) {
         x.translate(ox, oy);
         drawRoad(x, g, { reduced: reducedMotion, look: look.current, braking: ctl.down, fx: f });
         x.restore();
+        // slow cloud shadows drifting over the course
+        for (let k = 0; k < 2; k++) {
+          const cy = ((g.t * 9 + k * 110) % (VH + 80)) - 40;
+          const cx = 40 + k * 100 + Math.sin(g.t * 0.2 + k) * 20;
+          glow(x, cx, cy, 46, 20, '#1c1424', 0.22);
+        }
         f.drawFlash(x, VW, VH);
+        vignette(x, VW, VH, 0.22);
+        if (g.phase === 'drive' || g.phase === 'park') drawCourse(x, g);
         drawEnd(x, g, me.current, INSTRUCTOR.p);
       }
       const cx = ctxOf(cab.current);

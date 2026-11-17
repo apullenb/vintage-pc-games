@@ -8,7 +8,7 @@ import { useRef, useState } from 'react';
 import { num } from '../engine/core.ts';
 import type { PathId } from '../engine/types.ts';
 import { sfx } from '../ui/audio.ts';
-import { ctxOf, MiniHud, PixelCanvas, TouchPad, useInput, useLoop, type MiniProps } from './kit.tsx';
+import { ctxOf, MiniHud, motes, PixelCanvas, TouchPad, useInput, useLoop, vignette, type MiniProps } from './kit.tsx';
 import { checkoutMode } from './shiftCheckout.ts';
 import { COUNT_TIME, countLabel, drawBanner, drawCount, Fx, type HudItem, type ModeEnv, type ShiftMode } from './shiftKit.ts';
 import { libraryMode } from './shiftLibrary.ts';
@@ -103,6 +103,8 @@ export function Shift({ s, onDone, reducedMotion }: MiniProps) {
       mode.draw(x, t);
       fx.draw(x);
       x.restore();
+      if (!reducedMotion) motes(x, t, { x: 0, y: 0, w: 192, h: 96 }, 10, 'rgba(255,250,220,0.9)', 3, -2);
+      vignette(x, 192, 108, 0.32);
       drawCount(x, t);
       if (r.phase === 'end' && r.res) {
         const good = r.res.score >= 0.6;
