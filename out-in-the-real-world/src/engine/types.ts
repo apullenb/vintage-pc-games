@@ -86,6 +86,10 @@ export interface Job {
   dentalPremium: number; // per paycheck if enrolled
   match: number; // 401k match fraction (0 = none)
   art: ArtId;
+  // Set for jobs found on the job board (older saves and starting jobs leave these out).
+  id?: string; // listing id
+  schedule?: 'days' | 'nights' | 'early' | 'weekends' | 'long';
+  commute?: number; // minutes each way
 }
 
 export interface Housing {
@@ -228,6 +232,7 @@ export interface GameState {
   chapterStars: number[];
   handbook: string[]; // unlocked handbook entries
   achievements: string[];
+  skills?: string[]; // job skills and certifications (older saves: missing = none)
   history: { week: number; net: number; energy: number; score: number | null }[];
   checkpoint: string | null; // JSON of state at chapter start
   weekSnap: Record<string, number> | null; // stats when the week started

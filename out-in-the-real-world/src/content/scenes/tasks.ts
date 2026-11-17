@@ -1389,12 +1389,13 @@ function promote(s: GameState): void {
   setFlag(s, 'careerDone');
   achieve(s, 'levelup');
   if (!s.job) return;
+  // (If you changed jobs from the job board, the pharmacy opening is still at Fresh Fields, and a raise never cuts your pay.)
   if (s.path === 'home') {
-    s.job = { ...s.job, title: 'Pharmacy Technician', wage: 19, hours: 36, healthOffered: true, premium: 50, dentalPremium: 6, match: 0.03 };
+    s.job = { ...s.job, title: 'Pharmacy Technician', place: 'Fresh Fields Market', art: 'grocery', wage: Math.max(19, s.job.wage), hours: 36, healthOffered: true, premium: 50, dentalPremium: 6, match: 0.03, schedule: undefined, commute: undefined };
   } else if (s.path === 'trade') {
     s.job = { ...s.job, title: 'Year 2 Apprentice', wage: 21.5 };
   } else if (s.path === 'work') {
-    s.job = { ...s.job, title: 'Team Lead', wage: 22 };
+    s.job = { ...s.job, title: 'Team Lead', wage: Math.max(22, s.job.wage + 1.5) };
   }
 }
 

@@ -264,6 +264,16 @@ export const TASKS: Task[] = [
     how: 'Watch for the offer on payday',
     done: (s) => !!s.flags.rentersIns || s.housing.kind === 'parents' || s.housing.kind === 'dorm',
   },
+  {
+    id: 't-skill',
+    chapter: 2,
+    optional: true,
+    title: 'Bonus: Learn a new job skill',
+    desc: 'Finish an online course. New skills open better jobs on the job board.',
+    how: 'Take an online course (evening or weekend)',
+    done: (s) => num(s, 'coursesDone') >= 1,
+    progress: (s) => (num(s, 'coursesDone') ? 'Done' : typeof s.flags.course === 'string' && s.flags.course ? `In a course: ${num(s, 'courseProg')} sessions done` : 'Not enrolled'),
+  },
   // ----- Chapter 4 -----
   {
     id: 't-card',

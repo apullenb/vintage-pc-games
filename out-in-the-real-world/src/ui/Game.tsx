@@ -35,8 +35,9 @@ import { Tutorial } from './Tutorial.tsx';
 import { MiniGameHost } from './MiniGame.tsx';
 import { GradesMini, GradesPanel } from './Grades.tsx';
 import { gpaText, liveGpa, majorName } from '../content/college.ts';
+import { JobBoard } from './JobBoard.tsx';
 
-type ModalId = 'money' | 'handbook' | 'awards' | 'missions' | 'menu' | 'grades' | null;
+type ModalId = 'money' | 'handbook' | 'awards' | 'missions' | 'menu' | 'grades' | 'jobs' | null;
 
 function artFor(s: GameState): { art: ArtId; speaker: NpcId | null; hidePlayer?: boolean } {
   const h = s.queue[0];
@@ -171,6 +172,7 @@ export function Game({ g, setG, meta, setMeta, onQuit, onNewGame }: { g: GameSta
       {showTutorial && <Tutorial g={g} onDone={() => setMeta({ ...meta, tutorialDone: true })} />}
       {card && <ChapterCard key={g.chapter} n={g.chapter} title={chapter.title} subtitle={chapter.subtitle} look={g.look} path={g.path} onDone={() => setCardShown(g.chapter)} />}
       {modal === 'money' && <MoneyModal g={g} setG={setG} onClose={() => setModal(null)} />}
+      {modal === 'jobs' && <JobBoard g={g} setG={setG} onClose={() => setModal(null)} />}
       {modal === 'missions' && (
         <Modal title={`Chapter ${g.chapter + 1}: ${chapter.title}`} onClose={() => setModal(null)}>
           <Missions g={g} onGrades={() => setModal('grades')} />
@@ -449,6 +451,9 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
         </button>
         <button className="icon-btn" onClick={() => onOpen('money')} aria-label="Money" title="Money">
           <Icon name="wallet" />
+        </button>
+        <button className="icon-btn" onClick={() => onOpen('jobs')} aria-label="Job board and resume" title="Job board & resume">
+          <Icon name="work" />
         </button>
         <button className="icon-btn" onClick={() => onOpen('handbook')} aria-label={`Adulting Handbook, ${g.handbook.length} pages`} title="Adulting Handbook">
           <Icon name="book" />

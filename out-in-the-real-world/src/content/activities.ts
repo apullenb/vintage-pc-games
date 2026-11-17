@@ -3,6 +3,7 @@ import { charge, energy, inc, log, minigame, money, num, rep, scene, xp } from '
 import type { GameState, SlotId } from '../engine/types.ts';
 import type { Activity } from './types.ts';
 import { COLLEGE_ACTIVITIES } from './college.ts';
+import { CAREER_ACTIVITIES, currentCourse } from './careers.ts';
 
 const ANY: SlotId[] = ['weekday', 'evening', 'saturday', 'sunday'];
 const FREE: SlotId[] = ['evening', 'saturday', 'sunday'];
@@ -19,7 +20,7 @@ export function studyName(s: GameState): string {
     case 'work':
       return 'Online training module';
     default:
-      return s.flags.certEnrolled ? 'Pharmacy tech coursework' : 'Free online course';
+      return 'Self-study (free videos)';
   }
 }
 
@@ -124,9 +125,11 @@ const LIST: Activity[] = [
         college: 'Library, flashcards, office hours.',
         trade: 'Ohm’s law, wiring diagrams, the code book.',
         work: 'Free company training. Managers notice who finishes them.',
-        home: 'Build skills for a better job.',
+        home: 'YouTube, library books, practice quizzes. Builds know-how, but no certificate.',
       })[s.path],
     hint: (s) => `+Career progress (mini-game) · −8 energy${s.path === 'work' ? ' · Boss notices' : ''}`,
+    // While you're in an online course, your study time goes to the course.
+    hide: (s) => (s.path === 'home' || s.path === 'work') && !!currentCourse(s),
     run: (s) => {
       minigame(s, 'flashcards');
     },
@@ -180,6 +183,7 @@ const LIST: Activity[] = [
       scene(s, 'jobhunt');
     },
   },
+  ...CAREER_ACTIVITIES,
   // ---------- mission activities ----------
   {
     id: 'bank',

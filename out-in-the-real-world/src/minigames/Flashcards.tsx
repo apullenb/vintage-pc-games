@@ -55,7 +55,10 @@ export function Flashcards({ s, data, onDone, reducedMotion }: MiniProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const labels = useRef<(HTMLDivElement | null)[]>([]);
   const input = useInput();
-  const rounds = useMemo<Round[]>(() => buildRounds(s, rng((Date.now() ^ (s.seed * 7919)) >>> 0), undefined, { exam: !!data?.exam }), [s, data?.exam]);
+  const rounds = useMemo<Round[]>(
+    () => buildRounds(s, rng((Date.now() ^ (s.seed * 7919)) >>> 0), undefined, { exam: !!data?.exam, course: String(data?.course ?? '') }),
+    [s, data?.exam, data?.course],
+  );
   const person = useMemo(() => playerPerson(s.look), [s.look]);
   const doneRef = useRef(onDone);
   doneRef.current = onDone;

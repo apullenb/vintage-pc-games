@@ -9,12 +9,16 @@ export type ShiftKind = 'home' | 'college' | 'trade' | 'work';
 export function shiftKind(s: GameState): ShiftKind {
   switch (s.job?.art) {
     case 'grocery':
+    case 'clinic': // pharmacy and front-desk counters ring people up too
+    case 'bank':
       return 'home';
     case 'library':
+    case 'office': // filing and sorting
       return 'college';
     case 'jobsite':
       return 'trade';
     case 'warehouse':
+    case 'road': // delivery: it's all parcels
       return 'work';
     default:
       return s.path;
