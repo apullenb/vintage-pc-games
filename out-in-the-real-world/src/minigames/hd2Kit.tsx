@@ -413,7 +413,25 @@ function scale2x(src: Uint32Array, w: number, h: number): Uint32Array {
   return out;
 }
 
-export type SpriteShade = 'body' | 'ball' | 'box' | 'flat' | 'cyl';
+// Re-renders a low-res pixel painting into dst at 2x with Scale2x, so a shared pixel backdrop can be
+// drawn back with bilinear filtering: rounded edges and a soft, texture-filtered look. Cheap enough
+// to run when the source repaints (a few times a second), not meant for every frame.
+export function smoothUp(src: HTMLCanvasElement, dst: HTMLCanvasElement): void {
+  const w = src.width;
+  const h = src.height;
+  if (dst.width !== w * 2) dst.width = w * 2;
+  if (dst.height !== h * 2) dst.height = h * 2;
+  const sx = src.getContext('2d', { willReadFrequently: true });
+  const dx = dst.getContext('2d');
+  if (!sx || !dx) return;
+  const img = sx.getImageData(0, 0, w, h);
+  const up = scale2x(new Uint32Array(img.data.buffer), w, h);
+  const out = dx.createImageData(w * 2, h * 2);
+  out.data.set(new Uint8ClampedArray(up.buffer));
+  dx.putImageData(out, 0, 0);
+}
+
+export type SpriteShade ='body' | 'ball' | 'box' | 'flat' | 'cyl';
 interface SpriteOpts {
   shade?: SpriteShade;
   pad?: number;
