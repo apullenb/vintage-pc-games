@@ -1195,7 +1195,7 @@ export const TASK_SCENES: Scene[] = [
   {
     id: 'appt-interview',
     title: (s) => (s.path === 'trade' ? 'Apprentice exam' : 'The interview'),
-    art: (s) => (s.path === 'trade' ? 'library' : 'office'),
+    art: (s) => (s.path === 'trade' ? 'lecture' : 'interview'),
     kind: 'appt',
     steps: {
       start: {

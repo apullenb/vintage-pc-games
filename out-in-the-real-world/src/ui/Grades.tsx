@@ -1,7 +1,7 @@
 // College grades: a compact sidebar card and the full Grades screen.
 import { gpaText, gradesView, letterOf, type GradesView } from '../content/college.ts';
 import type { GameState } from '../engine/types.ts';
-import { Icon } from './common.tsx';
+import { HDBanner, Icon } from './common.tsx';
 import './grades.css';
 
 const pct = (v: number | null): string => (v === null ? '—' : `${Math.round(v)}%`);
@@ -40,6 +40,7 @@ export function GradesPanel({ g }: { g: GameState }) {
   if (!v) return <p>You’re not in college.</p>;
   return (
     <div className="grades">
+      <HDBanner kind="grades" />
       <div className="grades-top">
         <div>
           <small>Major</small>

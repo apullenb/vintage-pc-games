@@ -6,7 +6,7 @@ import { shownWeek } from '../content/phase2.ts';
 import { SKILLS, hasSkill, skillName } from '../content/skills.ts';
 import { money, num } from '../engine/core.ts';
 import type { GameState } from '../engine/types.ts';
-import { Icon, Modal } from './common.tsx';
+import { HDBanner, Icon, Modal } from './common.tsx';
 import './jobboard.css';
 
 type Tab = 'jobs' | 'resume';
@@ -201,6 +201,7 @@ export function JobBoard({ g, setG, onClose }: { g: GameState; setG: (g: GameSta
   const startAt = LISTING_BY_ID[String(g.flags.newJobId ?? '')];
   return (
     <Modal title="Job Board" onClose={onClose} wide>
+      <HDBanner kind="jobs" />
       <div className="jb-tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'jobs'} className={`pill ${tab === 'jobs' ? 'on' : ''}`} onClick={() => setTab('jobs')}>
           <Icon name="search" size={12} /> Listings ({board.length})

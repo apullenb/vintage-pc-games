@@ -1,6 +1,7 @@
 // The HD stage: composes a scene (HD painting, or an upscaled pixel painting for
 // scenes not repainted yet), HD people, atmosphere and night lighting into a
 // 576x324 canvas, and returns the post-processing parameters for it.
+import type { SceneArt } from '../../content/types.ts';
 import type { ArtId, Look, NpcId, PathId } from '../../engine/types.ts';
 import { isOutdoor, type TimeOfDay, type Weather } from '../atmos.ts';
 import { CAST, castFor, playerPerson, type Outfit } from '../people.ts';
@@ -167,7 +168,7 @@ function buildFallback(key: string, s: SceneSpec): StageDef {
     x.drawImage(c, 0, 0, W, H);
     x.restore();
   };
-  const out = isOutdoor(key.split(':')[0] as ArtId);
+  const out = isOutdoor(key.split(':')[0] as SceneArt);
   return {
     player: s.player,
     npc: s.npc,
@@ -196,24 +197,24 @@ function buildFallback(key: string, s: SceneSpec): StageDef {
   };
 }
 
-const HOMES = new Set<ArtId>(['bedroom', 'dorm', 'apartment']);
+const HOMES = new Set<SceneArt>(['bedroom', 'dorm', 'apartment', 'loft', 'house']);
 const DEFS = new Map<string, StageDef>();
-export function stageDef(id: ArtId, opts: { night?: boolean; path?: PathId | null } = {}): StageDef {
+export function stageDef(id: SceneArt, opts: { night?: boolean; path?: PathId | null } = {}): StageDef {
   const night = !!opts.night && HOMES.has(id);
   const key = `${id}${night ? ':night' : ''}`;
   let d = DEFS.get(key);
   if (!d) {
     const f = HD_SCENES[id];
-    d = f ? buildHD(key, f({ night })) : buildFallback(key, sceneSpec(id, { night }));
+    d = f ? buildHD(key, f({ night })) : buildFallback(key, sceneSpec(id as ArtId, { night }));
     DEFS.set(key, d);
   }
   return d;
 }
-export const hasHD = (id: ArtId): boolean => !!HD_SCENES[id];
+export const hasHD = (id: SceneArt): boolean => !!HD_SCENES[id];
 
 // ---------- one frame ----------
 export interface StageState {
-  art: ArtId;
+  art: SceneArt;
   look: Look;
   speaker: NpcId | null;
   talking: boolean;
@@ -255,7 +256,7 @@ export function renderStage(x: CanvasRenderingContext2D, s: StageState, t: numbe
     x.fillStyle = g;
     x.fillRect(0, 0, W, H);
   }
-  const atm = { art: s.art, tod: s.tod, weather: s.weather, floor: def.floor, night: s.night, windows: def.windows };
+  const atm = { art: s.art, tod: s.tod, weather: s.weather, floor: def.floor, night: s.night, windows: def.windows, horizon: def.horizon };
   atmosGroundHD(x, atm);
   const npc = s.speaker && CAST[s.speaker] ? castFor(s.speaker, s.path).p : null;
   if (!s.hidePlayer) {

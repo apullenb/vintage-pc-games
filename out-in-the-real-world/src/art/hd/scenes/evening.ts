@@ -327,30 +327,64 @@ function beach(): HDSpec {
     npc: 118,
     floor: 100,
     horizon: 50,
-    fog: 0.14,
-    fogColor: '#ffc8a0',
-    bloom: 1.3,
+    fog: 0.08,
+    fogColor: '#ffb8a0',
+    bloom: 1.2,
     bg: (x) => {
-      skyHD(x, 0, 50, ['#6a4aa8', '#c86aa0', '#ff9a78', '#ffd890']);
-      glowHD(x, 140, 46, 46, '#ffd890', 0.55, 24);
+      skyHD(x, 0, 50, ['#3a2a78', '#7a4a9a', '#d0709a', '#ff9a72', '#ffd48a']);
+      // high thin cirrus catching the last light
+      for (let k = 0; k < 7; k++) {
+        const cy = 6 + k * 4.4;
+        const cx = 20 + hash(k * 7) * 150;
+        ell(x, cx, cy, 18 + hash(k) * 16, 0.9, rgba(k < 3 ? '#ff9ab0' : '#ffc890', 0.35));
+      }
+      // headland silhouettes fading into the haze
+      x.beginPath();
+      x.moveTo(0, 48.6);
+      x.quadraticCurveTo(10, 41, 24, 43);
+      x.quadraticCurveTo(36, 40, 46, 45);
+      x.quadraticCurveTo(56, 47, 64, 48.6);
+      x.closePath();
+      x.fillStyle = vgrad(x, 40, 49, ['#8a5a8a', '#b07090']);
+      x.fill();
+      x.beginPath();
+      x.moveTo(170, 48.6);
+      x.quadraticCurveTo(180, 44, 192, 42);
+      x.lineTo(192, 48.6);
+      x.closePath();
+      x.fillStyle = vgrad(x, 42, 49, ['#7a4a80', '#a06688']);
+      x.fill();
+      // the sun: a big soft halo, a hot disc squashed by the horizon
+      glowHD(x, 140, 46, 70, '#ffb070', 0.35, 30);
+      glowHD(x, 140, 46, 30, '#ffe0a0', 0.55, 16);
       x.save();
       x.beginPath();
-      x.rect(0, 0, W, 48.5);
+      x.rect(0, 0, W, 48.6);
       x.clip();
-      ell(x, 140, 48, 14, 14, rgrad(x, 140, 44, 14, [[0, '#fffbe0'], [0.6, '#ffe890'], [1, '#ffc050']]));
-      for (let k = 0; k < 3; k++) box(x, 120, 43 + k * 2.2, 40, 0.8, rgba('#ff9a78', 0.7));
+      ell(x, 140, 49, 12, 11.2, rgrad(x, 140, 46, 12.5, [[0, '#ffffff'], [0.45, '#fff2b0'], [0.85, '#ffc860'], [1, '#ff9a50']]));
+      // thin cloud bands across the disc
+      for (const [cy, a] of [
+        [41.6, 0.5],
+        [44.6, 0.38],
+      ] as const)
+        fillRR(x, 112, cy, 56, 1.2, 0.6, hgrad(x, 112, 168, [rgba('#d0607a', 0), rgba('#d0607a', a), rgba('#d0607a', 0)]));
       x.restore();
     },
     anim: (x, t) => {
-      for (let k = 0; k < 2; k++) {
-        const cw = 16 + hash(3 + k) * 12;
+      for (let k = 0; k < 3; k++) {
+        const cw = 14 + hash(3 + k) * 12;
         const cx = ((t * 0.4 * (1.2 + k * 0.5) + hash(9 + k) * (W + cw * 2)) % (W + cw * 2)) - cw;
-        cloudHD(x, cx, 10 + k * 8, cw, '#ffd0c0', '#d8869a');
+        // underlit clouds: warm bellies, cool violet tops
+        cloudHD(x, cx, 9 + k * 7, cw, '#ffc2a4', '#b0608a');
+        x.save();
+        x.globalCompositeOperation = 'screen';
+        ell(x, cx, 9 + k * 7 + cw * 0.18, cw * 0.4, cw * 0.08, 'rgba(255,200,140,0.5)');
+        x.restore();
       }
       // sailboat on the horizon
       const bx = ((t * 1.5) % (W + 30)) - 15;
-      poly(x, [bx, 44.4, bx + 9, 44.4, bx + 7.6, 46.4, bx + 1.2, 46.4], '#3a2a4a');
-      poly(x, [bx + 4.4, 36.6, bx + 4.4, 44, bx + 8.6, 44], lgrad(x, bx + 4, 37, bx + 9, 44, [[0, '#ffffff'], [1, '#e8d0c0']]));
+      poly(x, [bx, 47.4, bx + 9, 47.4, bx + 7.6, 49, bx + 1.2, 49], '#3a2a4a');
+      poly(x, [bx + 4.4, 39.6, bx + 4.4, 47, bx + 8.6, 47], lgrad(x, bx + 4, 40, bx + 9, 47, [[0, '#ffe8d8'], [1, '#c890a0']]));
       for (let i = 0; i < 2; i++) {
         const gx = ((t * (6 + i * 3) + i * 90) % (W + 20)) - 10;
         const gy = 16 + i * 8 + Math.sin(t * 2 + i) * 2;
@@ -365,8 +399,17 @@ function beach(): HDSpec {
       }
     },
     mid: (x) => {
-      x.fillStyle = vgrad(x, 48, 72, ['#4a6ab0', '#3a8ad0', '#5ab0e4']);
-      x.fillRect(0, 48, W, 24);
+      // sea: violet at the horizon reflecting the sky, deepening to teal near shore
+      x.fillStyle = vgrad(x, 48.6, 72, ['#b0709a', '#6a5aa8', '#2e5a9a', '#2a7aa8', '#3a9ab8']);
+      x.fillRect(0, 48.6, W, 24);
+      // the sun's road: a warm column that widens toward the viewer
+      poly(x, [134, 48.6, 146, 48.6, 160, 72, 120, 72], lgrad(x, 0, 48.6, 0, 72, [[0, 'rgba(255,220,140,0.7)'], [1, 'rgba(255,190,120,0.15)']]));
+      // long swell lines
+      for (let k = 0; k < 9; k++) {
+        const yy = 50 + k * k * 0.28 + k * 0.6;
+        box(x, 0, yy, W, 0.25 + k * 0.05, rgba(k % 2 ? '#1e3a7a' : '#d090b0', 0.22));
+      }
+      box(x, 0, 48.4, W, 0.5, rgba('#ffe0c0', 0.6));
       // sand
       x.fillStyle = vgrad(x, 72, H, ['#e0c088', '#f0d4a0', '#f8e0b0']);
       x.fillRect(0, 72, W, H - 72);
@@ -411,13 +454,20 @@ function beach(): HDSpec {
       poly(x, [169.6, 74, 173, 75, 169.6, 76], '#e0503c');
     },
     anim2: (x, t) => {
-      // sun glitter on the water
-      for (let j = 50; j < 72; j += 1.6) {
-        const w = 18 - (j - 50) * 0.5;
-        const off = Math.sin(t * 3 + j) * 2;
-        if ((Math.floor(t * 4) + Math.floor(j)) % 3) fillRR(x, 140 - w / 2 + off, j, w * (0.4 + hash(Math.floor(j)) * 0.6), 0.5, 0.25, rgba('#ffe8a0', 0.75));
+      // sun glitter: short sparkling dashes scattered down the sun's road
+      for (let k = 0; k < 34; k++) {
+        const j = 49.4 + hash(k * 3) * 22;
+        const spread = 4 + (j - 49) * 0.9;
+        const gx = 140 + (hash(k * 7) - 0.5) * spread * 2 + Math.sin(t * 1.4 + k) * 1.2;
+        const on = 0.5 + 0.5 * Math.sin(t * (3 + hash(k) * 3) + k * 1.7);
+        if (on < 0.3) continue;
+        fillRR(x, gx, j, 1.2 + (j - 49) * 0.08, 0.35 + (j - 49) * 0.012, 0.2, rgba('#fff4c0', 0.9 * on));
       }
-      for (let i = 0; i < W; i += 12) fillRR(x, i + Math.sin(t * 1.5 + i) * 3, 54 + ((i / 12) % 4) * 4, 7, 0.6, 0.3, rgba('#b8e0f8', 0.7));
+      // gentle crests catching the sky
+      for (let i = 0; i < W; i += 11) {
+        const yy = 55 + ((i / 11) % 5) * 3.4;
+        fillRR(x, i + Math.sin(t * 1.2 + i) * 3, yy, 4 + (yy - 55) * 0.4, 0.4, 0.2, rgba('#f0c0d8', 0.45));
+      }
       // surf line
       const tide = Math.sin(t * 0.8) * 2;
       x.beginPath();

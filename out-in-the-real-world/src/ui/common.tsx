@@ -10,7 +10,10 @@ import { personKey, type Expr } from '../art/portraits.ts';
 import { PHD, portraitHDBackdrop, portraitHDCanvas } from '../art/hd/portraitHD.ts';
 import { hash } from '../art/px.ts';
 import { paintTitleHD } from '../art/hd/titleHD.ts';
+import { BANNER_H, BANNER_W, bannerCanvas, MEDAL_H, MEDAL_W, medalCanvas, type BannerKind } from '../art/hd/banners.ts';
+import { S as HD_S } from '../art/hd/kit.ts';
 import { money } from '../engine/core.ts';
+import type { SceneArt } from '../content/types.ts';
 import type { ArtId, Deltas, Look, NpcId, PathId } from '../engine/types.ts';
 import { reducedMotion } from './a11y.ts';
 import { sfx } from './audio.ts';
@@ -36,8 +39,9 @@ export function SceneCanvas({
   weather,
   outfit,
   enter = true,
+  ambient = false,
 }: {
-  art: ArtId;
+  art: SceneArt;
   look: Look;
   speaker?: NpcId | null;
   talking?: boolean;
@@ -48,8 +52,10 @@ export function SceneCanvas({
   weather?: Weather;
   outfit?: Outfit;
   enter?: boolean;
+  ambient?: boolean; // fill the frame's spare width with a soft glow of the scene (bias light)
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const amb = useRef<HTMLCanvasElement>(null);
   const props = useRef({ art, look, speaker, talking, hidePlayer, path, night, tod, weather, outfit, enter });
   props.current = { art, look, speaker, talking, hidePlayer, path, night, tod, weather, outfit, enter };
   useEffect(() => {
@@ -66,7 +72,7 @@ export function SceneCanvas({
     const still = reducedMotion();
     let raf = 0;
     let lastFrame = -1;
-    let curArt: ArtId | null = null;
+    let curArt: SceneArt | null = null;
     let artT = 0;
     let curNpc: NpcId | null = null;
     let npcT = 0;
@@ -113,6 +119,10 @@ export function SceneCanvas({
         t,
       );
       postFx(work, x, fx);
+      // The bias-light backdrop: a tiny copy of the frame, refreshed twice a second;
+      // CSS blurs and dims it behind the scene.
+      const a = amb.current;
+      if (a && (frame % 6 === 0 || frame === 0)) a.getContext('2d')?.drawImage(c, 0, 0, a.width, a.height);
     };
     raf = requestAnimationFrame(loop);
     return () => {
@@ -120,7 +130,14 @@ export function SceneCanvas({
       io?.disconnect();
     };
   }, []);
-  return <canvas ref={ref} className="scene-canvas hd" width={STAGE_W} height={STAGE_H} aria-hidden="true" />;
+  const main = <canvas ref={ref} className="scene-canvas hd" width={STAGE_W} height={STAGE_H} aria-hidden="true" />;
+  if (!ambient) return main;
+  return (
+    <>
+      <canvas ref={amb} className="scene-ambient" width={32} height={18} aria-hidden="true" />
+      {main}
+    </>
+  );
 }
 
 // A small standalone character render (character creator, portraits).
@@ -155,6 +172,34 @@ export function PersonCanvas({ person, scale = 4, talk = false }: { person: Pers
     return () => cancelAnimationFrame(raf);
   }, [person, talk, k]);
   return <canvas ref={ref} className="person-canvas hd" width={18 * k} height={36 * k} style={{ width: 18 * scale, height: 36 * scale }} aria-hidden="true" />;
+}
+
+// ---------- painted headers and medals (static, painted once) ----------
+function useStaticPaint(ref: React.RefObject<HTMLCanvasElement | null>, src: () => HTMLCanvasElement, key: string): void {
+  useEffect(() => {
+    const c = ref.current;
+    const x = c?.getContext('2d');
+    if (!c || !x) return;
+    x.clearRect(0, 0, c.width, c.height);
+    x.drawImage(src(), 0, 0, c.width, c.height);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+}
+export function HDBanner({ kind }: { kind: BannerKind }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useStaticPaint(ref, () => bannerCanvas(kind), kind);
+  return <canvas ref={ref} className={`hd-banner ${kind}`} width={BANNER_W * HD_S} height={BANNER_H * HD_S} aria-hidden="true" />;
+}
+// The report-card grade as a stamped medal; the letter is also there as text for screen readers.
+export function GradeMedal({ grade }: { grade: string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useStaticPaint(ref, () => medalCanvas(grade), grade);
+  return (
+    <span className="grade-medal">
+      <canvas ref={ref} width={MEDAL_W * HD_S} height={MEDAL_H * HD_S} aria-hidden="true" />
+      <span className="sr-only">Grade: {grade}</span>
+    </span>
+  );
 }
 
 // ---------- portraits ----------

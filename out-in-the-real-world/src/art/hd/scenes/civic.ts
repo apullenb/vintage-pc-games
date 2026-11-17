@@ -299,13 +299,16 @@ function office(): HDSpec {
     npc: 130,
     floor: 98,
     horizon: 80,
-    fog: 0.06,
+    fog: 0.025,
     fogColor: '#dfe4ec',
+    bloom: 0.5,
     windows: [[10, 8, 56, 34]],
     bg: (x) => {
-      wallHD(x, '#c4ccd4', 80);
-      baseboardHD(x, 80, '#5a6470');
-      carpetHD(x, 80, '#7a8aa0', '#6a7a90');
+      // warm greige walls with a teal accent stripe; a darker carpet grounds the room
+      wallHD(x, '#d2cabc', 80);
+      fillRR(x, 0, 44, W, 3, 0.3, litV(x, 44, 47, '#2f8a8a'));
+      baseboardHD(x, 80, '#4a4440');
+      carpetHD(x, 80, '#4e5a70', '#465266');
       windowHD(x, 10, 8, 56, 34, '#e8ecf0', false);
       // whiteboard
       softShadow(x, 101, 24, 22, 13, 0.25);
@@ -355,8 +358,8 @@ function office(): HDSpec {
         const b = (t * 5 + k * 5) % 15;
         ell(x, 164.5 + Math.sin(t * 3 + k) * 1.2, 57 - b, 0.5, 0.5, 'rgba(240,250,255,0.85)');
       }
-      // coworker typing behind the cubicle wall
-      drawPersonHD(x, extra(2, 3, 0, '#e0503c'), 92, 67 + Math.sin(t * 4) * 0.2, { t, face: 1, blink: t % 4.7 < 0.12, shadow: false, scale: 0.9 });
+      // coworker typing behind the cubicle wall: seated, shoulders and arms above the partition
+      drawPersonHD(x, extra(2, 3, 0, '#e0503c'), 90, 51 + Math.sin(t * 4) * 0.2, { t, face: 1, blink: t % 4.7 < 0.12, shadow: false, scale: 0.9, seated: true });
       ell(x, 24, 70, 0.6, 0.6, Math.floor(t * 2) % 2 ? '#7fe08a' : '#2a5a3a');
     },
     mid: (x) => {

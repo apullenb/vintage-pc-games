@@ -166,3 +166,44 @@
     font-size: 19px;
   }
 }
+
+/* A report-card look: lined notebook paper, stamped grade chips. */
+.grades-top > div {
+  background: linear-gradient(#fffdf6, #f1e8d2);
+  box-shadow: 0 3px 0 var(--line);
+}
+.course-list {
+  border: 2px solid var(--line);
+  background:
+    linear-gradient(90deg, transparent 54px, #e0503c66 54px 56px, transparent 56px),
+    linear-gradient(#fffdf6, #fbf6e8);
+  padding: 0 10px 0 6px;
+}
+.course-list li {
+  border-bottom: 1px solid #c8d8f0;
+}
+.course-list li:last-child {
+  border-bottom: none;
+}
+.grade-letter {
+  font-size: 15px;
+  border-radius: 3px;
+  box-shadow: inset -2px -2px 0 #00000026, inset 2px 2px 0 #ffffffa0, 0 2px 0 var(--line);
+  transform: rotate(-3deg);
+}
+.grade-letter.a {
+  background: linear-gradient(#e4fbec, #9ad8b0);
+  color: #14502c;
+}
+.grade-letter.b {
+  background: linear-gradient(#ecf3ff, #a8c4f0);
+  color: #1e3a78;
+}
+.grade-letter.c {
+  background: linear-gradient(#fff4d4, #f0c870);
+  color: #6a4a08;
+}
+.grade-letter.f {
+  background: linear-gradient(#ffe2dc, #f09a8a);
+  color: #7a1a10;
+}
