@@ -35,7 +35,21 @@ export function App() {
     }
   };
 
-  if (screen === 'game' && g) return <Game g={g} setG={setG} meta={meta} setMeta={setMeta} onQuit={() => setScreen('title')} />;
+  if (screen === 'game' && g)
+    return (
+      <Game
+        g={g}
+        setG={setG}
+        meta={meta}
+        setMeta={setMeta}
+        onQuit={() => setScreen('title')}
+        onNewGame={() => {
+          // The finished year is already counted in best scores and unlocks; start fresh.
+          setG(null);
+          setScreen('create');
+        }}
+      />
+    );
   if (screen === 'create')
     return (
       <Create
@@ -49,7 +63,7 @@ export function App() {
   return (
     <Title
       meta={meta}
-      canContinue={!!g && !(g.over && g.queue[0]?.t !== 'ending')}
+      canContinue={!!g && !g.over}
       g={g}
       onContinue={() => setScreen('game')}
       onNew={() => {
@@ -78,12 +92,17 @@ function Title({ meta, canContinue, g, onContinue, onNew, onMute }: { meta: Meta
         <div className="title-btns">
           {canContinue && g && (
             <button className="btn primary big" onClick={() => { sfx('select'); onContinue(); }}>
-              Continue <small>Week {g.week} · {g.name}</small>
+              Continue <small>Week {Math.min(g.week, 36)} · {g.name}</small>
             </button>
           )}
           <button className={`btn big ${canContinue ? '' : 'primary'}`} onClick={() => { sfx('select'); onNew(); }}>
             New life
           </button>
+          {g && g.over && (
+            <button className="btn" onClick={() => { sfx('click'); onContinue(); }}>
+              See {g.name}’s final results
+            </button>
+          )}
         </div>
         {Object.keys(meta.best).length > 0 && (
           <div className="bests">

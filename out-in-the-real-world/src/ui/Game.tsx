@@ -80,7 +80,7 @@ function moodFor(s: GameState, art: ArtId): { tod: TimeOfDay; weather: Weather; 
   return { tod, weather: weatherFor(s.week), outfit };
 }
 
-export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (g: GameState) => void; meta: Meta; setMeta: (m: Meta) => void; onQuit: () => void }) {
+export function Game({ g, setG, meta, setMeta, onQuit, onNewGame }: { g: GameState; setG: (g: GameState) => void; meta: Meta; setMeta: (m: Meta) => void; onQuit: () => void; onNewGame: () => void }) {
   const [modal, setModal] = useState<ModalId>(null);
   const [toasts, setToasts] = useState<{ id: number; kind: 'ach' | 'hb'; text: string }[]>([]);
   const h = g.queue[0] ?? null;
@@ -127,7 +127,7 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
   else if (h.t === 'summary') panel = <SummaryPanel s={g} onContinue={() => commit(proceed(g))} />;
   else if (h.t === 'chapterEnd') panel = <ChapterEndPanel s={g} onContinue={() => commit(proceed(g))} />;
   else if (h.t === 'gameOver') panel = <GameOverPanel s={g} onRetry={() => { const r = retryChapter(g); if (r) setG(r); }} onQuit={onQuit} />;
-  else if (h.t === 'ending') panel = <EndingPanel s={g} meta={meta} setMeta={setMeta} onQuit={onQuit} />;
+  else if (h.t === 'ending') panel = <EndingPanel s={g} meta={meta} setMeta={setMeta} onQuit={onQuit} onNewGame={onNewGame} />;
 
   return (
     <div className={`game ${h?.t === 'ending' ? 'is-ending' : ''}`}>
@@ -745,7 +745,7 @@ function GameOverPanel({ s, onRetry, onQuit }: { s: GameState; onRetry: () => vo
   );
 }
 
-function EndingPanel({ s, meta, setMeta, onQuit }: { s: GameState; meta: Meta; setMeta: (m: Meta) => void; onQuit: () => void }) {
+function EndingPanel({ s, meta, setMeta, onQuit, onNewGame }: { s: GameState; meta: Meta; setMeta: (m: Meta) => void; onQuit: () => void; onNewGame: () => void }) {
   const f = finalScore(s);
   const prev = meta.best[s.path];
   const isBest = !prev || f.total > prev.score;
@@ -787,9 +787,14 @@ function EndingPanel({ s, meta, setMeta, onQuit }: { s: GameState; meta: Meta; s
         ))}
       </ul>
       <p className="muted small">Try another path: every start has different tradeoffs.</p>
-      <button className="btn primary" onClick={onQuit}>
-        Play again
-      </button>
+      <div className="row">
+        <button className="btn primary" onClick={onNewGame}>
+          Play again (new life)
+        </button>
+        <button className="btn" onClick={onQuit}>
+          Title screen
+        </button>
+      </div>
     </div>
   );
 }
