@@ -1,7 +1,9 @@
 // Shared toolkit for action mini-games: input (keyboard + touch), a game loop, a pixel canvas, a HUD.
 // Every mini-game is a React component taking MiniProps and calling onDone once with a 0..1 score.
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { GameState } from '../engine/types.ts';
+import { cssGrade, glPresenter, webglAvailable, type PostOpts, type Presenter } from './hdPost.ts';
+export type { PostOpts } from './hdPost.ts';
 
 export interface MiniProps {
   s: GameState;
@@ -91,6 +93,7 @@ export function useLoop(step: (dt: number, t: number) => void, running: boolean,
       last = now;
       fn.current(dt, (now - t0) / 1000);
       input?.pressed.clear();
+      presentAll();
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
@@ -99,18 +102,164 @@ export function useLoop(step: (dt: number, t: number) => void, running: boolean,
 
 // ---------- canvas ----------
 // A crisp, pixel-scaled canvas. Draw into ref.current's 2D context at its logical size (default 192x108).
-export function PixelCanvas({ canvasRef, width = 192, height = 108, onPointer }: { canvasRef: React.RefObject<HTMLCanvasElement | null>; width?: number; height?: number; onPointer?: (x: number, y: number, kind: 'down' | 'move' | 'up') => void }) {
+//
+// HD (opt-in via the `hd` prop): the game still draws in logical coordinates, but the backing store is
+// `scale`x bigger (ctxOf applies the transform), so new art can use the extra detail: smooth gradients,
+// sub-pixel shapes, soft shadows. With a post pass (the default for HD) each frame goes through a small
+// WebGL stack on its way to the screen: soft upscale + edge smoothing, bloom on bright pixels, colour
+// grade, vignette. Without WebGL it draws straight to the screen with a CSS grade. Without `hd`, nothing
+// changes. Games opting in must draw through ctxOf (or hdScale) and avoid get/putImageData on the canvas.
+export interface HdOpts {
+  scale?: number; // internal resolution multiplier (default 3)
+  post?: PostOpts | false; // post stack settings, or false for HD drawing with no post pass
+  reducedMotion?: boolean; // halves bloom (bright flashes) for players who asked for calmer visuals
+}
+export type HdProp = boolean | number | HdOpts | undefined;
+
+const SCALE = new WeakMap<HTMLCanvasElement, number>();
+const LIVE = new Set<Presenter>();
+let loopFrames = 0; // frames the game loop has presented (the idle presenter backs off while it runs)
+
+// Internal pixels per logical pixel of a canvas (1 for classic canvases).
+export function hdScale(c: HTMLCanvasElement | null | undefined): number {
+  return (c && SCALE.get(c)) || 1;
+}
+
+// Called by useLoop right after each step, so the post pass shows the frame the game just drew.
+function presentAll(): void {
+  if (!LIVE.size) return;
+  loopFrames++;
+  for (const p of LIVE) p.present();
+}
+
+function normHd(hd: HdProp): { scale: number; post: PostOpts | false; rm: boolean } | null {
+  if (!hd) return null;
+  if (hd === true) return { scale: 3, post: {}, rm: false };
+  if (typeof hd === 'number') return { scale: Math.max(1, Math.round(hd)), post: {}, rm: false };
+  return { scale: Math.max(1, Math.round(hd.scale ?? 3)), post: hd.post === false ? false : (hd.post ?? {}), rm: !!hd.reducedMotion };
+}
+
+const prefersReduced = (): boolean => {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+};
+
+export interface HdCanvasProps {
+  key: string;
+  ref: React.Ref<HTMLCanvasElement>;
+  width?: number;
+  height?: number;
+  className: string;
+  style?: React.CSSProperties;
+}
+
+// The plumbing behind PixelCanvas's `hd` prop, for games that render their own <canvas> element.
+// Spread the result (minus key) on the canvas and pass `key` separately. canvasRef.current is always
+// the canvas to draw into (an offscreen one while a post pass is active); pointer math should keep
+// using the event's currentTarget, which is always the visible canvas.
+export function useHdCanvas(canvasRef: React.RefObject<HTMLCanvasElement | null>, width: number, height: number, hd: HdProp): HdCanvasProps {
+  const cfg = normHd(hd);
+  const post = cfg && cfg.post !== false ? cfg.post : null;
+  const [mode, setMode] = useState<'gl' | '2d'>(() => (post && webglAvailable() ? 'gl' : '2d'));
+  const off = useRef<HTMLCanvasElement | null>(null);
+  const vis = useRef<HTMLCanvasElement | null>(null);
+  const optsRef = useRef<PostOpts>({});
+  if (post) {
+    const o: PostOpts = { ...post };
+    if (cfg!.rm || prefersReduced()) o.bloom = (o.bloom ?? 0.35) * 0.5;
+    optsRef.current = o;
+  }
+  const scale = cfg?.scale ?? 1;
+  if (post && mode === 'gl' && !off.current) {
+    const c = document.createElement('canvas');
+    // Anything that measures the drawing canvas gets the visible one's box.
+    c.getBoundingClientRect = () => (vis.current ?? document.body).getBoundingClientRect();
+    SCALE.set(c, scale);
+    off.current = c;
+  }
+  if (off.current && (off.current.width !== width * scale || off.current.height !== height * scale)) {
+    off.current.width = width * scale;
+    off.current.height = height * scale;
+    SCALE.set(off.current, scale);
+  }
+
+  useLayoutEffect(() => {
+    if (!post || mode !== 'gl') return;
+    const v = vis.current;
+    const src = off.current;
+    if (!v || !src) return;
+    const p = glPresenter(v, src, optsRef.current, () => setMode('2d'));
+    if (!p) {
+      setMode('2d');
+      return;
+    }
+    LIVE.add(p);
+    p.present();
+    let raf = 0;
+    // Keep the screen fed while the game loop is paused (menus, end screens).
+    let seen = -1;
+    let quiet = 0;
+    const idle = () => {
+      raf = requestAnimationFrame(idle);
+      quiet = loopFrames === seen ? quiet + 1 : 0;
+      seen = loopFrames;
+      if (quiet >= 2) p.present();
+    };
+    raf = requestAnimationFrame(idle);
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => p.resize());
+      ro.observe(v);
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+      LIVE.delete(p);
+      p.destroy();
+    };
+  }, [mode, !!post]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!cfg) return { key: 'px', ref: canvasRef, width, height, className: '' };
+  if (!post || mode === '2d') {
+    // Direct HD: the visible canvas is the drawing canvas. Without WebGL (or after a lost context) the
+    // grade still applies as a cheap CSS filter; bloom and the shader vignette are skipped.
+    return {
+      key: post ? 'hd-2d' : 'hd',
+      ref: (el: HTMLCanvasElement | null) => {
+        canvasRef.current = el;
+        if (el) SCALE.set(el, scale);
+      },
+      width: width * scale,
+      height: height * scale,
+      className: post ? 'hd hd-2d' : 'hd',
+      style: post ? { filter: cssGrade(optsRef.current) } : undefined,
+    };
+  }
+  return {
+    key: 'hd-gl',
+    ref: (el: HTMLCanvasElement | null) => {
+      vis.current = el;
+      canvasRef.current = el ? off.current : null;
+    },
+    className: 'hd hd-gl',
+  };
+}
+
+export function PixelCanvas({ canvasRef, width = 192, height = 108, onPointer, hd }: { canvasRef: React.RefObject<HTMLCanvasElement | null>; width?: number; height?: number; onPointer?: (x: number, y: number, kind: 'down' | 'move' | 'up') => void; hd?: HdProp }) {
   const toLogical = (e: React.PointerEvent<HTMLCanvasElement>): [number, number] => {
     const r = e.currentTarget.getBoundingClientRect();
     return [((e.clientX - r.left) / r.width) * width, ((e.clientY - r.top) / r.height) * height];
   };
+  const { key, className, style, ...cv } = useHdCanvas(canvasRef, width, height, hd);
   return (
     <canvas
-      ref={canvasRef}
-      className="mini-canvas"
-      width={width}
-      height={height}
-      style={{ aspectRatio: `${width} / ${height}` }}
+      key={key}
+      {...cv}
+      className={`mini-canvas ${className}`.trim()}
+      style={{ aspectRatio: `${width} / ${height}`, ...style }}
       onPointerDown={onPointer ? (e) => { e.currentTarget.setPointerCapture(e.pointerId); onPointer(...toLogical(e), 'down'); } : undefined}
       onPointerMove={onPointer ? (e) => onPointer(...toLogical(e), 'move') : undefined}
       onPointerUp={onPointer ? (e) => onPointer(...toLogical(e), 'up') : undefined}
@@ -118,9 +267,14 @@ export function PixelCanvas({ canvasRef, width = 192, height = 108, onPointer }:
   );
 }
 
+// The canvas's 2D context, ready for logical-coordinate drawing (HD canvases get their scale transform).
 export function ctxOf(c: HTMLCanvasElement | null): CanvasRenderingContext2D | null {
   const x = c?.getContext('2d') ?? null;
-  if (x) x.imageSmoothingEnabled = false;
+  if (x) {
+    x.imageSmoothingEnabled = false;
+    const s = SCALE.get(c!);
+    if (s) x.setTransform(s, 0, 0, s, 0, 0);
+  }
   return x;
 }
 
