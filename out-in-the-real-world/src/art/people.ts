@@ -1,6 +1,6 @@
 // Pixel people: the player (from their chosen look) and the cast.
 import type { Look, NpcId, PathId } from '../engine/types.ts';
-import { rect, shade, type Ctx } from './px.ts';
+import { mix, rect, shade, type Ctx } from './px.ts';
 
 export const SKINS = ['#f7d7bd', '#eab38c', '#c98c62', '#a26a46', '#714a32', '#4b3022'];
 export const HAIRS = ['#2a1b12', '#5b3a22', '#a7652b', '#e3c26b', '#c2412f', '#14131d', '#a3a3b4', '#7a55b8'];
@@ -44,19 +44,40 @@ export interface Person {
   wide?: boolean;
   brows?: boolean;
   holds?: Held;
+  hood?: string; // hoodie over the shirt (relaxing at home)
+  toolbelt?: boolean;
 }
+
+// What the player is wearing: everyday clothes, a hoodie at home, or the uniform for a path's job.
+export type Outfit = 'casual' | 'hoodie' | PathId;
 
 const OUT = '#1c1424';
 
-export function playerPerson(l: Look): Person {
-  return {
+export function playerPerson(l: Look, outfit: Outfit = 'casual'): Person {
+  const shirt = SHIRTS[l.shirt % SHIRTS.length];
+  const p: Person = {
     skin: SKINS[l.skin % SKINS.length],
     hair: HAIRS[l.hair % HAIRS.length],
     style: l.hairStyle % HAIR_STYLES.length,
-    shirt: SHIRTS[l.shirt % SHIRTS.length],
+    shirt,
     pants: '#34406a',
     shoes: '#2a2a33',
   };
+  switch (outfit) {
+    case 'hoodie':
+      // A comfy hoodie in a dusty version of their shirt color, sweatpants, socks.
+      return { ...p, hood: mix(shade(shirt, 0.86), '#6a6878', 0.3), pants: '#4a4a5a', shoes: '#d8d4cc' };
+    case 'work': // ParcelPoint: hi-vis vest, name badge, work boots
+      return { ...p, vest: '#ff8a1e', badge: true, shoes: '#4a3424', pants: '#2f3a52' };
+    case 'home': // Fresh Fields grocery: green apron and name tag
+      return { ...p, apron: '#3caa6a', badge: true, shortSleeves: true, pants: '#2a2a38' };
+    case 'trade': // Brightline Electric apprentice: hard hat, vest, tool belt, boots
+      return { ...p, hat: 'hard', hatColor: '#f2c230', vest: '#c8f03c', toolbelt: true, shoes: '#7a5232', pants: '#3a4a6a' };
+    case 'college': // library work-study: lanyard and an armful of books
+      return { ...p, lanyard: '#3f7fd8', holds: 'book' };
+    default:
+      return p;
+  }
 }
 
 export const CAST: Record<NpcId, { name: string; p: Person }> = {
@@ -108,6 +129,8 @@ export interface DrawOpts {
   face?: -1 | 0 | 1; // eye direction: -1 looks left, 1 looks right
   shadow?: boolean; // ground shadow (default on)
   clipY?: number; // only draw rows above this sprite-local y (for seated people)
+  walk?: number; // walk-cycle phase 0..3 (legs step, arms swing); omit when standing
+  gesture?: number; // talking gesture: 1 = hand out, 2 = hand on chest
 }
 
 // Draws a 14x30 person whose feet sit at (x+7, y+30). talk = mouth open frame.
@@ -118,7 +141,6 @@ export function drawPerson(ctx: Ctx, p: Person, x: number, y: number, frame = 0,
   const u = Math.max(0, Math.min(2, p.short ?? 0)); // shorter people: upper body sits lower
   const wd = p.wide ? 1 : 0;
   const skinD = shade(p.skin, 0.82);
-  const shirtD = shade(p.shirt, 0.78);
   const pantsD = shade(p.pants, 0.8);
   const shoes = p.shoes ?? '#2a2a33';
   const parts: Part[] = [];
@@ -132,15 +154,20 @@ export function drawPerson(ctx: Ctx, p: Person, x: number, y: number, frame = 0,
     ctx.fillRect(x + 1, y + 31, 12, 1);
   }
 
-  // legs & shoes (don't bob)
-  P(4, 21 + u, 3, 6 - u, p.pants, false);
-  P(7, 21 + u, 3, 6 - u, pantsD, false);
-  P(3, 27, 4, 2, shoes, false);
-  P(7, 27, 4, 2, shade(shoes, 0.85), false);
-  // torso
-  P(3 - wd, 11, 8 + wd * 2, 10, p.shirt);
-  P(10 + wd, 11, 1, 10, shirtD);
-  P(3 - wd, 18, 8 + wd * 2, 3, shirtD);
+  // legs & shoes (don't bob). Walking lifts one foot at a time.
+  const wk = opts.walk === undefined ? -1 : opts.walk & 3;
+  const lUp = wk === 1 ? 1 : 0;
+  const rUp = wk === 3 ? 1 : 0;
+  P(4, 21 + u, 3, 6 - u - lUp, p.pants, false);
+  P(7, 21 + u, 3, 6 - u - rUp, pantsD, false);
+  P(3, 27 - lUp, 4, 2, shoes, false);
+  P(7, 27 - rUp, 4, 2, shade(shoes, 0.85), false);
+  // torso (a hoodie replaces the shirt)
+  const top = p.hood ?? p.shirt;
+  const topD = shade(top, 0.78);
+  P(3 - wd, 11, 8 + wd * 2, 10, top);
+  P(10 + wd, 11, 1, 10, topD);
+  P(3 - wd, 18, 8 + wd * 2, 3, topD);
   P(3 - wd, 20, 8 + wd * 2, 1, pantsD); // belt line
   if (p.plaid) {
     P(5, 11, 1, 9, p.plaid);
@@ -148,7 +175,11 @@ export function drawPerson(ctx: Ctx, p: Person, x: number, y: number, frame = 0,
     P(3 - wd, 14, 8 + wd * 2, 1, p.plaid);
     P(3 - wd, 17, 8 + wd * 2, 1, p.plaid);
   }
-  P(5, 11, 4, 1, shade(p.shirt, 1.12)); // collar
+  P(5, 11, 4, 1, shade(top, 1.12)); // collar
+  if (p.hood) {
+    P(3, 10, 8, 2, shade(p.hood, 0.86)); // hood bunched at the neck
+    P(4, 16, 6, 3, shade(p.hood, 0.9)); // front pocket
+  }
   if (p.apron) {
     P(4, 13, 6, 8, p.apron);
     P(4, 11, 1, 2, p.apron);
@@ -178,19 +209,36 @@ export function drawPerson(ctx: Ctx, p: Person, x: number, y: number, frame = 0,
     P(3, 10, 8, 2, p.scarf);
     P(8, 12, 2, 4, shade(p.scarf, 0.85));
   }
-  // arms
-  const sleeve = p.coat ?? p.shirt;
-  if (p.shortSleeves && !p.coat) {
-    P(1 - wd, 11, 2, 4, sleeve);
-    P(11 + wd, 11, 2, 4, shade(sleeve, 0.85));
-    P(1 - wd, 15, 2, 4, p.skin);
-    P(11 + wd, 15, 2, 4, skinD);
-  } else {
-    P(1 - wd, 11, 2, 8, sleeve);
-    P(11 + wd, 11, 2, 8, shade(sleeve, 0.82));
+  // arms (walking swings them a pixel; a talking gesture lifts the free hand)
+  const sleeve = p.coat ?? p.hood ?? p.shirt;
+  const sw = wk === 1 ? 1 : wk === 3 ? -1 : 0;
+  const ges = opts.gesture ?? 0;
+  const bare = p.shortSleeves && !p.coat && !p.hood;
+  if (ges === 1) {
+    // forearm out to the side, palm up
+    P(1 - wd, 11, 2, 5, sleeve);
+    P(-1 - wd, 15, 3, 2, bare ? p.skin : sleeve);
+    P(-2 - wd, 13, 2, 2, p.skin);
+  } else if (ges === 2) {
+    // hand on chest
+    P(1 - wd, 11, 2, 5, sleeve);
+    P(2 - wd, 15, 4, 2, bare ? p.skin : shade(sleeve, 0.92));
+    P(5, 13, 2, 2, p.skin);
+  } else if (bare) {
+    P(1 - wd, 11 + sw, 2, 4, sleeve);
+    P(1 - wd, 15 + sw, 2, 4, p.skin);
+  } else P(1 - wd, 11 + sw, 2, 8, sleeve);
+  if (bare) {
+    P(11 + wd, 11 - sw, 2, 4, shade(sleeve, 0.85));
+    P(11 + wd, 15 - sw, 2, 4, skinD);
+  } else P(11 + wd, 11 - sw, 2, 8, shade(sleeve, 0.82));
+  if (!ges) P(1 - wd, 19 + sw, 2, 2, p.skin);
+  P(11 + wd, 19 - sw, 2, 2, p.skin);
+  if (p.toolbelt) {
+    P(3 - wd, 19, 8 + wd * 2, 2, '#7a5232');
+    P(3 - wd, 20, 2, 3, '#5a3a20');
+    P(9 + wd, 20, 2, 3, '#5a3a20');
   }
-  P(1 - wd, 19, 2, 2, p.skin);
-  P(11 + wd, 19, 2, 2, p.skin);
   // held item (in the hand on the viewer's right)
   const hx = 11 + wd;
   switch (p.holds) {
@@ -368,6 +416,29 @@ export function drawPerson(ctx: Ctx, p: Person, x: number, y: number, frame = 0,
   // details drawn after the outline so they sit inside
   const fy = y + bob + u;
   const D = (px: number, py: number, w: number, hh: number, c: string): void => rect(ctx, x + px, fy + py, w, hh, c);
+  // Form shading: light from the upper left. Rim highlights on the lit side,
+  // a shadow fold under the chest, a crease down the legs, glints on the shoes.
+  const lit = clip === undefined || clip > 20;
+  if (!p.coat && !p.vest) D(3 - wd, 12, 1, 5, shade(top, 1.12));
+  if (!p.apron && !p.hood) D(6, 16, 3, 1, shade(top, 0.9));
+  if (lit) {
+    const ly = y + u; // legs don't bob
+    rect(ctx, x + 4, ly + 22, 1, 4 - lUp, shade(p.pants, 1.16));
+    rect(ctx, x + 8, ly + 23, 1, 3 - rUp, shade(p.pants, 0.7));
+    rect(ctx, x + 3, y + 27 - lUp, 2, 1, shade(shoes, 1.6));
+    rect(ctx, x + 7, y + 27 - rUp, 1, 1, shade(shoes, 1.35));
+  }
+  D(2, 2, 1, 4, shade(p.skin, 1.07)); // lit cheek edge
+  D(3, 8, 8, 1, mix(p.skin, skinD, 0.5)); // jaw falloff
+  if (p.hood) {
+    D(6, 12, 1, 2, '#f2efe6'); // drawstrings
+    D(8, 12, 1, 2, '#f2efe6');
+    D(4, 16, 6, 1, shade(p.hood, 0.75));
+  }
+  if (p.vest) {
+    D(3 - wd, 11, 1, 10, shade(p.vest, 1.15));
+    D(10 + wd, 11, 1, 10, shade(p.vest, 0.78));
+  }
   if (hi && p.style !== RECEDING) D(hi[0], hi[1], hi[2], 1, shade(p.hat === 'hard' || p.hat === 'cap' ? (hc ?? (p.hat === 'cap' ? '#c0392b' : '#f2c230')) : h, 1.35));
   if (p.style === RECEDING && !p.hat) D(5, 1, 2, 1, shade(p.skin, 1.12)); // scalp shine
   if (p.style === 7) {
