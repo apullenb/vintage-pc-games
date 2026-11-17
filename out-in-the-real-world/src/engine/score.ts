@@ -163,15 +163,15 @@ function phaseTwoEpilogue(s: GameState): string[] {
   const job = s.job;
   const pay = usd(salary(job?.wage ?? 0));
   if (job) {
-    if (p.tier === 'top') out.push(`You’re a ${job.title} at ${job.place}, making ${pay} a year. Year-one you would not believe it.`);
+    if (p.tier === 'top') out.push(`You’re a ${job.title} at ${job.place}, making ${pay} a year. Year-one you wouldn’t believe it.`);
     else if (s.flags.p2Up) out.push(`Second chance, taken: you’re a ${job.title} now, at ${pay} a year. The hard way still counts.`);
     else out.push(`You’re still a ${job.title} (${pay} a year). ${p.levelUp ? `Next goal: ${p.levelUp.toLowerCase()}.` : ''}`);
   } else out.push('You’re between jobs, and your emergency fund is earning its name.');
   const m = mortgageOf(s);
   if (s.housing.kind === 'owned' && p.home && m) {
-    out.push(`You own ${p.home.name}. ${usd(m.payment + s.housing.rent)} a month, and it’s worth ${usd(p.home.value)}. You know your water heater’s age now. Everyone does, eventually.`);
+    out.push(`You own a home: ${p.home.name}. ${usd(m.payment + s.housing.rent)} a month, and it’s worth ${usd(p.home.value)}. You know your water heater’s age now. Everyone does, eventually.`);
   } else if (s.housing.kind === 'parents') out.push(`You still live at home, and your down-payment fund is ${usd(s.stats.savings)}. Your mom has stopped leaving printouts. Mostly.`);
-  else out.push(`You rent ${s.housing.name}. No roof to fix, no lawn to mow, and ${usd(s.stats.savings)} in savings.`);
+  else out.push(`You rent (${s.housing.name}). No roof to fix, no lawn to mow, and ${usd(s.stats.savings)} in savings.`);
   const cl = carLoanOf(s);
   if (s.flags.carDecided === 'suv') out.push(`The SUV is gorgeous. The ${cl ? `${usd(cl.payment)}/mo payment` : 'price tag'} is less gorgeous.`);
   else if (cl && s.car) out.push(`You drive a ${s.car.name}: ${usd(cl.payment)}/mo until it’s paid off.`);

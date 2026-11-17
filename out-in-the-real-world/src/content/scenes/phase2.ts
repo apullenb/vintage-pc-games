@@ -862,7 +862,7 @@ export const PHASE2_SCENES: Scene[] = [
           const c = CARS[Number(d.car)];
           const tin = tradeIn(s);
           const owe = oldCarLoan(s);
-          return `Price: ${money(Number(d.price))}${Number(d.price) < c.price ? ` (down from ${money(c.price)})` : ''}\nTax and fees: ${money(Math.round(Number(d.price) * TAX + FEES))}${Number(d.addons) ? `\nAdd-ons: ${money(Number(d.addons))}` : ''}${tin ? `\nTrade-in: −${money(tin)}` : ''}${owe ? `\nOld loan payoff: +${money(owe)}` : ''}\nOut the door: ${money(outTheDoor(s, d))}\n\nYour rate: ${pct(carApr(creditScore(s), c.isNew))} APR (credit ${SC(s)}).`;
+          return `Price: ${money(Number(d.price))}${Number(d.price) < c.price ? ` (down from ${money(c.price)})` : ''}\nTax and fees: ${money(Math.round(Number(d.price) * TAX + FEES))}${Number(d.addons) ? `\nAdd-ons: ${money(Number(d.addons))}` : ''}${tin ? `\nTrade-in: −${money(tin)}` : ''}${owe ? `\nOld loan payoff: +${money(owe)}` : ''}\nOut the door: ${money(outTheDoor(s, d))}\n\nYour rate: ${pct(carApr(creditScore(s), c.isNew))} APR, with a credit score of ${SC(s)}.`;
         },
         choices: [
           financeChoice(0.2, 48, '20% down, 48 months', (s, d) => (deal(s, d, 0.2, 48).payment <= grossMonthly(s) * 0.12 ? 3 : 1)),
@@ -928,7 +928,7 @@ export const PHASE2_SCENES: Scene[] = [
           const a = approval(s)!;
           const t = mortgageTier(a.score)!;
           const table = MORTGAGE_TIERS.map((x) => `${x.label}: ${pct(x.apr, 2)}${x === t ? '  ◀ you' : ''}`).join('\n');
-          return `PRE-APPROVED. Up to ${money(a.maxPrice)} with ${pct(minDown(t))} down, or ${money(Number(d.max20))} with 20% down.\n\nRates by credit score:\n${table}\nUnder 580: no loan.\n\nCash you have: ${money(cashOnHand(s))}. Your emergency fund goal: ${money(efundGoal(s))}. Lenders (and sane people) want a cushion left after closing.`;
+          return `PRE-APPROVED. Up to ${money(a.maxPrice)} with ${pct(minDown(t))} down, or ${money(Number(d.max20))} with 20% down.\n\nRates by credit score:\n${table}\nUnder 580: no loan.\n\nCash you have: ${money(cashOnHand(s))}. Lenders (and sane people) want three months of your NEW costs still in the bank after closing.`;
         },
         choices: [
           {
@@ -977,7 +977,6 @@ export const PHASE2_SCENES: Scene[] = [
           const a = approval(s);
           return `Gloria, your realtor, hands you five listings. Pre-approved up to ${money(a?.maxPrice ?? 0)} (more with a bigger down payment). Cash on hand: ${money(cashOnHand(s))}.`;
         },
-        speaker: 'landlord',
         choices: [
           ...LISTINGS.map(
             (L, i): Choice => ({
@@ -1017,7 +1016,6 @@ export const PHASE2_SCENES: Scene[] = [
       },
       offer: {
         text: (_s, d) => `${listingOf(d).name}. Listed at ${money(listingOf(d).price)}. It’s been on the market three weeks. What do you offer?`,
-        speaker: 'landlord',
         choices: [
           { label: (_s, d) => `Full asking price: ${money(listingOf(d).price)}`, bot: 1, next: 'inspect', result: 'Accepted within the hour. Gloria sends a GIF of confetti.' },
           {

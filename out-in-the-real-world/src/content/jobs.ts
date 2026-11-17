@@ -732,7 +732,7 @@ export function boardFor(s: GameState): Listing[] {
 function phase2Board(s: GameState, open: Listing[], shuffle: <T>(xs: T[]) => T[]): Listing[] {
   const fits = open.filter((l) => !l.scam && fitFor(s, l).hard.length === 0);
   const reach = shuffle(open.filter((l) => !l.scam && !fits.includes(l))).slice(0, 4);
-  const older = shuffle(LISTINGS.filter((l) => !l.phase && !l.scam && l.wage >= 20 && (!s.job || l.title !== s.job.title))).slice(0, 2);
+  const older = shuffle(LISTINGS.filter((l) => !l.phase && !l.scam && l.wage >= 20 && l.wage > (s.job?.wage ?? 0) && (!s.job || l.title !== s.job.title))).slice(0, 2);
   const out = [...fits, ...reach, ...older];
   if (boardPeriod(s.week) % 2 === 1) out.push(shuffle(LISTINGS.filter((l) => l.scam))[0]);
   for (const k of ['interviewFor', 'offerFor', 'referral']) {

@@ -88,7 +88,7 @@ function moodFor(s: GameState, art: ArtId): { tod: TimeOfDay; weather: Weather; 
 
 // Year one counts weeks 1–36; the next phase restarts the count.
 function weekView(g: GameState): { week: number; total: number } {
-  if (g.phase2 && !g.over) return { week: Math.min(Math.max(1, g.week - YEAR1_WEEKS), TOTAL_WEEKS - YEAR1_WEEKS), total: TOTAL_WEEKS - YEAR1_WEEKS };
+  if (g.phase2) return { week: Math.min(Math.max(1, g.week - YEAR1_WEEKS), TOTAL_WEEKS - YEAR1_WEEKS), total: TOTAL_WEEKS - YEAR1_WEEKS };
   return { week: Math.min(g.week, YEAR1_WEEKS), total: YEAR1_WEEKS };
 }
 
