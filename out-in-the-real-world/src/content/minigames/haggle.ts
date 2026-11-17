@@ -1,6 +1,7 @@
 // Haggle: a back-and-forth negotiation for a used car's price, or for a raise.
 import { achieve, money, unlock } from '../../engine/core.ts';
 import type { MiniGameDef } from './types.ts';
+import { negotiated } from '../scenes/jobs.ts';
 
 // What the negotiation is worth. The mini-game shows these live, so they must match what apply does.
 // A private seller's beater has lots of give (up to 25%); a dealer's car has a few percent.
@@ -15,7 +16,7 @@ export function raiseFor(score: number): number {
 
 export const haggle: MiniGameDef = {
   id: 'haggle',
-  title: (_s, d) => (d.item === 'raise' ? 'Ask for the Raise' : 'Haggle'),
+  title: (_s, d) => (d.offer ? 'Negotiate the Offer' : d.item === 'raise' ? 'Ask for the Raise' : 'Haggle'),
   how: (_s, d) =>
     `Four rounds. Listen to what the ${d.item === 'raise' ? 'boss' : 'seller'} says, pick the move that answers it (click or tap a card, or use the arrow keys and SPACE), then stop the power meter in the green to deliver it well. Too soft and it falls flat; into the red and you sound pushy. Watch their patience: if it runs out, the talk is over.`,
   stakes: (_s, d) =>
@@ -24,6 +25,14 @@ export const haggle: MiniGameDef = {
       : `Every move that lands knocks money off the ${money(Number(d.price ?? 2400))} sticker, up to ${Math.round(haggleRoom(Number(d.price ?? 2400)) * 100)}% off.`,
   art: 'carlot',
   apply: (s, r, d) => {
+    if (d.offer) {
+      // Negotiating a job offer: the extra goes into the offer, then back to deciding.
+      unlock(s, 'raise');
+      return {
+        text: negotiated(s, r.played ? raiseFor(r.score) : 0),
+        tip: 'Most employers expect a counter. Ask once, politely, with a reason (your skills, the going rate). Then stop talking.',
+      };
+    }
     if (d.item === 'raise') {
       unlock(s, 'raise');
       const raise = r.played ? raiseFor(r.score) : s.stats.rep >= 60 ? 0.5 : 0;

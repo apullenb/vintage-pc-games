@@ -22,6 +22,7 @@ import {
 } from './phase2.ts';
 import { billsFor, nextPhase, payBills, startWeek, defaultPlan } from '../engine/engine.ts';
 import { finalScore } from '../engine/score.ts';
+import { LISTING_BY_ID, boardFor, fitFor } from './jobs.ts';
 import { creditScore, netWorth } from '../engine/core.ts';
 import type { GameState, PathId, School } from '../engine/types.ts';
 
@@ -277,5 +278,33 @@ describe('owning a home', () => {
     s.stats.cash = 5000;
     const n = startWeek(s, defaultPlan(s));
     expect(Number.isFinite(n.stats.cash)).toBe(true);
+  });
+});
+
+describe('the job board after year one', () => {
+  it('lists next-phase jobs that fit your degree, license and certifications', () => {
+    const y1 = newState('T', look, 'college', 5);
+    expect(boardFor(y1).some((l) => l.phase === 2)).toBe(false);
+    const nurse = nextPhase(
+      yearOneDone('college', (s) => {
+        s.school = school('nursing', 92);
+        s.flags.careerDone = true;
+      }),
+    );
+    const board = boardFor(nurse);
+    expect(board.every((l) => l.phase === 2 || l.scam || l.wage >= 20)).toBe(true);
+    // Their own job isn't listed; a degree job for another major says why it's out of reach.
+    expect(nurse.job?.id).toBe('p2-rn');
+    expect(board.some((l) => l.id === 'p2-rn')).toBe(false);
+    expect(fitFor(nurse, LISTING_BY_ID['p2-comms']).ok).toBe(true);
+    expect(fitFor(nurse, LISTING_BY_ID['p2-dev']).hard).toContain('Computer Science degree');
+    const elec = nextPhase(yearOneDone('trade', (s) => (s.flags.careerDone = true)));
+    expect(fitFor(elec, LISTING_BY_ID['p2-journeyman']).hard).not.toContain('Journeyman license');
+    const apprentice = nextPhase(yearOneDone('trade'));
+    expect(fitFor(apprentice, LISTING_BY_ID['p2-journeyman']).hard).toContain('Journeyman license');
+    // Certified, with three years of work behind you: the hospital job is in reach.
+    const tech = nextPhase(yearOneDone('home', (s) => (s.skills = ['cpht'])));
+    expect(tech.phase2?.tier).toBe('mid');
+    expect(fitFor(tech, LISTING_BY_ID['p2-cpht']).ok).toBe(true);
   });
 });

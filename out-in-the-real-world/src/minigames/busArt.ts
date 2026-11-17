@@ -1,7 +1,8 @@
 // Bus Dash art: a parallax morning street, the city bus, and the sidewalk obstacles.
 import { drawPerson, HAIRS, SHIRTS, SKINS, type Person } from '../art/people.ts';
-import { bands, bevel, cached, disc, dither, grad, hash, INK, line, outlineRect, rect, shade, stipple, text, type Ctx } from '../art/px.ts';
+import { cached, disc, dither, hash, INK, line, outlineRect, rect, shade, stipple, text, type Ctx } from '../art/px.ts';
 import { pick } from './shiftKit.ts';
+import { drawHd, glow, grain, hdLayer, hdSprite, idOf, rrect, softBlit, softShadow, sphere, spriteOf, vband } from './hdFx.ts';
 
 export const GROUND = 99; // runner's feet line (front lane)
 export const BACK = 88; // pedestrians' feet line (back lane)
@@ -23,19 +24,6 @@ export function passerby(): Person {
 // ---------- backdrop layers (tiled horizontally) ----------
 const FAR_W = 256;
 const NEAR_W = 384;
-
-const sky = (): HTMLCanvasElement =>
-  cached('bus-sky', 192, 60, (x) => {
-    bands(x, 0, 0, 192, 52, ['#f6c8a0', '#f8d8a8', '#f8e4b8', '#e8ecd0', '#c8e4ec', '#a8d4ec'].reverse());
-    disc(x, 150, 18, 7, '#fff4c8');
-    disc(x, 150, 18, 5, '#ffffff');
-    // clouds
-    for (const [cx, cy, w] of [[30, 12, 22], [96, 8, 16], [176, 26, 18]] as const) {
-      rect(x, cx, cy, w, 3, '#fff8ec');
-      rect(x, cx + 3, cy - 2, w - 8, 2, '#fff8ec');
-      rect(x, cx + 2, cy + 3, w - 2, 1, '#f0d8c8');
-    }
-  });
 
 const far = (): HTMLCanvasElement =>
   cached('bus-far', FAR_W, 60, (x) => {
@@ -93,76 +81,261 @@ const near = (): HTMLCanvasElement =>
     }
   });
 
-const ground = (): HTMLCanvasElement =>
-  cached('bus-ground', 192, 48, (x) => {
-    // street (y 60..74 in screen space -> 0..14 here, drawn at y 60)
-    grad(x, 0, 0, 192, 15, ['#5a5a66', '#4a4a56']);
-    stipple(x, 0, 0, 192, 15, '#62626e', 0.15);
-    // curb
-    rect(x, 0, 15, 192, 2, '#c8c8d0');
-    rect(x, 0, 17, 192, 1, '#8a8a96');
-    // sidewalk
-    grad(x, 0, 18, 192, 22, ['#d8d0c4', '#ccc4b8', '#c4bcae']);
-    // lawn strip
-    grad(x, 0, 40, 192, 8, ['#5aa04a', '#4a8a3a']);
-    dither(x, 0, 40, 192, 1, '#5aa04a', '#3a7a2a');
-  });
+// ---------- HD backdrop ----------
+// Same layers, rebuilt as smooth art: a gradient morning sky with a blooming sun and soft clouds;
+// the far skyline filtered soft and pushed back into blue morning haze; the near street rounded off
+// and lit; a real asphalt/curb/sidewalk/lawn ground with grain. Each layer is baked once at 3x.
+const HD_S = 3;
+let HD_SKY: HTMLCanvasElement | null = null;
+let HD_FAR: HTMLCanvasElement | null = null;
+let HD_NEAR: HTMLCanvasElement | null = null;
+let HD_GROUND: HTMLCanvasElement | null = null;
+function hdSky(): HTMLCanvasElement {
+  if (HD_SKY) return HD_SKY;
+  const { c, x } = hdLayer(192, 62, HD_S);
+  vband(x, 0, 0, 192, 62, [
+    [0, '#8cc4ec'],
+    [0.45, '#c4e0ec'],
+    [0.75, '#f6e2bc'],
+    [1, '#f8cfa4'],
+  ]);
+  glow(x, 150, 18, 60, '#fff2c8', 0.55);
+  glow(x, 150, 18, 16, '#ffffff', 0.7);
+  sphere(x, 150, 18, 5.5, '#fffbe8', 0, 0, 0);
+  for (const [cx, cy, w] of [
+    [40, 12, 26],
+    [104, 8, 18],
+    [182, 27, 22],
+  ] as const) {
+    for (let k = 0; k < 4; k++) {
+      const px = cx - w / 2 + (k + 0.5) * (w / 4);
+      const r = 3 + Math.sin(k * 1.7 + cx) * 1 + (k === 1 || k === 2 ? 1.5 : 0);
+      const g = x.createRadialGradient(px - 1, cy - r * 0.5, 0.5, px, cy, r * 1.4);
+      g.addColorStop(0, 'rgba(255,252,244,0.95)');
+      g.addColorStop(0.7, 'rgba(250,236,226,0.75)');
+      g.addColorStop(1, 'rgba(250,236,226,0)');
+      x.fillStyle = g;
+      x.beginPath();
+      x.ellipse(px, cy, r * 1.4, r, 0, 0, Math.PI * 2);
+      x.fill();
+    }
+  }
+  HD_SKY = c;
+  return c;
+}
+function hdFar(): HTMLCanvasElement {
+  if (HD_FAR) return HD_FAR;
+  const { c, x } = hdLayer(FAR_W, 60, HD_S);
+  softBlit(x, far(), 0, 0, FAR_W, 60);
+  // atmospheric perspective: distant towers fade into the morning haze, more at their feet
+  x.globalCompositeOperation = 'source-atop';
+  vband(x, 0, 0, FAR_W, 60, [
+    [0, 'rgba(196,222,240,0.35)'],
+    [1, 'rgba(240,226,206,0.62)'],
+  ]);
+  x.globalCompositeOperation = 'source-over';
+  HD_FAR = c;
+  return c;
+}
+function hdNear(): HTMLCanvasElement {
+  if (HD_NEAR) return HD_NEAR;
+  const { c, x } = hdLayer(NEAR_W, 64, HD_S);
+  x.imageSmoothingEnabled = true;
+  x.drawImage(hdSprite(near(), { light: 0.12, shadow: 0.18, lx: 0.8, ly: 0.1 }), 0, 0, NEAR_W, 64);
+  // a light layer of haze + sun from the upper right
+  x.globalCompositeOperation = 'source-atop';
+  vband(x, 0, 0, NEAR_W, 64, [
+    [0, 'rgba(255,236,200,0.1)'],
+    [0.6, 'rgba(255,236,200,0.04)'],
+    [1, 'rgba(40,30,60,0.12)'],
+  ]);
+  x.globalCompositeOperation = 'source-over';
+  HD_NEAR = c;
+  return c;
+}
+function hdGround(): HTMLCanvasElement {
+  if (HD_GROUND) return HD_GROUND;
+  const { c, x } = hdLayer(192, 48, HD_S);
+  // street: dark asphalt, a soft sky reflection band
+  vband(x, 0, 0, 192, 15, [
+    [0, '#62626f'],
+    [0.5, '#4c4c58'],
+    [1, '#40404c'],
+  ]);
+  vband(x, 0, 3, 192, 4, [
+    [0, 'rgba(200,220,240,0)'],
+    [0.5, 'rgba(200,220,240,0.1)'],
+    [1, 'rgba(200,220,240,0)'],
+  ]);
+  // curb: a rounded concrete lip with a highlight and a shadow under it
+  vband(x, 0, 15, 192, 3, [
+    [0, '#f0f0f4'],
+    [0.45, '#c8c8d0'],
+    [1, '#7a7a86'],
+  ]);
+  // sidewalk: lit from above, darker toward the lawn
+  vband(x, 0, 18, 192, 22, [
+    [0, '#c2baae'],
+    [0.12, '#e0d8cc'],
+    [1, '#c0b8aa'],
+  ]);
+  // lawn
+  vband(x, 0, 40, 192, 8, [
+    [0, '#3e7c32'],
+    [0.25, '#5aa04a'],
+    [1, '#468a3a'],
+  ]);
+  grain(x, 0, 0, 192, 18, 0.5, 'fine', 0, 0, 24);
+  grain(x, 0, 18, 192, 22, 0.3, 'fine', 0, 0, 40);
+  grain(x, 0, 40, 192, 8, 0.6, 'blades', 0, 0, 16);
+  HD_GROUND = c;
+  return c;
+}
 
-export function drawBackdrop(x: Ctx, cam: number, t: number): void {
-  x.drawImage(sky(), 0, 0);
-  const tile = (img: HTMLCanvasElement, w: number, f: number, y: number) => {
+export function drawBackdropHd(x: Ctx, cam: number, t: number): void {
+  x.drawImage(hdSky(), 0, 0, 192, 62);
+  const tile = (img: HTMLCanvasElement, w: number, h: number, f: number, y: number) => {
     const off = -(((cam * f) % w) + w) % w;
-    for (let ox = off; ox < 192; ox += w) x.drawImage(img, Math.round(ox), y);
+    for (let ox = off; ox < 192; ox += w) x.drawImage(img, ox, y, w + 0.02, h);
   };
-  tile(far(), FAR_W, 0.15, 2);
-  tile(near(), NEAR_W, 0.45, 0);
-  x.drawImage(ground(), 0, 60);
-  // road dashes and sidewalk seams scroll with the camera
+  tile(hdFar(), FAR_W, 60, 0.15, 2);
+  tile(hdNear(), NEAR_W, 64, 0.45, 0);
+  // where the street meets the buildings: a band of shade
+  vband(x, 0, 54, 192, 7, [
+    [0, 'rgba(30,20,50,0)'],
+    [1, 'rgba(30,20,50,0.25)'],
+  ]);
+  const gnd = hdGround();
+  const gs = -((cam % 192) + 192) % 192;
+  void gs;
+  x.drawImage(gnd, 0, 60, 192, 48);
+  // road dashes and sidewalk seams scroll with the camera (smooth, sub-pixel)
   const d = -((cam % 24) + 24) % 24;
-  for (let i = d; i < 192; i += 24) rect(x, Math.round(i), 66, 10, 1, '#e8d890');
+  x.fillStyle = '#ece0a0';
+  for (let i = d; i < 192; i += 24) {
+    rrect(x, i, 65.6, 10, 1.1, 0.5);
+    x.fill();
+  }
   const s = -((cam % 20) + 20) % 20;
   for (let i = s; i < 192; i += 20) {
-    rect(x, Math.round(i), 78, 1, 21, '#b0a89a');
+    x.fillStyle = 'rgba(120,110,96,0.55)';
+    x.fillRect(i, 78, 0.6, 21);
+    x.fillStyle = 'rgba(255,250,240,0.5)';
+    x.fillRect(i + 0.6, 78, 0.4, 21);
   }
-  // grass blades flicker a touch
+  // grass blades sway a touch
   const g = -((cam % 6) + 6) % 6;
-  for (let i = g; i < 192; i += 6) rect(x, Math.round(i), 100 + (Math.floor(i + t * 2) & 1), 1, 2, '#6ab85a');
+  x.strokeStyle = '#78c466';
+  x.lineWidth = 0.5;
+  x.beginPath();
+  for (let i = g; i < 192; i += 3) {
+    const sw = Math.sin(t * 2 + i * 0.7) * 0.6;
+    x.moveTo(i, 103);
+    x.lineTo(i + sw, 100 + (Math.floor(i) % 2));
+  }
+  x.stroke();
 }
 
 // ---------- the bus ----------
 export const BUS_W = 70;
-// (fx, by): front x and wheel line. door 0..1 = closed..open
-export function drawBus(x: Ctx, fx: number, by: number, door: number, sign: string, t: number): void {
-  const x0 = Math.round(fx - BUS_W);
+// HD bus: a lacquered cream body with a glossy orange band, tinted glass with sky reflections, real
+// tyres with hubcaps, a glowing destination sign and headlight.
+export function drawBusHd(x: Ctx, fx: number, by: number, door: number, sign: string, t: number): void {
+  const x0 = fx - BUS_W;
   const y0 = by - 26;
-  rect(x, x0 - 1, y0 - 1, BUS_W + 2, 24, INK);
-  bevel(x, x0, y0, BUS_W, 22, '#f2ece0', false);
-  rect(x, x0, y0 + 14, BUS_W, 3, '#e8781e');
-  rect(x, x0, y0 + 17, BUS_W, 1, '#2e7a8a');
-  // windows
-  for (let i = 0; i < 5; i++) {
-    rect(x, x0 + 4 + i * 10, y0 + 4, 8, 8, '#3a5a72');
-    rect(x, x0 + 4 + i * 10, y0 + 4, 8, 2, '#8ab8d8');
-  }
-  // windshield + route sign
-  rect(x, x0 + BUS_W - 9, y0 + 4, 8, 10, '#3a5a72');
-  rect(x, x0 + BUS_W - 9, y0 + 4, 8, 2, '#a8d8f0');
-  rect(x, x0 + 4, y0 + 1, 40, 2, '#1c1424');
-  rect(x, x0 + 30, y0 - 7, 40, 7, '#1c1424');
-  text(x, sign, x0 + 32, y0 - 6, Math.floor(t * 4) % 2 || !sign.includes(':') ? '#ffb030' : '#ff7a20');
-  // door (front, right side)
+  // shadow on the street
+  softShadow(x, x0 + BUS_W / 2, by + 0.5, BUS_W * 0.56, 2.6, 0.5);
+  // body
+  rrect(x, x0, y0, BUS_W, 22, 3);
+  const bg = x.createLinearGradient(0, y0, 0, y0 + 22);
+  bg.addColorStop(0, '#fffaf0');
+  bg.addColorStop(0.35, '#f2ece0');
+  bg.addColorStop(0.8, '#d8d0c0');
+  bg.addColorStop(1, '#a8a090');
+  x.fillStyle = bg;
+  x.fill();
+  x.strokeStyle = 'rgba(20,12,30,0.85)';
+  x.lineWidth = 0.6;
+  x.stroke();
+  // orange band + teal pinstripe, with a gloss line
+  const ob = x.createLinearGradient(0, y0 + 14, 0, y0 + 17);
+  ob.addColorStop(0, '#ffa850');
+  ob.addColorStop(0.5, '#e8781e');
+  ob.addColorStop(1, '#b85a10');
+  x.fillStyle = ob;
+  x.fillRect(x0 + 0.3, y0 + 14, BUS_W - 0.6, 3);
+  x.fillStyle = '#2e7a8a';
+  x.fillRect(x0 + 0.3, y0 + 17, BUS_W - 0.6, 0.8);
+  x.fillStyle = 'rgba(255,255,255,0.55)';
+  x.fillRect(x0 + 1, y0 + 14.2, BUS_W - 2, 0.4);
+  // roof highlight
+  x.fillStyle = 'rgba(255,255,255,0.7)';
+  rrect(x, x0 + 3, y0 + 0.5, BUS_W - 8, 0.8, 0.4);
+  x.fill();
+  const glass = (gx: number, gy: number, gw: number, gh: number) => {
+    rrect(x, gx, gy, gw, gh, 0.8);
+    const gg = x.createLinearGradient(gx, gy, gx + gw * 0.6, gy + gh);
+    gg.addColorStop(0, '#a8d4f0');
+    gg.addColorStop(0.35, '#4a7090');
+    gg.addColorStop(1, '#1e3046');
+    x.fillStyle = gg;
+    x.fill();
+    x.save();
+    x.clip();
+    x.strokeStyle = 'rgba(240,250,255,0.5)';
+    x.lineWidth = 1.2;
+    x.beginPath();
+    x.moveTo(gx + gw * 0.2, gy + gh + 1);
+    x.lineTo(gx + gw * 0.7, gy - 1);
+    x.stroke();
+    x.restore();
+  };
+  for (let i = 0; i < 5; i++) glass(x0 + 4 + i * 10, y0 + 4, 8, 8);
+  glass(x0 + BUS_W - 9, y0 + 4, 8, 10);
+  // destination sign (glows)
+  rrect(x, x0 + 30, y0 - 7, 40, 7, 1);
+  x.fillStyle = '#1c1424';
+  x.fill();
+  const lit = Math.floor(t * 4) % 2 || !sign.includes(':') ? '#ffb030' : '#ff7a20';
+  text(x, sign, x0 + 32, y0 - 6, lit);
+  glow(x, x0 + 50, y0 - 3.5, 16, '#ffa030', 0.25, 0.35);
+  // door
   const dx = x0 + BUS_W - 20;
-  rect(x, dx, y0 + 4, 9, 16, '#1c1424');
-  const open = Math.round(4 * door);
-  rect(x, dx + 1 - 0, y0 + 5, 4 - open, 14, '#5a8aa0');
-  rect(x, dx + 4 + open, y0 + 5, 4 - open, 14, '#5a8aa0');
-  // wheels
+  rrect(x, dx, y0 + 4, 9, 16, 0.6);
+  x.fillStyle = '#1c1424';
+  x.fill();
+  const open = 4 * door;
+  for (const [px, w] of [
+    [dx + 1, 4 - open],
+    [dx + 4 + open, 4 - open],
+  ] as const) {
+    if (w <= 0.05) continue;
+    const dg = x.createLinearGradient(px, 0, px + w, 0);
+    dg.addColorStop(0, '#8ab8cc');
+    dg.addColorStop(1, '#3e6a80');
+    x.fillStyle = dg;
+    x.fillRect(px, y0 + 5, w, 14);
+  }
+  // wheels: tyre, shaded hubcap, a glint
   for (const wx of [x0 + 12, x0 + BUS_W - 12]) {
-    disc(x, wx, by - 3, 4, INK);
-    disc(x, wx, by - 3, 2, '#8a8a96');
+    x.fillStyle = 'rgba(20,12,30,0.9)';
+    x.beginPath();
+    x.arc(wx, by - 6, 5.6, Math.PI, 0);
+    x.fill();
+    sphere(x, wx, by - 3, 4.2, '#2a2630', -0.3, -0.6, 0.15);
+    sphere(x, wx, by - 3, 2.1, '#b8b8c8', -0.4, -0.5, 0.5);
   }
   // headlight
-  rect(x, x0 + BUS_W - 2, y0 + 15, 2, 2, '#fff4a0');
+  sphere(x, x0 + BUS_W - 1, y0 + 16, 1.3, '#fff4b0', -0.3, -0.3, 0.6);
+  glow(x, x0 + BUS_W + 1, y0 + 16, 9, '#fff0a0', 0.45);
+}
+
+// HD people: the pixel poses, cached and rounded off with a soft light (see hdSprite).
+const PERSON_LIT = { light: 0.22, shadow: 0.3, rim: '#fff0c8', lx: 0.75, ly: 0.15 };
+export function personHd(x: Ctx, p: Person, px: number, py: number, frame: number, face: -1 | 1): void {
+  const spr = spriteOf(`bp|${idOf(p)}|${frame}|${face}`, 26, 42, (c) => drawPerson(c, p, 5, 8, frame, false, { face, shadow: false }));
+  softShadow(x, px + 7, py + 30, 8, 1.8, 0.4);
+  drawHd(x, spr, Math.round(px) - 5, Math.round(py) - 8, false, PERSON_LIT);
 }
 
 // ---------- obstacles ----------
@@ -171,7 +344,7 @@ export type ObKind = 'dog' | 'stroller' | 'puddle' | 'ladder' | 'sprinkler' | 's
 export function drawDog(x: Ctx, sx: number, t: number, owner: Person): void {
   const leg = Math.floor(t * 10) % 2;
   // owner in the back lane, holding the leash
-  drawPerson(x, owner, sx + 16, BACK - 30, Math.floor(t * 4) % 2, false, { face: 1 });
+  personHd(x, owner, sx + 16, BACK - 30, Math.floor(t * 4) % 2, 1);
   line(x, sx + 11, GROUND - 7, sx + 28, BACK - 10, '#c0392b');
   const y = GROUND - 9;
   rect(x, sx - 1, y + 1, 12, 6, INK);
@@ -188,7 +361,7 @@ export function drawDog(x: Ctx, sx: number, t: number, owner: Person): void {
 }
 
 export function drawStroller(x: Ctx, sx: number, t: number, parent: Person): void {
-  drawPerson(x, parent, sx + 14, BACK - 30, Math.floor(t * 4) % 2, false, { face: 1 });
+  personHd(x, parent, sx + 14, BACK - 30, Math.floor(t * 4) % 2, 1);
   line(x, sx + 12, GROUND - 13, sx + 17, BACK - 11, INK);
   const y = GROUND - 14;
   rect(x, sx - 1, y - 1, 14, 10, INK);
@@ -213,7 +386,7 @@ export function drawPuddle(x: Ctx, sx: number, w: number, t: number): void {
 
 export function drawLadder(x: Ctx, sx: number, t: number, worker: Person): void {
   // the ladder sticks out in front of the worker, right at head height
-  drawPerson(x, worker, sx + 30, BACK - 30, Math.floor(t * 4) % 2, false, { face: -1 });
+  personHd(x, worker, sx + 30, BACK - 30, Math.floor(t * 4) % 2, -1);
   const y = GROUND - 26;
   rect(x, sx - 1, y - 1, 46, 7, INK);
   rect(x, sx, y, 44, 1, '#d8d8e0');

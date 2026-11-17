@@ -41,6 +41,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'secondwind', name: 'Second Wind', desc: 'Missed your year-one milestone, then leveled up anyway.', icon: 'star' },
   { id: 'newwheels', name: 'New-to-You Wheels', desc: 'Bought a newer car in the next phase.', icon: 'car' },
   { id: 'homeowner', name: 'Homeowner', desc: 'Closed on your first home.', icon: 'home' },
+  { id: 'certified', name: 'Certified', desc: 'Finished an online course and earned a job skill.', icon: 'study' },
+  { id: 'newjob', name: 'Better Offer', desc: 'Interviewed for a new job and took it.', icon: 'work' },
+  { id: 'redflag', name: 'Red Flag Spotter', desc: 'Reported a job scam instead of paying it.', icon: 'shield' },
 ];
 
 export function checkAchievements(s: GameState): void {

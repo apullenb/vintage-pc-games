@@ -9,6 +9,7 @@ import { checkAchievements } from '../content/achievements.ts';
 import { collegeWeek } from '../content/college.ts';
 import { YEAR1_CHAPTERS, beginPhase2, canStartPhase2, phase2Week, yearOneOf } from '../content/phase2.ts';
 import { finalScore } from './score.ts';
+import { careerWeek } from '../content/careers.ts';
 import {
   canPay,
   cardRoom,
@@ -227,6 +228,8 @@ function runFood(s: GameState): void {
 
 // ---------- upkeep ----------
 function runUpkeep(s: GameState): void {
+  // Skills, courses, job changes, commute (content/careers.ts).
+  careerWeek(s);
   // The job itself.
   if (s.job) {
     // Construction slows down in the dead of winter: apprentices get cut hours, not paid time off.

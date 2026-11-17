@@ -98,7 +98,7 @@ export function careerPoints(s: GameState): number {
   const p = s.phase2;
   if (!p) return 0;
   if (p.tier === 'top') return 150;
-  if (s.flags.p2Up) return 125;
+  if (s.flags.p2Up || (p.next && (s.job?.wage ?? 0) >= p.next.wage)) return 125;
   return p.tier === 'mid' ? 90 : 50;
 }
 

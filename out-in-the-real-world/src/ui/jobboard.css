@@ -1,0 +1,181 @@
+/* Job Board and Resume modal. */
+.jb-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.jb-tabs .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.jb-intro {
+  margin-bottom: 10px;
+}
+.jb-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 10px;
+}
+.jb-card {
+  border: 3px solid var(--line);
+  background: var(--panel2);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.jb-card.fits {
+  background: #eaf5e4;
+}
+.jb-card.picked {
+  outline: 3px solid var(--gold);
+  outline-offset: -1px;
+}
+.jb-card .jb-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+.jb-card h3 {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.3;
+}
+.jb-pay {
+  text-align: right;
+  white-space: nowrap;
+  line-height: 1;
+}
+.jb-pay strong {
+  font-family: var(--font-ui);
+  font-size: 18px;
+}
+.jb-diff {
+  display: block;
+  font-size: 17px;
+  margin-top: 4px;
+}
+.jb-diff.up {
+  color: var(--good);
+}
+.jb-diff.down {
+  color: var(--bad);
+}
+.jb-blurb {
+  margin: 0;
+}
+.jb-reqs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  font-size: 19px;
+}
+.jb-reqs .ok {
+  color: var(--good);
+}
+.jb-reqs .miss {
+  color: var(--bad);
+}
+.jb-reqs .nice {
+  color: var(--ink2);
+}
+.jb-reqs small {
+  color: var(--muted);
+  font-size: 16px;
+}
+.jb-note {
+  margin: 0;
+  font-weight: bold;
+  color: var(--accent-dk);
+}
+.jb-note.good {
+  color: var(--good);
+}
+.jb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+.jb-picked {
+  color: var(--ink2);
+  font-size: 18px;
+}
+.jb-card .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.jb-resume {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.jb-resume h3 {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  margin-bottom: 6px;
+  border-bottom: 2px solid var(--line);
+  padding-bottom: 3px;
+}
+.jb-meter {
+  display: flex;
+  gap: 3px;
+  margin: 4px 0;
+}
+.jb-meter span {
+  flex: 1;
+  height: 12px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+}
+.jb-meter span.on {
+  background: var(--good);
+}
+.jb-skills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 6px;
+}
+.jb-skills li {
+  display: flex;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 2px dashed var(--muted);
+  color: var(--muted);
+}
+.jb-skills li.have {
+  border: 2px solid var(--line);
+  background: #eaf5e4;
+  color: var(--ink);
+}
+.jb-skills strong {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.jb-skills small {
+  display: block;
+  font-size: 16px;
+  line-height: 1.1;
+}
+@media (max-width: 520px) {
+  .jb-list {
+    grid-template-columns: 1fr;
+  }
+}

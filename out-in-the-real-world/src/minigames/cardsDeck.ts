@@ -3,6 +3,7 @@
 import { HANDBOOK } from '../content/handbook.ts';
 import type { GameState, MajorId, PathId } from '../engine/types.ts';
 import { shuffle } from './cardsFx.ts';
+import { COURSE_BY_ID } from '../content/courses.ts';
 
 export interface Card {
   id: string;
@@ -80,6 +81,11 @@ export const HANDBOOK_CARDS: Record<string, [string, string]> = {
   'cancel-trap': ['Cancel trap', 'A gym that makes quitting hard. Read the rules first.'],
   sap: ['Academic progress', 'Keep about a 2.0 GPA and pass your classes, or federal aid stops.'],
   'academic-probation': ['Probation', 'Warning status when your GPA drops under 2.0.'],
+  'job-interview': ['STAR answer', 'Problem, what you did, and how it turned out.'],
+  'two-weeks-notice': ['Two weeks’ notice', 'Telling your boss you’re leaving, so you keep the reference.'],
+  'job-scam': ['Job scam', 'A “job” that asks YOU to pay a fee to start.'],
+  'networking': ['Referral', 'A friend vouches for you so your resume gets read.'],
+  'tuition-help': ['Tuition assistance', 'Your employer pays for classes, often with strings attached.'],
 };
 
 const P = (id: string, label: string, clue: string): Card => ({ id, label, clue, kind: 'path' });
@@ -185,15 +191,27 @@ export interface Round {
 export const ROUNDS = 14;
 
 // Build a fresh set of rounds: mostly terms the player has unlocked, a few brand-new ones, and path cards.
-// An exam (college midterms and finals) leans on the major's class cards instead.
-export function buildRounds(s: GameState, r: () => number, n = ROUNDS, opts: { exam?: boolean } = {}): Round[] {
+// An online course's own cards (term, clue), used instead of the path's study cards.
+export function courseCards(id: string): Card[] | null {
+  const c = COURSE_BY_ID[id];
+  return c ? c.cards.map(([label, clue], i) => P(`k-${c.id}-${i}`, label, clue)) : null;
+}
+
+// An exam (college midterms and finals) leans on the major's class cards; a course uses its own cards.
+export function buildRounds(s: GameState, r: () => number, n = ROUNDS, opts: { exam?: boolean; course?: string } | string = {}): Round[] {
+  const o = typeof opts === 'string' ? { course: opts } : opts;
   const known = new Set(s.handbook);
   const unlocked = shuffle(HANDBOOK.filter((e) => known.has(e.id)).map((e) => handbookCard(e.id)!), r);
   const fresh = shuffle(HANDBOOK.filter((e) => !known.has(e.id) && HANDBOOK_CARDS[e.id]).map((e) => handbookCard(e.id, true)!), r);
+  const course = courseCards(o.course ?? '');
   const major = shuffle(majorCards(s), r);
-  const path = opts.exam && major.length ? [...major, ...shuffle([...PATH_CARDS.college], r)] : shuffle([...(PATH_CARDS[s.path] ?? PATH_CARDS.home), ...major], r);
+  const path = course
+    ? shuffle([...course], r)
+    : o.exam && major.length
+      ? [...major, ...shuffle([...PATH_CARDS.college], r)]
+      : shuffle([...(PATH_CARDS[s.path] ?? PATH_CARDS.home), ...major], r);
 
-  const nPath = Math.min(path.length, opts.exam ? 8 : 4);
+  const nPath = Math.min(path.length, course ? 6 : o.exam ? 8 : 4);
   const nFresh = Math.min(fresh.length, unlocked.length >= 6 ? 3 : n - nPath - unlocked.length);
   const answers: Card[] = [...path.slice(0, nPath), ...fresh.slice(0, Math.max(0, nFresh))];
   for (const c of unlocked) if (answers.length < n) answers.push(c);

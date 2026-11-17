@@ -5,6 +5,8 @@ import { achieve, charge, creditScore, energy, inc, log, minigame, money, netWor
 import type { ArtId, GameState, Step, Tier, YearOne } from '../engine/types.ts';
 import { MAJORS, gpa, gpaText, major, onTime, onTrackToGraduate, startingPay } from './college.ts';
 import type { Activity, Chapter, GameEvent, Task } from './types.ts';
+import { LISTING_BY_ID, jobFrom } from './jobs.ts';
+import { addSkill, hasSkill } from './skills.ts';
 
 export const YEAR1_CHAPTERS = 6;
 export const YEAR1_WEEKS = 36;
@@ -171,14 +173,14 @@ interface Track {
   levelUp: string | null;
   need: { xp: number; rep: number };
   story: string;
+  listing?: string; // the job-board listing this job is (so the board knows it's yours)
 }
 
-const MAJOR_JOB: Record<string, { title: string; place: string; art: ArtId }> = {
-  nursing: { title: 'Registered Nurse', place: 'Riverside General Hospital', art: 'clinic' },
-  cs: { title: 'Junior Software Developer', place: 'Brightwave Software', art: 'office' },
-  business: { title: 'Business Analyst', place: 'ParcelPoint HQ', art: 'office' },
-  education: { title: '3rd Grade Teacher', place: 'Hillcrest Elementary', art: 'library' },
-  undeclared: { title: 'Communications Coordinator', place: 'City Parks Department', art: 'office' },
+// Degree jobs come straight off the job board's next-phase listings.
+const MAJOR_LISTING: Record<string, string> = { nursing: 'p2-rn', cs: 'p2-dev', business: 'p2-analyst', education: 'p2-teacher', undeclared: 'p2-comms' };
+const majorJob = (m: string): { title: string; place: string; art: ArtId; listing: string } => {
+  const l = LISTING_BY_ID[MAJOR_LISTING[m] ?? 'p2-comms'];
+  return { title: l.title, place: l.place, art: l.art, listing: l.id };
 };
 
 // What you did in year one, priced as a raise: promotions you earned, and any skills on your résumé.
@@ -201,7 +203,7 @@ export function trackFor(s: GameState): Track {
   switch (s.path) {
     case 'college': {
       const m = major(s) ?? 'undeclared';
-      const job = MAJOR_JOB[m];
+      const job = majorJob(m);
       const sc = s.school;
       const g = gpaText(gpa(s));
       if (!onTrackToGraduate(s)) {
@@ -231,6 +233,7 @@ export function trackFor(s: GameState): Track {
         place: job.place,
         wage: hourly(pay),
         art: job.art,
+        listing: job.listing,
         next: top ? null : { title: `${job.title} II`, wage: hourly(pay * 1.08) },
         levelUp: top ? null : 'Earn a raise at your six-month review',
         need: NEED,
@@ -269,7 +272,8 @@ export function trackFor(s: GameState): Track {
             tier: 'top',
             years: 3,
             title: 'Operations Supervisor',
-            place: 'ParcelPoint',
+            // Promoted wherever you ended year one (ParcelPoint, or the warehouse that hired you away).
+            place: s.job?.art === 'warehouse' ? s.job.place : 'ParcelPoint',
             wage: cents((28.85 + bonus) * boost),
             art: 'warehouse',
             next: null,
@@ -299,12 +303,27 @@ export function trackFor(s: GameState): Track {
           place: 'Riverside General Hospital',
           wage: cents((24 + bonus) * boost),
           art: 'clinic',
+          listing: 'p2-cpht',
           next: null,
           levelUp: null,
           need: NEED,
           story: 'You passed the PTCB exam, got certified, and the hospital pharmacy hired you away from Fresh Fields. Real benefits, a 401(k) match, and scrubs with pockets.',
         };
-      if (s.flags.certEnrolled)
+      if (hasSkill(s, 'cpht'))
+        return {
+          tier: 'mid',
+          years: 3,
+          title: 'Pharmacy Technician',
+          place: 'CareRx Pharmacy',
+          wage: cents((20 + bonus) * boost),
+          art: 'clinic',
+          listing: 'pharmtech',
+          next: { title: 'Certified Pharmacy Technician', place: 'Riverside General Hospital', wage: cents((23.5 + bonus) * boost) },
+          levelUp: 'Land the hospital pharmacy job',
+          need: { xp: 50, rep: 55 },
+          story: 'You got certified and landed a retail pharmacy job. Steady, but the hospital pharmacy pays more and has the better 401(k). They’re hiring.',
+        };
+      if (s.flags.certEnrolled || s.flags.course === 'cpht')
         return {
           tier: 'mid',
           years: 3,
@@ -420,7 +439,18 @@ export function beginPhase2(s: GameState, y1: YearOne): void {
   if (s.retire > 0) recap.push(`401(k): ${money(s.retire)}${s.retirePct > 0 ? ', thanks to contributions and the match' : ', just from growth'}.`);
 
   // The new job.
-  s.job = { title: t.title, place: t.place, wage: t.wage, hours: 40, healthOffered: true, premium: 70, dentalPremium: 8, match: 0.04, art: t.art };
+  const listing = t.listing ? LISTING_BY_ID[t.listing] : undefined;
+  s.job = listing ? { ...jobFrom(listing, t.wage), hours: 40 } : { title: t.title, place: t.place, wage: t.wage, hours: 40, healthOffered: true, premium: 70, dentalPremium: 8, match: 0.04, art: t.art };
+  // Three years on the job count as experience; seniority only counts if you stayed put.
+  s.flags.expWeeks = num(s, 'expWeeks') + Math.round(years * 52);
+  s.flags.tenure = s.flags.tenurePlace === t.place ? num(s, 'tenure') + Math.round(years * 52) : 0;
+  s.flags.tenurePlace = t.place;
+  s.flags.clawback = 0;
+  s.flags.clawbackUntil = 0;
+  s.flags.certMigrated = true;
+  for (const k of ['interviewFor', 'offerFor', 'newJobId', 'newJobAt', 'applyTo', 'referral']) delete s.flags[k];
+  if (s.path === 'home' && t.tier === 'top') addSkill(s, 'cpht', 'Certified pharmacy technician.');
+  if (s.path === 'trade' && t.tier === 'top') addSkill(s, 'osha10', 'Every journeyman has their OSHA card.');
   if (s.health === 'school') s.health = 'employer';
   s.hoursThisPeriod = 0;
   s.appointments = [];
@@ -439,7 +469,6 @@ export function beginPhase2(s: GameState, y1: YearOne): void {
   for (const k of ['license', 'docs', 'transportSet', 'budget', 'taxesFiled']) s.flags[k] = true;
   if (s.path === 'college') s.flags.fafsa = true;
   if (s.path === 'trade') s.flags.tools = true;
-  if (s.path === 'home') s.flags.certEnrolled = true;
   for (const id of ['ev-promo1', 'ev-promo2', 'ev-raise', 'ev-bonus', 'ev-hourscut', 'ev-laptop', 'ev-accesscode', 'ev-heat']) s.flags[`seen:${id}`] = true;
   // About half of credit reports have a mistake on them somewhere. Yours does.
   if (s.credit.firstWeek !== null && (s.seed >>> 3) % 2 === 0) {
@@ -462,7 +491,7 @@ export function beginPhase2(s: GameState, y1: YearOne): void {
     story: t.story,
     recap,
     job: `${t.title} at ${t.place}`,
-    next: t.next,
+    next: t.next ? { place: t.place, ...t.next } : null,
     levelUp: t.levelUp,
     need: t.need,
     y1,
@@ -494,8 +523,10 @@ export const levelReady = (s: GameState): boolean => !!s.phase2 && s.stats.xp >=
 export function levelUp(s: GameState): void {
   const p = s.phase2;
   if (!p?.next || !s.job) return;
-  s.job = { ...s.job, title: p.next.title, wage: p.next.wage, place: p.next.place ?? s.job.place, art: p.next.place?.includes('Hospital') ? 'clinic' : s.path === 'college' ? (MAJOR_JOB[major(s) ?? 'undeclared']?.art ?? s.job.art) : s.job.art };
+  s.job = { ...s.job, title: p.next.title, wage: p.next.wage, place: p.next.place ?? s.job.place, art: p.next.place?.includes('Hospital') ? 'clinic' : s.path === 'college' ? majorJob(major(s) ?? 'undeclared').art : s.job.art, id: undefined };
   setFlag(s, 'p2Up');
+  s.flags.tenurePlace = s.job.place; // a promotion, not a new job: seniority stays
+  if (s.path === 'home') addSkill(s, 'cpht', 'Certified pharmacy technician.');
   if (s.path === 'college') setFlag(s, 'graduated');
   achieve(s, 'secondwind');
 }
@@ -596,7 +627,8 @@ export const PHASE2_TASKS: Task[] = [
     desc: (s) => `Needs career progress ${s.phase2?.need.xp ?? 60}+ and boss rating ${s.phase2?.need.rep ?? 60}+. Then take your shot. Pays ${money(salary(s.phase2?.next?.wage ?? 0))}/yr.`,
     how: 'Study to build progress, then go for it (evening or Saturday)',
     hide: (s) => !s.phase2?.next,
-    done: (s) => !!s.flags.p2Up,
+    // Leveling up counts, and so does landing a job that pays as much somewhere else.
+    done: (s) => !!s.flags.p2Up || (!!s.phase2?.next && (s.job?.wage ?? 0) >= s.phase2.next.wage),
     progress: (s) => `Progress ${s.stats.xp}/${s.phase2?.need.xp ?? 60} · Boss ${s.stats.rep}/${s.phase2?.need.rep ?? 60}`,
     failText: 'Not yet. You can still go for it next chapter.',
   },

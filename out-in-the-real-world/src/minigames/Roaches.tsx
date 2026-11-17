@@ -6,13 +6,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { playerPerson } from '../art/people.ts';
 import { INK, rect } from '../art/px.ts';
-import { useInput, useLoop, type MiniProps } from './kit.tsx';
+import { hdScale, useInput, useLoop, type MiniProps } from './kit.tsx';
 import { audioInit, audioStop, centered, COUNT_TIME, countLabel, drawBanner, drawCount, Fx, Groove, hissLoop, LightMap, snd, VH, VW, type Lamp } from './tagFx.ts';
 import { clamp } from './tagMath.ts';
 import { drawClock, drawCrack, drawEyes, drawFood, drawGhost, drawMistCone, drawRoach, drawSealRing, drawSplat, drawTable, drawTrash, kitchenBg } from './tagKitchenArt.ts';
 import { alive, foodLeft, KILL_DOSE, nearestCrack, newKitchen, nozzle, roachScore, sealedCount, SEAL_TIME, SPRAY_HALF, SPRAY_LEN, stepKitchen, TABLE, TRASH, TIME, type Kitchen } from './tagRoach.ts';
 import { bobOf, drawChibi, drawSprayCan, facingOf, footShadow } from './tagSprite.ts';
 import { GameCanvas, newPtr, newStick, ResultCard, Stick, TagHud, type BoardRow, type HudCell } from './tagUi.tsx';
+import { drawHd } from './hdFx.ts';
+import type { PostOpts } from './kit.tsx';
+
+// HD: a moody midnight grade; the flashlight and the fridge glow bloom softly.
+const TAG_POST: PostOpts = { bloom: 0.3, threshold: 0.84, saturation: 1.1, contrast: 1.04, warmth: -0.1, vignette: 0.45, smooth: 0.3, lift: [0.01, 0.012, 0.035] };
+const FLAT = { light: 0, shadow: 0 };
 
 const FOOD_NAMES = { bread: 'THE BREAD', fruit: 'THE FRUIT', pie: 'THE PIE' };
 const COMBO = ['', 'SPLAT!', 'DOUBLE SPLAT!', 'TRIPLE SPLAT!', 'ROACH RAMPAGE!', 'EXTERMINATOR!'];
@@ -359,20 +365,21 @@ export function Roaches({ s, onDone, reducedMotion }: MiniProps) {
   const draw = (): void => {
     const cv = canvas.current;
     if (!cv) return;
-    const x = cv.getContext('2d', { willReadFrequently: true });
+    const x = cv.getContext('2d');
+    const S = hdScale(cv);
     if (!x) return;
     x.imageSmoothingEnabled = false;
     if (!g.emit) {
       g.emit = document.createElement('canvas');
-      g.emit.width = VW;
-      g.emit.height = VH;
+      g.emit.width = VW * S;
+      g.emit.height = VH * S;
     }
     const e = g.emit.getContext('2d');
     if (!e) return;
     const { k, fx, t } = { k: g.k, fx: g.fx, t: g.t };
     const [ox, oy] = fx.offset();
-    x.setTransform(1, 0, 0, 1, 0, 0);
-    x.drawImage(kitchenBg(), 0, 0);
+    x.setTransform(S, 0, 0, S, 0, 0);
+    drawHd(x, kitchenBg(), 0, 0, false, FLAT);
     x.translate(ox, oy);
     for (const f of k.foods) drawFood(x, f, t);
     k.cracks.forEach((c, i) => drawCrack(x, c, t, k.seal && k.seal.c === i ? 1 - k.seal.t / SEAL_TIME : 0, k.wave));
@@ -430,16 +437,36 @@ export function Roaches({ s, onDone, reducedMotion }: MiniProps) {
     fx.drawParts(x, false);
 
     // ----- light pass -----
-    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.setTransform(S, 0, 0, S, 0, 0);
     const dyn: Lamp[] = [
       { x: k.px, y: k.py - 8, r: 22, c: [1.15, 1.12, 1.1] },
-      // phone flashlight in your other hand, pointing where you aim
-      { x: k.px + Math.cos(k.aim) * 30, y: k.py - 6 + Math.sin(k.aim) * 24, r: 28, ry: 22, c: [1.3, 1.28, 1.15] },
+      // phone flashlight in your other hand: a real beam pointing where you aim, plus its hot spot
+      { x: k.px + Math.cos(k.aim) * 3, y: k.py - 8 + Math.sin(k.aim) * 3, r: 78, c: [1.45, 1.42, 1.25], cone: { ang: k.aim, spread: 0.36 } },
+      { x: k.px + Math.cos(k.aim) * 30, y: k.py - 6 + Math.sin(k.aim) * 24, r: 20, ry: 15, c: [1.2, 1.18, 1.08] },
     ];
     g.light.apply(x, dyn, g.flick);
+    // the beam itself, visible in the dusty air (additive, fades with distance)
+    {
+      const bx = k.px + Math.cos(k.aim) * 4;
+      const by = k.py - 9 + Math.sin(k.aim) * 4;
+      x.save();
+      x.translate(ox, oy);
+      x.globalCompositeOperation = 'lighter';
+      const bg = x.createRadialGradient(bx, by, 1, bx, by, 72);
+      bg.addColorStop(0, 'rgba(255,250,225,0.22)');
+      bg.addColorStop(0.5, 'rgba(255,248,220,0.07)');
+      bg.addColorStop(1, 'rgba(255,248,220,0)');
+      x.fillStyle = bg;
+      x.beginPath();
+      x.moveTo(bx, by);
+      x.arc(bx, by, 72, k.aim - 0.3, k.aim + 0.3);
+      x.closePath();
+      x.fill();
+      x.restore();
+    }
 
     // ----- glow layer -----
-    e.setTransform(1, 0, 0, 1, 0, 0);
+    e.setTransform(S, 0, 0, S, 0, 0);
     e.clearRect(0, 0, VW, VH);
     e.translate(ox, oy);
     drawClock(e, t);
@@ -451,8 +478,8 @@ export function Roaches({ s, onDone, reducedMotion }: MiniProps) {
     const nc = nearestCrack(k, k.px, k.py);
     if (nc >= 0 && !k.seal && g.phase === 'play') drawSealRing(e, k.cracks[nc], t);
     for (const gh of g.ghosts) drawGhost(e, gh.x, gh.y, gh.life);
-    e.setTransform(1, 0, 0, 1, 0, 0);
-    x.drawImage(g.emit, 0, 0);
+    e.setTransform(S, 0, 0, S, 0, 0);
+    x.drawImage(g.emit, 0, 0, VW, VH);
     x.translate(ox, oy);
     fx.drawParts(x, true);
     fx.drawRings(x);
@@ -470,7 +497,7 @@ export function Roaches({ s, onDone, reducedMotion }: MiniProps) {
       rect(x, bx, by, Math.round(12 * p), 2, '#ffe27a');
     }
     fx.drawPops(x);
-    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.setTransform(S, 0, 0, S, 0, 0);
 
     // crosshair for the mouse
     if ((g.phase === 'play' || g.phase === 'count') && ptr.inside && !ptr.touch) {
@@ -517,7 +544,7 @@ export function Roaches({ s, onDone, reducedMotion }: MiniProps) {
     <div className="mini tag-game kitchen">
       <TagHud cells={hud.cells} />
       <div className="tag-wrap">
-        <GameCanvas canvasRef={canvas} ptr={ptr} onDown={onDownAny} />
+        <GameCanvas canvasRef={canvas} ptr={ptr} onDown={onDownAny} hd={{ reducedMotion, post: TAG_POST }} />
         {board && (
           <ResultCard
             title={g.k.won ? 'CLEAN SWEEP!' : 'ROACH REPORT'}

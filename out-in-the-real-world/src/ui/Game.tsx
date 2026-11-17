@@ -38,8 +38,9 @@ import { gpaText, liveGpa, majorName } from '../content/college.ts';
 import { YEAR1_CHAPTERS, YEAR1_WEEKS, shownWeek, skipLabel, student } from '../content/phase2.ts';
 import { YearOneDetails, YearOneReport } from './NextPhase.tsx';
 import { nextPhase } from '../engine/engine.ts';
+import { JobBoard } from './JobBoard.tsx';
 
-type ModalId = 'money' | 'handbook' | 'awards' | 'missions' | 'menu' | 'grades' | null;
+type ModalId = 'money' | 'handbook' | 'awards' | 'missions' | 'menu' | 'grades' | 'jobs' | null;
 
 function artFor(s: GameState): { art: ArtId; speaker: NpcId | null; hidePlayer?: boolean } {
   const h = s.queue[0];
@@ -196,6 +197,7 @@ export function Game({ g, setG, meta, setMeta, onQuit, onNewGame }: { g: GameSta
         />
       )}
       {modal === 'money' && <MoneyModal g={g} setG={setG} onClose={() => setModal(null)} />}
+      {modal === 'jobs' && <JobBoard g={g} setG={setG} onClose={() => setModal(null)} />}
       {modal === 'missions' && (
         <Modal title={`Chapter ${g.chapter + 1}: ${chapter.title}`} onClose={() => setModal(null)}>
           <Missions g={g} onGrades={() => setModal('grades')} />
@@ -481,6 +483,9 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
         </button>
         <button className="icon-btn" onClick={() => onOpen('money')} aria-label="Money" title="Money">
           <Icon name="wallet" />
+        </button>
+        <button className="icon-btn" onClick={() => onOpen('jobs')} aria-label="Job board and resume" title="Job board & resume">
+          <Icon name="work" />
         </button>
         <button className="icon-btn" onClick={() => onOpen('handbook')} aria-label={`Adulting Handbook, ${g.handbook.length} pages`} title="Adulting Handbook">
           <Icon name="book" />

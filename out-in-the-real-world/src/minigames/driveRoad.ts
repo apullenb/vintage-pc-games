@@ -1,8 +1,9 @@
 // Driving Test course: simulation (pure, testable) + renderer. The React shell lives in RoadTest.tsx.
 // World units are pixels: x is lateral, d is distance along the road (up the screen).
 import { drawPerson, type Person } from '../art/people.ts';
-import { glow, hash, INK, outlineRect, rect, shade, text, disc, dither, type Ctx } from '../art/px.ts';
+import { hash, INK, outlineRect, rect, shade, text, dither, type Ctx } from '../art/px.ts';
 import { bigText, clamp, drawVehicle, Fx, outlinedText, smooth, vehicleSize, type VehicleLook } from './driveKit.tsx';
+import { glow as hglow, grain, softBlit, softShadow, sphere, tone } from './hdFx.ts';
 
 export const VW = 192;
 export const VH = 144;
@@ -1040,18 +1041,20 @@ function drawProp(x: Ctx, pr: Prop, sy: number, rx: number): void {
   const rnd = (k: number) => hash(pr.seed * 17 + k);
   if (pr.kind === 'tree') {
     const cx = pr.side > 0 ? rx + 88 + rnd(1) * 16 : rx - 60 - rnd(1) * 14;
-    disc(x, cx + 2, sy + 2, 7, 'rgba(10,30,10,0.35)');
-    disc(x, cx, sy, 7, '#2f6a32');
-    disc(x, cx - 1, sy - 1, 5, '#3f8a3e');
-    disc(x, cx - 2, sy - 3, 2, '#5aa852');
+    // a round, lit canopy of three overlapping clumps, with a soft shadow cast down-right
+    softShadow(x, cx + 3, sy + 3.5, 9, 7.5, 0.42, '10,30,12');
+    const v = rnd(4);
+    sphere(x, cx + 2.5, sy + 1.5, 4.6, '#2f6a32', -0.5, -0.6, 0);
+    sphere(x, cx - 2.6, sy + 1, 4.4, v > 0.5 ? '#357a36' : '#2f6e30', -0.5, -0.6, 0);
+    sphere(x, cx - 0.3, sy - 1.6, 5.2, v > 0.5 ? '#43913f' : '#3b8a3a', -0.5, -0.6, 0.12);
     return;
   }
   if (pr.kind === 'bush') {
     const cx = pr.side > 0 ? rx + 84 : rx - 56;
-    disc(x, cx, sy, 3, '#3a7a3a');
-    x.fillStyle = '#e05a7a';
-    x.fillRect(cx - 1, sy - 1, 1, 1);
-    x.fillRect(cx + 1, sy + 1, 1, 1);
+    softShadow(x, cx + 1.2, sy + 1.5, 4, 3, 0.4, '10,30,12');
+    sphere(x, cx, sy, 3, '#3a7a3a', -0.5, -0.6, 0.1);
+    sphere(x, cx - 1, sy - 1, 0.7, '#e05a7a', -0.5, -0.6, 0);
+    sphere(x, cx + 1.2, sy + 0.8, 0.7, '#e05a7a', -0.5, -0.6, 0);
     return;
   }
   if (pr.kind === 'lamp') return;
@@ -1089,7 +1092,8 @@ function drawProp(x: Ctx, pr: Prop, sy: number, rx: number): void {
   const x0 = pr.side > 0 ? rx + 84 + Math.floor(rnd(2) * 4) : rx - 54 - w - Math.floor(rnd(2) * 3);
   const y0 = sy - h / 2;
   const roof = shop ? '#8a8a96' : ROOFS[Math.floor(rnd(3) * ROOFS.length)];
-  rect(x, x0 + 2, y0 + 2, w, h, 'rgba(10,20,10,0.3)');
+  // soft drop shadow: a few stacked translucent rects read as a blurred edge
+  for (let k = 0; k < 3; k++) rect(x, x0 + 1.5 + k * 0.6, y0 + 2 + k * 0.6, w + 1 - k * 0.6, h + 1 - k * 0.6, 'rgba(10,20,10,0.14)');
   if (shop) {
     rect(x, x0, y0, w, h, roof);
     dither(x, x0 + 2, y0 + 2, w - 4, h - 4, roof, shade(roof, 0.9));
@@ -1110,6 +1114,21 @@ function drawProp(x: Ctx, pr: Prop, sy: number, rx: number): void {
     rect(x, x0 + half - 1, y0, 2, h, shade(roof, 1.2));
     rect(x, x0 + 4, y0 + 4, 3, 4, '#5a4a4a');
   }
+  // light across the roof: sun from the top-left, a sheen on the near slope
+  const lg = x.createLinearGradient(x0, y0, x0 + w, y0 + h);
+  lg.addColorStop(0, 'rgba(255,246,220,0.3)');
+  lg.addColorStop(0.5, 'rgba(255,246,220,0)');
+  lg.addColorStop(1, 'rgba(20,10,30,0.28)');
+  x.fillStyle = lg;
+  x.fillRect(x0, y0, w, h);
+  if (!shop) {
+    const half = Math.floor(w / 2);
+    const rg = x.createLinearGradient(x0 + half - 3, 0, x0 + half + 1, 0);
+    rg.addColorStop(0, tone(roof, 0.1, 0));
+    rg.addColorStop(1, tone(roof, 0.45, 0.7));
+    x.fillStyle = rg;
+    x.fillRect(x0 + half - 3, y0, 4, h);
+  }
   outlineRect(x, x0 - 1, y0 - 1, w + 2, h + 2, INK);
   // walkway to the sidewalk
   const wx0 = pr.side > 0 ? rx + 79 : x0 + w + 1;
@@ -1119,6 +1138,51 @@ function drawProp(x: Ctx, pr: Prop, sy: number, rx: number): void {
 
 function zebra(x: Ctx, sy: number, x0: number, x1: number): void {
   for (let i = x0; i < x1; i += 5) rect(x, i, sy, 3, 1, C.line);
+}
+
+// ---------- HD ground: a logical-res texture, bilinear-filtered, then lit ----------
+let GROUND: HTMLCanvasElement | null = null;
+function groundCtx(): Ctx {
+  if (!GROUND) {
+    GROUND = document.createElement('canvas');
+    GROUND.width = VW;
+    GROUND.height = VH;
+  }
+  return GROUND.getContext('2d')!;
+}
+// Asphalt crown (lighter mid-road, darker gutters), soft curb shadows and a little distance haze.
+function shadeRoad(x: Ctx, dOf: (sy: number) => number): void {
+  const step = 6;
+  for (let sy = -step; sy < VH + step; sy += step) {
+    const rx = roadX(dOf(sy + step / 2));
+    const g = x.createLinearGradient(rx - 34, 0, rx + 63, 0);
+    g.addColorStop(0, 'rgba(10,8,20,0.32)');
+    g.addColorStop(0.08, 'rgba(10,8,20,0.08)');
+    g.addColorStop(0.45, 'rgba(255,250,240,0.07)');
+    g.addColorStop(0.92, 'rgba(10,8,20,0.08)');
+    g.addColorStop(1, 'rgba(10,8,20,0.32)');
+    x.fillStyle = g;
+    x.fillRect(rx - 34, sy, 97, step + 0.5);
+    // grass darkens into the shade of the sidewalk edge
+    const l = x.createLinearGradient(rx - 56, 0, rx - 50, 0);
+    l.addColorStop(0, 'rgba(10,30,10,0)');
+    l.addColorStop(1, 'rgba(10,30,10,0.25)');
+    x.fillStyle = l;
+    x.fillRect(rx - 56, sy, 6, step + 0.5);
+    const r = x.createLinearGradient(rx + 79, 0, rx + 85, 0);
+    r.addColorStop(0, 'rgba(10,30,10,0.25)');
+    r.addColorStop(1, 'rgba(10,30,10,0)');
+    x.fillStyle = r;
+    x.fillRect(rx + 79, sy, 6, step + 0.5);
+  }
+  // haze ahead (top of the screen), warm low sun from the top-left
+  const hz = x.createLinearGradient(0, 0, 0, VH * 0.35);
+  hz.addColorStop(0, 'rgba(214,226,255,0.28)');
+  hz.addColorStop(1, 'rgba(214,226,255,0)');
+  x.fillStyle = hz;
+  x.fillRect(0, 0, VW, VH * 0.35);
+  hglow(x, -10, -20, 110, '#fff0c8', 0.18, 0.8);
+  grain(x, 0, 0, VW, VH, 0.45, 'fine', 0, dOf(0), 36);
 }
 
 export interface DrawOpts {
@@ -1136,6 +1200,9 @@ export function drawRoad(x: Ctx, g: RoadSim, o: DrawOpts): void {
   const dOf = (sy: number): number => camD + A - sy;
 
   // ---- ground rows ----
+  const main = x;
+  {
+  const x = groundCtx();
   for (let sy = 0; sy < VH; sy++) {
     const d = dOf(sy);
     const di = Math.floor(d);
@@ -1196,6 +1263,10 @@ export function drawRoad(x: Ctx, g: RoadSim, o: DrawOpts): void {
     // school zone tint on the shoulder
     if (d >= SZ0 && d < SZ1 && di % 40 < 2) rect(x, rx + 48, sy, 15, 1, '#d8b84a');
   }
+  }
+  // the ground is a low-res texture: filter it up smoothly, then light it
+  softBlit(main, GROUND!, 0, 0, VW, VH);
+  shadeRoad(main, dOf);
 
   // ---- painted words ----
   const paint = (s: string, d: number, off: number): void => {
@@ -1237,7 +1308,7 @@ export function drawRoad(x: Ctx, g: RoadSim, o: DrawOpts): void {
       rect(x, xx, y0, 2, 1, col);
       rect(x, xx, y1, 2, 1, col);
     }
-    if (!g.park.done) glow(x, rx + 55, (y0 + y1) / 2, 9, 14, '#fff3a0', 0.25);
+    if (!g.park.done) hglow(x, rx + 55, (y0 + y1) / 2, 14, '#fff3a0', 0.3, 1.4);
   }
 
   // ---- signs ----
@@ -1252,13 +1323,13 @@ export function drawRoad(x: Ctx, g: RoadSim, o: DrawOpts): void {
     const sy = toS(k.d);
     if (sy < -30 || sy > VH + 30) continue;
     const kx = roadX(k.d) + k.off;
-    drawVehicle(x, k.look, kx, sy, k.lane === -1 ? Math.PI : 0, { brake: k.brake, hazard: k.hazard, blinkOn, blink: k.pullOver ? 1 : 0 });
+    drawVehicle(x, k.look, kx, sy, k.lane === -1 ? Math.PI : 0, { brake: k.brake, hazard: k.hazard, blinkOn, blink: k.pullOver ? 1 : 0, hd: true });
     if (k.honk > 0 && blinkOn) outlinedText(x, 'HONK!', kx - 9, sy + 10, '#ffe070');
   }
   for (const k of g.cross) {
     const sy = toS(k.d);
     if (sy < -20 || sy > VH + 20) continue;
-    drawVehicle(x, k.look, k.x, sy, k.dir > 0 ? Math.PI / 2 : -Math.PI / 2, { brake: k.v < 50 });
+    drawVehicle(x, k.look, k.x, sy, k.dir > 0 ? Math.PI / 2 : -Math.PI / 2, { brake: k.v < 50, hd: true });
   }
   // player
   const p = g.p;
@@ -1268,6 +1339,7 @@ export function drawRoad(x: Ctx, g: RoadSim, o: DrawOpts): void {
     reverse: p.v < -0.5,
     blink: g.blink.dir,
     blinkOn: blinkOn && g.blink.dir !== 0,
+    hd: true,
   });
   // blind-spot warnings next to the player's car
   const bs = blindSpots(g);
@@ -1400,7 +1472,7 @@ function drawSigns(x: Ctx, g: RoadSim, toS: (d: number) => number, reduced: bool
       const on = reduced ? true : Math.floor(g.t * 2.5) % 2 === 0;
       rect(x, sx, sy - 22, 4, 3, on ? '#ffe040' : '#7a6a20');
       rect(x, sx + 7, sy - 22, 4, 3, on ? '#7a6a20' : '#ffe040');
-      if (!reduced) glow(x, on ? sx + 2 : sx + 9, sy - 21, 5, 4, '#ffe060', 0.5);
+      if (!reduced) hglow(x, on ? sx + 2 : sx + 9, sy - 20.5, 7, '#ffe060', 0.7);
       rect(x, sx, sy - 18, 11, 9, '#e8e040');
       rect(x, sx + 4, sy - 17, 3, 3, INK);
       rect(x, sx + 3, sy - 14, 5, 3, INK);
@@ -1446,7 +1518,7 @@ function drawLight(x: Ctx, g: RoadSim, toS: (d: number) => number, reduced: bool
     ];
     lamps.forEach(([on, off, lit], i) => {
       rect(x, lx + 2, sy - 5 + i * 4, 3, 3, lit ? on : off);
-      if (lit && !reduced) glow(x, lx + 3, sy - 4 + i * 4, 6, 6, on, 0.6);
+      if (lit) hglow(x, lx + 3.5, sy - 3.5 + i * 4, reduced ? 6 : 9, on, 0.7);
     });
   }
 }

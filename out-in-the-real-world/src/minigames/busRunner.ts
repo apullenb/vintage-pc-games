@@ -2,6 +2,7 @@
 // hips) and this adds a walk/run cycle, a jump tuck and a duck squat. Used by Bus Dash and Shift Rush.
 import { drawPerson, type Person } from '../art/people.ts';
 import { INK, rect, shade, type Ctx } from '../art/px.ts';
+import { drawHd, idOf, softShadow, spriteOf } from './hdFx.ts';
 
 export type Pose = 'stand' | 'walk' | 'run' | 'jump' | 'duck';
 
@@ -65,4 +66,17 @@ export function shadow(ctx: Ctx, cx: number, groundY: number, height = 0): void 
   const w = Math.max(6, 16 - Math.round(height / 4));
   ctx.fillStyle = 'rgba(16,8,28,0.3)';
   ctx.fillRect(Math.round(cx - w / 2), Math.round(groundY - 1), w, 2);
+}
+// HD version: a blurred contact shadow that shrinks and fades as the sprite rises.
+export function shadowHd(ctx: Ctx, cx: number, groundY: number, height = 0): void {
+  const w = Math.max(6, 16 - height / 4);
+  softShadow(ctx, cx, groundY, w * 0.62, 2.2, Math.max(0.18, 0.5 - height / 120), '16,8,28');
+}
+
+// HD runner: the same pixel poses, cached per pose/frame, rounded off and lit (see hdSprite).
+const RUN_LIT = { light: 0.24, shadow: 0.34, rim: '#fff0c8', lx: 0.75, ly: 0.15 };
+export function drawRunnerHd(ctx: Ctx, p: Person, x: number, y: number, pose: Pose, phase: number, face: -1 | 0 | 1 = 1, blink = false): void {
+  const f = ((Math.floor(phase) % 4) + 4) % 4;
+  const spr = spriteOf(`run|${idOf(p)}|${pose}|${f}|${face}|${blink}`, 26, 42, (c) => drawRunner(c, p, 5, 8, pose, f, face, blink));
+  drawHd(ctx, spr, Math.round(x) - 5, Math.round(y) - 8, false, RUN_LIT);
 }

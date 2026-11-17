@@ -314,6 +314,7 @@ export function River({ s, onDone, reducedMotion }: MiniProps) {
         <div className="rr-canvas-wrap">
           <PixelCanvas
             canvasRef={canvas}
+            hd={{ reducedMotion, post: { saturation: 1.18, warmth: 0.25 } }}
             width={RW}
             height={RH}
             onPointer={(px, _py, k) => {
