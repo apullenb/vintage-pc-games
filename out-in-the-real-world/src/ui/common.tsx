@@ -1,45 +1,119 @@
-// Shared UI bits: pixel scene canvas, icons, delta chips, typewriter text.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { CAST, castFor, drawPerson, playerPerson, type Person } from '../art/people.ts';
-import { H, W } from '../art/px.ts';
+// Shared UI bits: pixel scene canvas, portraits, icons, tickers, delta chips, typewriter text.
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { atmosAir, atmosGround, isHome, type TimeOfDay, type Weather } from '../art/atmos.ts';
+import { ICON_COLORS, ICON_GRID, iconPaths } from '../art/icons.ts';
+import { CAST, castFor, drawPerson, playerPerson, type Outfit, type Person } from '../art/people.ts';
+import { personKey, PH, portraitBackdrop, portraitCanvas, PW, type Expr } from '../art/portraits.ts';
+import { H, hash, W } from '../art/px.ts';
 import { sceneDef } from '../art/scenes.ts';
+import { paintTitle } from '../art/title.ts';
 import { money } from '../engine/core.ts';
 import type { ArtId, Deltas, Look, NpcId, PathId } from '../engine/types.ts';
+import { reducedMotion } from './a11y.ts';
 import { sfx } from './audio.ts';
+import './chrome.css';
+
+export type { TimeOfDay, Weather } from '../art/atmos.ts';
+export type { Expr } from '../art/portraits.ts';
 
 // ---------- scene canvas ----------
 // path picks per-path NPC looks (the boss); night tints home scenes for evening.
-export function SceneCanvas({ art, look, speaker, talking, hidePlayer, path, night }: { art: ArtId; look: Look; speaker?: NpcId | null; talking?: boolean; hidePlayer?: boolean; path?: PathId | null; night?: boolean }) {
+// tod/weather add time-of-day light and weather; outfit dresses the player.
+// When the location (or the speaker) changes, people walk in from the edges.
+export function SceneCanvas({
+  art,
+  look,
+  speaker,
+  talking,
+  hidePlayer,
+  path,
+  night,
+  tod,
+  weather,
+  outfit,
+  enter = true,
+}: {
+  art: ArtId;
+  look: Look;
+  speaker?: NpcId | null;
+  talking?: boolean;
+  hidePlayer?: boolean;
+  path?: PathId | null;
+  night?: boolean;
+  tod?: TimeOfDay;
+  weather?: Weather;
+  outfit?: Outfit;
+  enter?: boolean;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const props = useRef({ art, look, speaker, talking, hidePlayer, path, night });
-  props.current = { art, look, speaker, talking, hidePlayer, path, night };
+  const props = useRef({ art, look, speaker, talking, hidePlayer, path, night, tod, weather, outfit, enter });
+  props.current = { art, look, speaker, talking, hidePlayer, path, night, tod, weather, outfit, enter };
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
     const x = c.getContext('2d');
     if (!x) return;
     x.imageSmoothingEnabled = false;
+    const still = reducedMotion();
     let raf = 0;
     let lastFrame = -1;
+    let curArt: ArtId | null = null;
+    let artT = 0;
+    let curNpc: NpcId | null = null;
+    let npcT = 0;
     const t0 = performance.now();
+    const ease = (k: number): number => 1 - (1 - k) * (1 - k);
     const loop = (now: number): void => {
       raf = requestAnimationFrame(loop);
       const t = (now - t0) / 1000;
-      const frame = Math.floor(t * 8);
-      if (frame === lastFrame) return; // 8 fps, like the old days
+      const frame = Math.floor(t * 10);
+      if (frame === lastFrame) return; // 10 fps, like the old days
       lastFrame = frame;
       const p = props.current;
-      const def = sceneDef(p.art, { night: p.night, path: p.path });
+      const sp = p.speaker && CAST[p.speaker] ? p.speaker : null;
+      if (p.art !== curArt) {
+        curArt = p.art;
+        artT = t;
+        curNpc = sp;
+        npcT = t;
+      } else if (sp !== curNpc) {
+        curNpc = sp;
+        npcT = t;
+      }
+      const homeNight = !!p.night || (p.tod === 'night' && isHome(p.art));
+      const def = sceneDef(p.art, { night: homeNight, path: p.path });
       x.clearRect(0, 0, W, H);
       def.paint(x, t);
+      const atm = { art: p.art, tod: p.tod ?? 'day', weather: p.weather ?? null, floor: def.floor, night: homeNight };
+      atmosGround(x, atm);
       const top = def.floor - 30;
-      const npc = p.speaker && CAST[p.speaker] ? castFor(p.speaker, p.path).p : null;
-      if (!p.hidePlayer) drawPerson(x, playerPerson(p.look), def.player - 7, top, Math.floor(t * 1.5) % 2, false, { blink: frame % 37 === 0, face: npc ? 1 : 0 });
+      const npc = sp ? castFor(sp, p.path).p : null;
+      const walkIn = !still && p.enter !== false;
+      const kP = walkIn ? Math.min(1, (t - artT) / 0.8) : 1;
+      const kN = walkIn ? Math.min(1, (t - npcT) / 0.8) : 1;
+      const step = Math.floor(t * 10) % 4;
+      if (!p.hidePlayer) {
+        const px = def.player - 7 - (1 - ease(kP)) * (def.player + 12);
+        drawPerson(x, playerPerson(p.look, p.outfit), px, top, kP < 1 ? 0 : Math.floor(t * 1.5) % 2, false, {
+          blink: frame % 37 === 0,
+          face: kP < 1 || npc ? 1 : 0,
+          walk: kP < 1 ? step : undefined,
+        });
+      }
       if (npc) {
-        const talk = !!p.talking && Math.floor(t * 6) % 2 === 0;
-        drawPerson(x, npc, def.npc - 7, top, Math.floor(t * 1.5 + 1) % 2, talk, { blink: frame % 43 === 20, face: -1 });
+        const nx = def.npc - 7 + (1 - ease(kN)) * (W - def.npc + 14);
+        const speaking = !!p.talking && kN >= 1;
+        const talk = speaking && Math.floor(t * 6) % 2 === 0;
+        const gesture = speaking ? [0, 1, 1, 0, 2, 2, 0, 0][Math.floor(t * 1.6) % 8] : 0;
+        drawPerson(x, npc, nx, top, kN < 1 ? 0 : Math.floor(t * 1.5 + 1) % 2, talk, {
+          blink: frame % 43 === 20,
+          face: -1,
+          walk: kN < 1 ? (step + 2) % 4 : undefined,
+          gesture,
+        });
       }
       def.extras?.(x, t);
+      atmosAir(x, still ? 0 : t, atm);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
@@ -73,49 +147,239 @@ export function PersonCanvas({ person, scale = 4, talk = false }: { person: Pers
   return <canvas ref={ref} className="person-canvas" width={18} height={36} style={{ width: 18 * scale, height: 36 * scale }} aria-hidden="true" />;
 }
 
-// ---------- icons (tiny pixel SVGs) ----------
-const ICONS: Record<string, string> = {
-  work: 'M3 6h10v8H3zM6 4h4v2H6z',
-  class: 'M2 6l6-3 6 3-6 3zM4 8v3c2 2 6 2 8 0V8',
-  rest: 'M3 10h10v3H3zM3 8h4v2H3zM11 3h3l-3 3h3',
-  money: 'M3 4h10v8H3zM7 6h2v4H7z',
-  friends: 'M3 7h4v6H3zM9 7h4v6H9zM4 3h2v3H4zM10 3h2v3h-2z',
-  phone: 'M5 2h6v12H5zM7 12h2v1H7z',
-  study: 'M3 3h5v10H3zM8 3h5v10H8z',
-  food: 'M3 8h10v2H3zM4 10h8v3H4zM6 4h1v4H6zM9 4h1v4H9z',
-  search: 'M3 3h7v7H3zM10 10l3 3',
-  bank: 'M2 6l6-4 6 4zM3 7h2v5H3zM7 7h2v5H7zM11 7h2v5h-2zM2 13h12v1H2z',
-  docs: 'M4 2h6l3 3v9H4zM6 7h5M6 9h5M6 11h3',
-  car: 'M3 7l2-3h6l2 3h1v4H2V7zM4 11h2v2H4zM10 11h2v2h-2z',
-  tools: 'M3 12l6-6M9 4l3 3M11 2l3 3-2 2-3-3z',
-  tooth: 'M4 3h8v5l-1 6h-2l-1-3-1 3H5L4 8z',
-  home: 'M2 8l6-5 6 5M4 7v6h8V7M7 10h2v3H7z',
-  chart: 'M3 13V9M7 13V5M11 13V7M2 13h12',
-  card: 'M2 4h12v8H2zM2 6h12v1H2zM4 9h3',
-  star: 'M8 2l2 4 4 1-3 3 1 4-4-2-4 2 1-4-3-3 4-1z',
-  heart: 'M8 13L3 8V5l2-2 3 2 3-2 2 2v3z',
-  shield: 'M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4z',
-  piggy: 'M3 6h9v6H3zM12 8h2v2h-2zM5 12h2v2H5zM9 12h2v2H9zM6 4h3v2H6z',
-  energy: 'M9 1L3 9h4l-1 6 6-8H8z',
-  boss: 'M4 6h8v8H4zM5 2h6v4H5z',
-  calendar: 'M2 3h12v11H2zM2 6h12M5 1v3M11 1v3',
-  book: 'M3 2h9v12H3zM5 2v12',
-  trophy: 'M5 2h6v4c0 2-1 3-3 3S5 8 5 6zM3 3h2v3M11 3h2v3M7 9h2v3H7zM5 12h6v2H5z',
-  sound: 'M2 6h3l4-3v10L5 10H2zM11 5c1 1 1 5 0 6',
-  mute: 'M2 6h3l4-3v10L5 10H2zM11 6l3 4M14 6l-3 4',
-  menu: 'M2 4h12M2 8h12M2 12h12',
-  close: 'M3 3l10 10M13 3L3 13',
-  check: 'M2 8l4 4 8-8',
-  lock: 'M4 7h8v7H4zM5 7V4h6v3',
-  wallet: 'M2 4h12v9H2zM10 7h4v3h-4z',
-};
-
-export function Icon({ name, size = 16 }: { name: string; size?: number }) {
-  const d = ICONS[name] ?? ICONS.star;
+// ---------- portraits ----------
+// A shaded 48x48 bust that blinks, breathes, and moves its mouth while talking.
+export function Portrait({
+  person,
+  expr = 'neutral',
+  talking = false,
+  look = 0,
+  bg,
+  name,
+  side = 'left',
+  className = '',
+}: {
+  person: Person;
+  expr?: Expr;
+  talking?: boolean;
+  look?: -1 | 0 | 1;
+  bg?: string;
+  name?: string;
+  side?: 'left' | 'right';
+  className?: string;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const key = useMemo(() => personKey(person), [person]);
+  const props = useRef({ person, expr, talking, look, bg, key });
+  props.current = { person, expr, talking, look, bg, key };
+  useEffect(() => {
+    const c = ref.current;
+    const x = c?.getContext('2d');
+    if (!c || !x) return;
+    x.imageSmoothingEnabled = false;
+    const still = reducedMotion();
+    let raf = 0;
+    let last = '';
+    let nextBlink = 1.5 + Math.random() * 2;
+    const t0 = performance.now();
+    const loop = (now: number): void => {
+      raf = requestAnimationFrame(loop);
+      const t = (now - t0) / 1000;
+      const p = props.current;
+      if (t > nextBlink + 0.14) nextBlink = t + 2.2 + Math.random() * 3;
+      const blink = t > nextBlink && t < nextBlink + 0.14;
+      const tf = Math.floor(t * 9);
+      const mouth = p.talking && !still ? ([1, 2, 1, 0, 2, 1, 0, 1][(tf + Math.floor(hash(Math.floor(t * 2)) * 3)) % 8] as 0 | 1 | 2) : 0;
+      const bob = still ? 0 : Math.floor(t * 0.9) % 2;
+      const sig = `${p.key}|${p.expr}|${mouth}|${blink}|${bob}|${p.look}|${p.bg}`;
+      if (sig === last) return;
+      last = sig;
+      x.drawImage(portraitBackdrop(p.bg ?? '#8aa8d0', p.key.length), 0, 0);
+      x.drawImage(portraitCanvas(p.person, { expr: p.expr, mouth, blink, look: p.look }, p.key), 0, bob);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
   return (
-    <svg className="icon" width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" shapeRendering="crispEdges">
-      <path d={d} fill="currentColor" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="miter" fillRule="evenodd" fillOpacity={0.35} />
+    <figure className={`portrait ${side} ${talking ? 'is-talking' : ''} ${className}`}>
+      <span className="portrait-frame">
+        <canvas ref={ref} width={PW} height={PH} aria-hidden="true" />
+      </span>
+      {name && <figcaption className="nameplate">{name}</figcaption>}
+    </figure>
+  );
+}
+
+// ---------- title scene ----------
+export function TitleCanvas({ look }: { look: Look }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const lookRef = useRef(look);
+  lookRef.current = look;
+  useEffect(() => {
+    const c = ref.current;
+    const x = c?.getContext('2d');
+    if (!c || !x) return;
+    x.imageSmoothingEnabled = false;
+    const still = reducedMotion();
+    let raf = 0;
+    let last = -1;
+    const t0 = performance.now();
+    const loop = (now: number): void => {
+      raf = requestAnimationFrame(loop);
+      const t = (now - t0) / 1000;
+      const f = Math.floor(t * 10);
+      if (f === last) return;
+      last = f;
+      paintTitle(x, t, lookRef.current, still);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <canvas ref={ref} className="scene-canvas title-canvas" width={W} height={H} aria-hidden="true" />;
+}
+
+// ---------- icons (crisp 12x12 pixel art) ----------
+// The grid is drawn at a whole-number scale and centered in the requested box.
+export function Icon({ name, size = 16 }: { name: string; size?: number }) {
+  const k = Math.max(1, Math.floor(size / ICON_GRID));
+  const span = size / k;
+  const off = -(span - ICON_GRID) / 2;
+  return (
+    <svg className="icon" width={size} height={size} viewBox={`${off} ${off} ${span} ${span}`} aria-hidden="true" shapeRendering="crispEdges">
+      {iconPaths(name).map((p) => (
+        <path key={p.color} d={p.d} fill={ICON_COLORS[p.color].fill} fillOpacity={ICON_COLORS[p.color].opacity} />
+      ))}
     </svg>
+  );
+}
+
+// ---------- tickers ----------
+// Animates a number toward its new value (money counters that tick up and down).
+export function useTicker(value: number, ms = 700): number {
+  const [shown, setShown] = useState(value);
+  const cur = useRef(value);
+  useEffect(() => {
+    const a = cur.current;
+    const b = value;
+    if (a === b) return;
+    if (reducedMotion() || Math.abs(b - a) < 0.5) {
+      cur.current = b;
+      setShown(b);
+      return;
+    }
+    const start = performance.now();
+    let raf = 0;
+    const step = (now: number): void => {
+      const k = Math.min(1, (now - start) / ms);
+      const v = k >= 1 ? b : a + (b - a) * (1 - (1 - k) ** 3);
+      cur.current = v;
+      setShown(v);
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value, ms]);
+  return shown;
+}
+
+export function TickMoney({ value, cents = false }: { value: number; cents?: boolean }) {
+  const shown = useTicker(value);
+  const prev = useRef(value);
+  const [flash, setFlash] = useState<'up' | 'down' | null>(null);
+  useEffect(() => {
+    if (Math.abs(value - prev.current) < 0.5) return;
+    setFlash(value > prev.current ? 'up' : 'down');
+    prev.current = value;
+    const id = window.setTimeout(() => setFlash(null), 1000);
+    return () => window.clearTimeout(id);
+  }, [value]);
+  return <span className={`tick ${flash ?? ''}`}>{money(cents ? Math.round(shown * 100) / 100 : shown, cents)}</span>;
+}
+
+export function TickNumber({ value }: { value: number }) {
+  return <>{Math.round(useTicker(value))}</>;
+}
+
+// ---------- chapter title card ----------
+const VIGNETTES: { art: ArtId; tod: TimeOfDay; weather: Weather; outfit: Outfit }[] = [
+  { art: 'bedroom', tod: 'morning', weather: null, outfit: 'casual' },
+  { art: 'carlot', tod: 'day', weather: null, outfit: 'casual' },
+  { art: 'apartment', tod: 'evening', weather: null, outfit: 'hoodie' },
+  { art: 'street', tod: 'day', weather: 'snow', outfit: 'casual' },
+  { art: 'road', tod: 'day', weather: 'rain', outfit: 'casual' },
+  { art: 'beach', tod: 'golden', weather: null, outfit: 'casual' },
+];
+
+export function ChapterCard({ n, title, subtitle, look, path, onDone }: { n: number; title: string; subtitle: string; look: Look; path: PathId; onDone: () => void }) {
+  const v = VIGNETTES[Math.min(n, VIGNETTES.length - 1)];
+  const [leaving, setLeaving] = useState(false);
+  const done = useRef(onDone);
+  done.current = onDone;
+  const gone = useRef(false);
+  const close = (): void => {
+    if (gone.current) return;
+    gone.current = true;
+    setLeaving(true);
+    window.setTimeout(() => done.current(), reducedMotion() ? 0 : 420);
+  };
+  useEffect(() => {
+    sfx('week');
+    // Capture phase, so keys meant for the card never reach the dialogue underneath.
+    const k = (e: KeyboardEvent): void => {
+      if (e.key === 'Tab') return;
+      e.stopPropagation();
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        close();
+      }
+    };
+    window.addEventListener('keydown', k, true);
+    return () => window.removeEventListener('keydown', k, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className={`chapter-card ${leaving ? 'leaving' : ''}`} role="dialog" aria-modal="true" aria-labelledby="chapter-card-title" onClick={close}>
+      <div className="cc-inner pixel-frame">
+        <span className="cc-num">Chapter {n + 1}</span>
+        <div className="cc-vignette">
+          <SceneCanvas art={v.art} look={look} path={path} tod={v.tod} weather={v.weather} outfit={v.outfit} />
+        </div>
+        <h2 id="chapter-card-title" className="cc-title">
+          {title}
+        </h2>
+        <p className="cc-sub">{subtitle}</p>
+        <button
+          className="btn primary"
+          autoFocus
+          onClick={(e) => {
+            e.stopPropagation();
+            close();
+          }}
+        >
+          Begin ▶
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- chapter stars ----------
+export function StarRow({ stars, max = 3 }: { stars: number; max?: number }) {
+  return (
+    <div className="star-row" role="img" aria-label={`${stars} of ${max} stars`}>
+      {Array.from({ length: max }, (_, i) => (
+        <span key={i} className={`big-star ${i < stars ? 'on' : 'off'}`} style={{ animationDelay: `${0.25 + i * 0.35}s` }}>
+          <Icon name="star" size={48} />
+          {i < stars && (
+            <>
+              <i className="spark s1" />
+              <i className="spark s2" />
+              <i className="spark s3" />
+            </>
+          )}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -213,7 +477,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   }, [onClose]);
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div className={`modal pixel-frame ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <header>
           <h2>{title}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close" autoFocus>
@@ -226,10 +490,22 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   );
 }
 
+// A segmented pixel bar. Losses leave a pale "ghost" that drains after a beat.
 export function Bar({ value, max = 100, tone }: { value: number; max?: number; tone: 'energy' | 'rep' | 'xp' }) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  const [ghost, setGhost] = useState(pct);
+  useEffect(() => {
+    if (pct >= ghost) {
+      setGhost(pct);
+      return;
+    }
+    const id = window.setTimeout(() => setGhost(pct), 450);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pct]);
   return (
     <span className={`bar ${tone} ${pct < 25 ? 'low' : ''}`}>
+      <i className="bar-ghost" style={{ width: `${Math.max(pct, ghost)}%` }} />
       <span style={{ width: `${pct}%` }} />
     </span>
   );

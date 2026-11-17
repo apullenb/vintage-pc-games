@@ -1,8 +1,9 @@
 // The in-game screen: HUD, scene, interaction panel, missions sidebar, modals.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CAST, castFor } from '../art/people.ts';
+import { isHome, weatherFor, type TimeOfDay, type Weather } from '../art/atmos.ts';
+import { CAST, castFor, type Outfit } from '../art/people.ts';
 import { ACHIEVEMENTS } from '../content/achievements.ts';
-import { CHAPTERS } from '../content/chapters.ts';
+import { CHAPTERS, chapterStartWeek } from '../content/chapters.ts';
 import { HANDBOOK, HANDBOOK_BY_ID } from '../content/handbook.ts';
 import { pathName } from '../content/paths.ts';
 import { monthlyBills, monthlyNet } from '../content/scenes/tasks.ts';
@@ -23,11 +24,11 @@ import {
   taskStatus,
 } from '../engine/engine.ts';
 import { finalScore } from '../engine/score.ts';
-import type { ArtId, GameState, NpcId, PayMethod, Plan } from '../engine/types.ts';
+import { SLOTS, type ArtId, type GameState, type NpcId, type PathId, type PayMethod, type Plan } from '../engine/types.ts';
 import { reducedMotion } from './a11y.ts';
 import { sfx } from './audio.ts';
 import { HistoryCharts } from './Charts.tsx';
-import { Bar, Icon, Modal, SceneCanvas } from './common.tsx';
+import { Bar, ChapterCard, Icon, Modal, SceneCanvas, TickMoney, TickNumber } from './common.tsx';
 import { BillsPanel, ChapterEndPanel, PaycheckPanel, Planner, ScenePanel, SummaryPanel } from './Panels.tsx';
 import type { Meta } from './save.ts';
 import { Tutorial } from './Tutorial.tsx';
@@ -61,6 +62,24 @@ function artFor(s: GameState): { art: ArtId; speaker: NpcId | null; hidePlayer?:
   }
 }
 
+// The week's light follows what's happening: planning in the morning, the
+// evening slot at dusk, bills after dinner, the recap at night.
+const WORKPLACE: Record<PathId, ArtId> = { work: 'warehouse', home: 'grocery', college: 'library', trade: 'jobsite' };
+function moodFor(s: GameState, art: ArtId): { tod: TimeOfDay; weather: Weather; outfit: Outfit } {
+  const h = s.queue[0];
+  let tod: TimeOfDay = 'day';
+  if (!h) tod = 'morning';
+  else if (h.t === 'summary') tod = 'night';
+  else if (h.t === 'billsDue') tod = 'evening';
+  else if (h.t === 'scene' || h.t === 'minigame') {
+    const left = s.queue.filter((q) => q.t === 'slot').length;
+    const slot = SLOTS[Math.max(0, Math.min(3, 3 - left))];
+    tod = slot === 'evening' ? 'evening' : slot === 'sunday' ? 'golden' : 'day';
+  }
+  const outfit: Outfit = isHome(art) ? 'hoodie' : WORKPLACE[s.path] === art ? s.path : 'casual';
+  return { tod, weather: weatherFor(s.week), outfit };
+}
+
 export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (g: GameState) => void; meta: Meta; setMeta: (m: Meta) => void; onQuit: () => void }) {
   const [modal, setModal] = useState<ModalId>(null);
   const [toasts, setToasts] = useState<{ id: number; kind: 'ach' | 'hb'; text: string }[]>([]);
@@ -92,13 +111,17 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
   );
 
   const { art, speaker, hidePlayer } = artFor(g);
+  const { tod, weather, outfit } = moodFor(g, art);
   const talking = h?.t === 'scene' && !h.result;
   const chapter = CHAPTERS[Math.min(g.chapter, CHAPTERS.length - 1)];
-  const showTutorial = !h && !meta.tutorialDone && !modal;
+  // Full-screen chapter title card when a chapter begins (once per chapter per session).
+  const [cardShown, setCardShown] = useState<number>(() => (g.week === chapterStartWeek(Math.min(g.chapter, CHAPTERS.length - 1)) ? -1 : g.chapter));
+  const card = !g.over && h?.t !== 'ending' && h?.t !== 'chapterEnd' && g.chapter < CHAPTERS.length && g.chapter !== cardShown && g.week === chapterStartWeek(g.chapter);
+  const showTutorial = !h && !meta.tutorialDone && !modal && !card;
 
   let panel: React.ReactNode = null;
   if (!h) panel = <Planner s={g} onStart={(p: Plan) => commit(startWeek(g, p))} />;
-  else if (h.t === 'scene') panel = <ScenePanel key={`${h.id}:${h.step}:${h.result ? 'r' : 'q'}:${g.week}`} s={g} head={h} fast={meta.fast || reducedMotion()} onChoose={(i: number, m?: PayMethod) => commit(choose(g, i, m))} onContinue={() => commit(proceed(g))} />;
+  else if (h.t === 'scene') panel = <ScenePanel key={`${h.id}:${h.step}:${h.result ? 'r' : 'q'}:${g.week}`} s={g} head={h} speaker={speaker && CAST[speaker] ? speaker : null} outfit={outfit} fast={meta.fast || reducedMotion()} onChoose={(i: number, m?: PayMethod) => commit(choose(g, i, m))} onContinue={() => commit(proceed(g))} />;
   else if (h.t === 'paycheck') panel = <PaycheckPanel s={g} stub={h.stub} onContinue={() => commit(proceed(g))} />;
   else if (h.t === 'billsDue') panel = <BillsPanel key={`bills-${g.week}`} s={g} bills={h.bills} onPay={(p) => commit(payBills(g, p))} />;
   else if (h.t === 'summary') panel = <SummaryPanel s={g} onContinue={() => commit(proceed(g))} />;
@@ -116,7 +139,7 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
           ) : (
           <>
           <div className="scene-frame">
-            <SceneCanvas art={art} look={g.look} speaker={speaker} talking={talking} hidePlayer={hidePlayer} path={g.path} night={h?.t === 'summary'} />
+            <SceneCanvas art={art} look={g.look} speaker={speaker} talking={talking} hidePlayer={hidePlayer} path={g.path} night={h?.t === 'summary'} tod={tod} weather={weather} outfit={outfit} />
             <div className="scene-tag">
               {speaker && CAST[speaker] ? <span className="speaker">{castFor(speaker, g.path).name}</span> : <span className="where">{g.housing.name}</span>}
             </div>
@@ -144,6 +167,7 @@ export function Game({ g, setG, meta, setMeta, onQuit }: { g: GameState; setG: (
         ))}
       </div>
       {showTutorial && <Tutorial g={g} onDone={() => setMeta({ ...meta, tutorialDone: true })} />}
+      {card && <ChapterCard key={g.chapter} n={g.chapter} title={chapter.title} subtitle={chapter.subtitle} look={g.look} path={g.path} onDone={() => setCardShown(g.chapter)} />}
       {modal === 'money' && <MoneyModal g={g} setG={setG} onClose={() => setModal(null)} />}
       {modal === 'missions' && (
         <Modal title={`Chapter ${g.chapter + 1}: ${chapter.title}`} onClose={() => setModal(null)}>
@@ -361,21 +385,21 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
       <div className="hud-money" data-coach="money">
         <button className={`hud-stat m ${g.stats.cash < 0 ? 'neg' : ''}`} {...stat('cash', true)} aria-label={`Checking ${money(g.stats.cash)}`}>
           <small>Checking</small>
-          {money(g.stats.cash)}
+          <TickMoney value={g.stats.cash} />
         </button>
         <button className="hud-stat m" {...stat('savings', true)} aria-label={`Savings ${money(g.stats.savings)}`}>
           <small>Savings</small>
-          {money(g.stats.savings)}
+          <TickMoney value={g.stats.savings} />
         </button>
         {g.card && (
           <button className={`hud-stat m ${g.card.balance / g.card.limit > 0.3 ? 'neg' : ''}`} {...stat('card', true)} aria-label={`Credit card owed ${money(g.card.balance)}`}>
             <small>Card owed</small>
-            {money(g.card.balance)}
+            <TickMoney value={g.card.balance} />
           </button>
         )}
         <button className="hud-stat m" {...stat('credit', true)} aria-label={`Credit score ${sc ?? 'none yet'}`}>
           <small>Credit</small>
-          {sc ?? '—'}
+          {sc === null ? '—' : <TickNumber value={sc} />}
         </button>
       </div>
       <div className="hud-bars">
@@ -522,14 +546,18 @@ function MoneyModal({ g, setG, onClose }: { g: GameState; setG: (g: GameState) =
   return (
     <Modal title="Money" onClose={onClose} wide>
       <div className="money-grid">
-        <div className="acct">
+        <div className="acct checking">
           <small>Checking</small>
-          <strong className={g.stats.cash < 0 ? 'neg' : ''}>{money(g.stats.cash, true)}</strong>
+          <strong className={g.stats.cash < 0 ? 'neg' : ''}>
+            <TickMoney value={g.stats.cash} cents />
+          </strong>
           <span className="muted small">For spending and bills. Overdraft protection: {g.overdraftOptIn ? 'ON ($35 fees)' : 'OFF (declines)'}</span>
         </div>
-        <div className="acct">
+        <div className="acct savings">
           <small>Savings</small>
-          <strong>{money(g.stats.savings, true)}</strong>
+          <strong>
+            <TickMoney value={g.stats.savings} cents />
+          </strong>
           <span className="muted small">{g.bank === 'online' ? '4% interest' : g.bank === 'creditunion' ? '1.5% interest' : '0.1% interest'} · Emergency fund</span>
         </div>
         {g.card && (

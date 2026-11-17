@@ -1,12 +1,14 @@
 // Top level: title screen, character creation, and the game.
-import { useEffect, useState } from 'react';
-import { HAIR_STYLES, HAIRS, SHIRTS, SKINS, playerPerson } from '../art/people.ts';
+import { useEffect, useMemo, useState } from 'react';
+import { BOSSES, HAIR_STYLES, HAIRS, SHIRTS, SKINS, playerPerson, type Outfit } from '../art/people.ts';
+import { mix } from '../art/px.ts';
 import { PATHS, newState } from '../content/paths.ts';
 import { begin } from '../engine/engine.ts';
-import type { GameState, Look, PathId } from '../engine/types.ts';
+import type { GameState, Look, NpcId, PathId } from '../engine/types.ts';
 import { applyBigText } from './a11y.ts';
 import { setMuted, sfx } from './audio.ts';
-import { Icon, PersonCanvas, SceneCanvas } from './common.tsx';
+import { reducedMotion } from './a11y.ts';
+import { Icon, PersonCanvas, Portrait, SceneCanvas, TitleCanvas, type Expr } from './common.tsx';
 import { Game } from './Game.tsx';
 import { loadGame, loadMeta, mergeMeta, saveGame, saveMeta, type Meta } from './save.ts';
 
@@ -64,12 +66,14 @@ function Title({ meta, canContinue, g, onContinue, onNew, onMute }: { meta: Meta
   return (
     <div className="title-screen">
       <div className="title-art">
-        <SceneCanvas art="street" look={look} speaker="rae" />
-      </div>
-      <div className="title-card">
-        <h1>
-          <span>Out in the</span> <span>Real World</span>
+        <TitleCanvas look={look} />
+        <h1 className="logo">
+          <span className="logo-1">Out in the</span> <span className="logo-2">Real World</span>
+          <i className="logo-gleam" aria-hidden="true" />
+          <i className="logo-spark" aria-hidden="true" />
         </h1>
+      </div>
+      <div className="title-card pixel-frame">
         <p className="tagline">You just graduated. Now the bills have your name on them.</p>
         <div className="title-btns">
           {canContinue && g && (
@@ -120,7 +124,14 @@ function Create({ onBack, onStart }: { onBack: () => void; onStart: (name: strin
   const [look, setLook] = useState<Look>({ skin: Math.floor(Math.random() * 6), hair: Math.floor(Math.random() * 6), hairStyle: Math.floor(Math.random() * HAIR_STYLES.length), shirt: Math.floor(Math.random() * 8) });
   const [path, setPath] = useState<PathId | null>(null);
   const [step, setStep] = useState<1 | 2>(1);
-  const person = playerPerson(look);
+  const [wear, setWear] = useState<Outfit>('casual');
+  const person = useMemo(() => playerPerson(look, wear), [look, wear]);
+  const [mood, setMood] = useState(0);
+  useEffect(() => {
+    if (reducedMotion()) return;
+    const id = window.setInterval(() => setMood((m) => (m + 1) % CREATOR_MOODS.length), 1800);
+    return () => window.clearInterval(id);
+  }, []);
 
   if (step === 1)
     return (
@@ -128,7 +139,17 @@ function Create({ onBack, onStart }: { onBack: () => void; onStart: (name: strin
         <h2>Who are you?</h2>
         <div className="create-body">
           <div className="avatar">
-            <PersonCanvas person={person} scale={6} />
+            <Portrait person={person} expr={CREATOR_MOODS[mood]} talking={mood === 1} bg={mix(person.hood ?? person.shirt, '#2f4a7a', 0.6)} name={name.trim() || 'You'} className="creator-portrait" />
+            <div className="avatar-body">
+              <PersonCanvas person={person} scale={4} />
+              <div className="wear" role="radiogroup" aria-label="Preview outfit">
+                {(['casual', 'hoodie'] as Outfit[]).map((o) => (
+                  <button key={o} role="radio" aria-checked={wear === o} className={`pill ${wear === o ? 'on' : ''}`} onClick={() => { sfx('click'); setWear(o); }}>
+                    {o === 'casual' ? 'Out' : 'Home'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="create-form">
             <label className="field">
@@ -165,13 +186,24 @@ function Create({ onBack, onStart }: { onBack: () => void; onStart: (name: strin
       <p className="muted">Every start has real tradeoffs. There’s no wrong answer, just different problems.</p>
       <div className="paths">
         {PATHS.map((p) => (
-          <button key={p.id} className={`path ${path === p.id ? 'on' : ''}`} onClick={() => { sfx('select'); setPath(p.id); }}>
+          <button key={p.id} className={`path ${path === p.id ? 'on' : ''}`} aria-pressed={path === p.id} onClick={() => { sfx('select'); setPath(p.id); }}>
             <div className="path-art">
-              <SceneCanvas art={p.art} look={look} />
+              <SceneCanvas art={p.art} look={look} path={p.id} speaker={PATH_NPC[p.id]} outfit={p.art === 'jobsite' || p.art === 'warehouse' ? p.id : 'casual'} tod={PATH_TOD[p.id]} enter={false} />
+              <Portrait person={BOSSES[p.id].p} bg={mix(BOSSES[p.id].p.coat ?? BOSSES[p.id].p.shirt, '#2a2a4a', 0.5)} className="path-boss" expr={path === p.id ? 'happy' : 'neutral'} />
             </div>
             <div className="path-body">
               <h3>{p.name}</h3>
-              <span className="diff">{'●'.repeat(p.difficulty)}{'○'.repeat(3 - p.difficulty)} difficulty</span>
+              <span className="diff" aria-label={`Difficulty ${p.difficulty} of 3`}>
+                {[0, 1, 2].map((i) => (
+                  <span key={i} className={i < p.difficulty ? 'on' : 'off'}>
+                    <Icon name="energy" size={12} />
+                  </span>
+                ))}
+                <span className="diff-word">{['', 'Easy start', 'Some hustle', 'Hard mode'][p.difficulty]}</span>
+              </span>
+              <span className="path-boss-name">
+                Boss: {BOSSES[p.id].name}
+              </span>
               <p>{p.tagline}</p>
               <ul>
                 {p.perks.map((x) => (
@@ -200,3 +232,8 @@ function Create({ onBack, onStart }: { onBack: () => void; onStart: (name: strin
     </div>
   );
 }
+
+const CREATOR_MOODS: Expr[] = ['neutral', 'happy', 'neutral', 'surprised', 'happy', 'worried'];
+// Who's in each start's postcard, and the light it's painted in.
+const PATH_NPC: Record<PathId, NpcId> = { home: 'mom', college: 'roommate', trade: 'boss', work: 'boss' };
+const PATH_TOD = { home: 'morning', college: 'golden', trade: 'day', work: 'day' } as const;

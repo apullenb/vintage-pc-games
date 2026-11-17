@@ -1,11 +1,13 @@
 // First-week coach marks: spotlight one part of the screen at a time with a short callout.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CAST } from '../art/people.ts';
 import { CHAPTERS } from '../content/chapters.ts';
 import { money } from '../engine/core.ts';
 import { chapterEndWeek } from '../engine/engine.ts';
 import type { GameState } from '../engine/types.ts';
 import { reducedMotion } from './a11y.ts';
 import { sfx } from './audio.ts';
+import { Portrait } from './common.tsx';
 
 interface CoachStep {
   // First selector that matches a visible element is highlighted.
@@ -175,10 +177,15 @@ export function Tutorial({ g, onDone }: { g: GameState; onDone: () => void }) {
             Skip tutorial
           </button>
         </div>
-        <h3 id="coach-title">{typeof step.title === 'function' ? step.title(g) : step.title}</h3>
-        <p id="coach-text" aria-live="polite">
-          {step.text(g)}
-        </p>
+        <div className="coach-body">
+          <Portrait person={CAST.rae.p} expr={last ? 'happy' : 'neutral'} talking bg="#7a6ab0" className="coach-guide" />
+          <div>
+            <h3 id="coach-title">{typeof step.title === 'function' ? step.title(g) : step.title}</h3>
+            <p id="coach-text" aria-live="polite">
+              {step.text(g)}
+            </p>
+          </div>
+        </div>
         <div className="coach-dots" aria-hidden="true">
           {STEPS.map((_, j) => (
             <span key={j} className={j === i ? 'on' : j < i ? 'seen' : ''} />

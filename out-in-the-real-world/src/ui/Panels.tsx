@@ -1,5 +1,7 @@
 // The interaction panel: planner, scenes, paychecks, bills, summaries, chapter ends.
 import { useEffect, useMemo, useState } from 'react';
+import { castFor, playerPerson, type Outfit, type Person } from '../art/people.ts';
+import { mix } from '../art/px.ts';
 import { activitiesFor, activityFor } from '../content/activities.ts';
 import { CHAPTERS } from '../content/chapters.ts';
 import { canPay, creditScore, money, round2, snap } from '../engine/core.ts';
@@ -16,10 +18,10 @@ import {
   txt,
   type ViewChoice,
 } from '../engine/engine.ts';
-import type { Bill, GameState, PayMethod, PayStub, Plan, SlotId, Step } from '../engine/types.ts';
+import type { Bill, Deltas, GameState, NpcId, PayMethod, PayStub, Plan, SlotId, Step } from '../engine/types.ts';
 import { SLOTS } from '../engine/types.ts';
 import { sfx } from './audio.ts';
-import { DeltaChips, Hint, Icon, Paras, useTypewriter } from './common.tsx';
+import { DeltaChips, Hint, Icon, Paras, Portrait, StarRow, TickMoney, useTypewriter, type Expr } from './common.tsx';
 
 const SLOT_LABEL: Record<SlotId, string> = { weekday: 'Weekday', evening: 'Evening', saturday: 'Saturday', sunday: 'Sunday' };
 const SLOT_SUB: Record<SlotId, string> = { weekday: 'Mon–Fri daytime', evening: 'After work', saturday: 'Weekend', sunday: 'Weekend' };
@@ -189,7 +191,57 @@ export function Planner({ s, onStart }: { s: GameState; onStart: (p: Plan) => vo
 }
 
 // ================= SCENE =================
-export function ScenePanel({ s, head, fast, onChoose, onContinue }: { s: GameState; head: Extract<Step, { t: 'scene' }>; fast: boolean; onChoose: (i: number, m?: PayMethod) => void; onContinue: () => void }) {
+// Friends and family look worried when things go wrong; officials look annoyed.
+const FRIENDLY = new Set<NpcId>(['mom', 'rae', 'grandma', 'roommate']);
+const WORDS_BAD = /\b(late|fee|fees|fine|denied|declin|reject|overdue|missed|fired|evict|warning|broke|sick|hurt|emergency|problem|sorry|can[’']?t|cannot|won[’']?t|unfortunately|uh[ -]oh|oops|bad news|owe|debt|collections|ticket|crash|leak|scam)/g;
+const WORDS_GOOD = /\b(congrat|great|nice|awesome|welcome|love|yay|thanks|thank you|approved|proud|excited|perfect|good news|raise|bonus|free|win|won|celebrat|hired|passed)/g;
+
+function moodOf(text: string): number {
+  const t = text.toLowerCase();
+  const bad = (t.match(WORDS_BAD) ?? []).length;
+  const good = (t.match(WORDS_GOOD) ?? []).length + Math.min(2, (t.match(/!/g) ?? []).length) * 0.5;
+  return good - bad;
+}
+function deltaScore(d: Deltas): number {
+  let n = 0;
+  const sign = (v: number | undefined, goodWhenPositive = true): void => {
+    if (!v) return;
+    n += (v > 0) === goodWhenPositive ? 1 : -1;
+  };
+  sign(d.cash);
+  sign(d.savings);
+  sign(d.card, false);
+  sign(d.debt, false);
+  sign(d.retire);
+  sign(d.energy);
+  sign(d.rep);
+  sign(d.xp);
+  return n;
+}
+export function exprFor(score: number, friendly: boolean): Expr {
+  if (score >= 1) return 'happy';
+  if (score <= -1) return friendly ? 'worried' : 'annoyed';
+  return 'neutral';
+}
+const backdropFor = (p: Person, tint: string): string => mix(p.coat ?? p.hood ?? p.shirt, tint, 0.55);
+
+export function ScenePanel({
+  s,
+  head,
+  fast,
+  onChoose,
+  onContinue,
+  speaker = null,
+  outfit = 'casual',
+}: {
+  s: GameState;
+  head: Extract<Step, { t: 'scene' }>;
+  fast: boolean;
+  onChoose: (i: number, m?: PayMethod) => void;
+  onContinue: () => void;
+  speaker?: NpcId | null;
+  outfit?: Outfit;
+}) {
   const sc = sceneOf(head.id);
   const step = sc.steps[head.step];
   const data = head.data ?? {};
@@ -199,6 +251,19 @@ export function ScenePanel({ s, head, fast, onChoose, onContinue }: { s: GameSta
   const choices = useMemo(() => (head.result ? [] : sceneChoices(s, head)), [s, head]);
   const [paying, setPaying] = useState<number | null>(null);
   useEffect(() => setPaying(null), [head]);
+  // Portraits: the speaker talks while the text appears (and a beat after).
+  const npc = speaker ? castFor(speaker, s.path) : null;
+  const friendly = !!speaker && FRIENDLY.has(speaker);
+  const [chatty, setChatty] = useState(true);
+  useEffect(() => {
+    setChatty(true);
+    const id = window.setTimeout(() => setChatty(false), Math.min(2600, 500 + body.length * 18));
+    return () => window.clearTimeout(id);
+  }, [body]);
+  const score = head.result ? deltaScore(head.result.deltas) || Math.sign(moodOf(body)) : Math.sign(moodOf(body));
+  const npcExpr = exprFor(score, friendly);
+  const me = useMemo(() => playerPerson(s.look, outfit), [s.look, outfit]);
+  const meExpr: Expr = head.result ? exprFor(deltaScore(head.result.deltas), true) : npcExpr === 'annoyed' || npcExpr === 'worried' ? 'worried' : 'neutral';
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -239,24 +304,31 @@ export function ScenePanel({ s, head, fast, onChoose, onContinue }: { s: GameSta
       <div className="panel-head">
         <h3>{title}</h3>
       </div>
-      <div className={`story ${head.result ? 'result' : ''}`}>
-        <Paras text={tw.shown} />
-        {!tw.done && <span className="caret">▌</span>}
+      <div className={`dialog ${npc ? 'has-npc' : ''}`}>
+        {npc && <Portrait person={npc.p} name={npc.name} expr={npcExpr} talking={chatty || !tw.done} look={1} bg={backdropFor(npc.p, '#4a5a8a')} side="left" />}
+        <div className={`story ${head.result ? 'result' : ''} ${npc ? 'bubble' : ''}`}>
+          <Paras text={tw.shown} />
+          {!tw.done && <span className="caret">▌</span>}
+        </div>
       </div>
       {head.result && tw.done && (
-        <>
-          <DeltaChips d={head.result.deltas} />
-          {head.result.tip && (
-            <div className="tip">
-              <Icon name="book" /> <span>{head.result.tip}</span>
-            </div>
-          )}
-          <button className="btn primary" onClick={onContinue} autoFocus>
-            Continue
-          </button>
-        </>
+        <div className="reply-row">
+          <div className="reply-main">
+            <DeltaChips d={head.result.deltas} />
+            {head.result.tip && (
+              <div className="tip">
+                <Icon name="book" /> <span>{head.result.tip}</span>
+              </div>
+            )}
+            <button className="btn primary" onClick={onContinue} autoFocus>
+              Continue
+            </button>
+          </div>
+          <Portrait person={me} name={s.name || 'You'} expr={meExpr} look={npc ? -1 : 0} bg={backdropFor(me, '#2f6a6a')} side="right" className="me" />
+        </div>
       )}
       {!head.result && tw.done && (
+        <div className="reply-row">
         <div className="choice-list">
           {choices.map((c, idx) => (
             <div key={c.i} className="choice-wrap">
@@ -290,6 +362,8 @@ export function ScenePanel({ s, head, fast, onChoose, onContinue }: { s: GameSta
             </div>
           ))}
         </div>
+        <Portrait person={me} name={s.name || 'You'} expr={meExpr} look={npc ? -1 : 0} bg={backdropFor(me, '#2f6a6a')} side="right" className="me" />
+        </div>
       )}
     </div>
   );
@@ -304,15 +378,43 @@ export function PaycheckPanel({ s, stub, onContinue }: { s: GameState; stub: Pay
       <span>{v < 0 ? `−${money(-v, true)}` : money(v, true)}</span>
     </div>
   );
+  const place = s.job?.place ?? 'Employer';
+  const initials = place
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
   return (
     <div className="panel-inner paycheck">
       <div className="panel-head">
         <h3>Payday!</h3>
       </div>
-      <div className="stub">
-        <div className="stub-title">
-          {s.job?.place ?? 'Employer'} · Pay stub
-        </div>
+      <div className="stub" aria-label={`${place} pay stub`}>
+        <div className="stub-holes" aria-hidden="true" />
+        <div className="stub-paper">
+          <div className="stub-head">
+            <span className="stub-logo" aria-hidden="true">
+              {initials}
+            </span>
+            <span className="stub-co">
+              <strong>{place}</strong>
+              <small>Earnings statement</small>
+            </span>
+            <span className="stub-meta">
+              <small>Pay period</small>
+              <b>
+                Weeks {Math.max(1, s.week - 1)}–{s.week}
+              </b>
+              <small>Employee</small>
+              <b>{s.name || 'You'}</b>
+            </span>
+          </div>
+          <div className="stub-cols" aria-hidden="true">
+            <span>Description</span>
+            <span>This period</span>
+          </div>
+          <div className="stub-title">{s.job?.title ?? 'Pay stub'}</div>
         {row(`Gross pay (${stub.hours} hrs × ${money(stub.wage, true)})`, stub.gross, 'gross')}
         {stub.federal > 0 && row('Federal income tax', -stub.federal)}
         {stub.fica > 0 && row('Social Security & Medicare (FICA)', -stub.fica)}
@@ -324,9 +426,15 @@ export function PaycheckPanel({ s, stub, onContinue }: { s: GameState; stub: Pay
         {stub.match > 0 && <div className="stub-note">+ Employer 401(k) match: {money(stub.match, true)} (free money!)</div>}
         {stub.overdraftCleared > 0 && <div className="stub-note bad">{money(stub.overdraftCleared, true)} went to cover your overdrawn balance.</div>}
         {stub.autoSaved > 0 && <div className="stub-note good">Auto-saved {money(stub.autoSaved)} to savings.</div>}
+          <div className="stub-foot" aria-hidden="true">
+            <span>Direct deposit · non-negotiable</span>
+            <span className="stub-barcode" />
+          </div>
+        </div>
+        <div className="stub-holes" aria-hidden="true" />
       </div>
       <p className="muted small">
-        You kept {Math.round((stub.net / Math.max(1, stub.gross)) * 100)}% of what you earned. Checking is now {money(s.stats.cash)}.
+        You kept {Math.round((stub.net / Math.max(1, stub.gross)) * 100)}% of what you earned. Checking is now <TickMoney value={s.stats.cash} />.
       </p>
       <button className="btn primary" onClick={onContinue} autoFocus>
         Continue
@@ -357,6 +465,46 @@ function consequence(b: Bill, s: GameState): string {
       return 'It gets canceled.';
     default:
       return 'Late fee.';
+  }
+}
+
+const BILL_ICON: Record<Bill['kind'], string> = {
+  housing: 'home',
+  phone: 'phone',
+  utilities: 'energy',
+  insurance: 'shield',
+  carloan: 'car',
+  card: 'card',
+  sub: 'star',
+  tuition: 'class',
+  fee: 'bank',
+  gym: 'heart',
+  other: 'docs',
+};
+function billFrom(b: Bill, s: GameState): string {
+  switch (b.kind) {
+    case 'housing':
+      return s.housing.kind === 'parents' ? 'Mom & Dad (house rules)' : 'Your landlord';
+    case 'utilities':
+      return 'City Power & Water';
+    case 'phone':
+      return 'Your phone carrier';
+    case 'insurance':
+      return 'Auto insurance';
+    case 'carloan':
+      return 'Auto lender';
+    case 'card':
+      return s.card?.name ?? 'Card company';
+    case 'tuition':
+      return 'Bursar’s office';
+    case 'gym':
+      return 'The gym';
+    case 'sub':
+      return 'Subscription';
+    case 'fee':
+      return 'Your bank';
+    default:
+      return 'Billing dept.';
   }
 }
 
@@ -426,10 +574,19 @@ export function BillsPanel({ s, bills, onPay }: { s: GameState; bills: Bill[]; o
         {bills.map((b) => {
           const p = picks[b.id];
           return (
-            <div key={b.id} className={`bill ${p.mode === 'skip' ? 'skipped' : ''}`}>
+            <div key={b.id} className={`bill envelope kind-${b.kind} ${p.mode === 'skip' ? 'skipped' : ''}`}>
               <div className="bill-top">
-                <span className="bill-name">{b.label}</span>
+                <span className="bill-stamp" aria-hidden="true">
+                  <Icon name={BILL_ICON[b.kind] ?? 'docs'} size={24} />
+                </span>
+                <span className="bill-who">
+                  <small>From: {billFrom(b, s)}</small>
+                  <span className="bill-name">{b.label}</span>
+                </span>
                 <span className="bill-amt">{money(amountOf(b, p), true)}</span>
+                <span className={`bill-mark ${p.mode}`} aria-hidden="true">
+                  {p.mode === 'skip' ? 'UNPAID' : p.mode === 'min' ? 'MIN' : 'PAID'}
+                </span>
               </div>
               <div className="bill-ctrl">
                 <button className={`pill ${p.mode === 'full' ? 'on' : ''}`} aria-pressed={p.mode === 'full'} aria-label={`Pay ${b.label} in full`} onClick={() => set(b.id, { mode: 'full' })}>
@@ -536,7 +693,7 @@ export function SummaryPanel({ s, onContinue }: { s: GameState; onContinue: () =
       <div className="panel-head">
         <h3>Week {s.week} recap</h3>
       </div>
-      <ul className="journal">
+      <ul className="journal" aria-label="This week">
         {s.log.map((l, i) => (
           <li key={i} className={l.tone ?? ''}>
             {l.text}
@@ -563,13 +720,7 @@ export function ChapterEndPanel({ s, onContinue }: { s: GameState; onContinue: (
           Chapter {s.chapter + 1} complete: {CHAPTERS[s.chapter].title}
         </h3>
       </div>
-      <div className="stars" aria-label={`${r.stars} of 3 stars`}>
-        {[0, 1, 2].map((i) => (
-          <span key={i} className={i < r.stars ? 'on' : ''}>
-            ★
-          </span>
-        ))}
-      </div>
+      <StarRow stars={r.stars} />
       {r.done.map((t) => (
         <div key={t} className="report good">
           <Icon name="check" /> {t}
