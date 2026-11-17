@@ -6,6 +6,9 @@ import { CAREER_NEED } from '../chapters.ts';
 import type { Choice, Scene } from '../types.ts';
 import { medCost } from './events.ts';
 import { monthlyGross } from './tasks.ts';
+import { currentCourse, enroll } from '../careers.ts';
+import { COURSE_BY_ID } from '../courses.ts';
+import { hasSkill } from '../skills.ts';
 
 const saveChoice = (amount: number, why: string, bot = 1): Choice => ({
   label: `Save the ${money(amount)} instead`,
@@ -212,11 +215,14 @@ export const OFFER_SCENES: Scene[] = [
           {
             label: 'Enroll: $350',
             pay: 350,
-            hint: '✓ Study sessions count more (+6 instead of +4) · ✓ Path to a $19/hr job',
+            hint: '✓ Earns the CPhT certification (6 sessions) · ✓ Path to a $19/hr job',
             bot: 3,
+            req: (s) => (currentCourse(s) ? 'Finish your current course first' : true),
             do: (s) => {
+              // The same course as "Pharmacy Tech (CPhT)" in the online course catalog.
               setFlag(s, 'certEnrolled');
-              unlock(s, 'invest-in-yourself');
+              s.flags.certMigrated = true;
+              enroll(s, COURSE_BY_ID.cpht, 350);
             },
             result: 'Enrolled! Your first module is about pill counting. Riveting.',
             tip: 'Spending on skills that raise your income is one of the best “investments” you can make.',
@@ -938,7 +944,7 @@ const OFFER_LIST = [
   { id: 'off-renters', weight: (s: GameState) => (ownPlace(s) && !s.flags.rentersIns ? 2 : 0), cooldown: 10 },
   { id: 'off-roadside', weight: (s: GameState) => (s.car && !s.flags.roadside ? 1.5 : 0), once: true },
   { id: 'off-boots', weight: (s: GameState) => (s.path === 'trade' || s.path === 'work' ? 2 : 0), once: true },
-  { id: 'off-cert', weight: (s: GameState) => (s.path === 'home' && !s.flags.certEnrolled ? 2.5 : 0), minWeek: 6, cooldown: 8 },
+  { id: 'off-cert', weight: (s: GameState) => (s.path === 'home' && !s.flags.certEnrolled && !hasSkill(s, 'cpht') && currentCourse(s)?.id !== 'cpht' ? 2.5 : 0), minWeek: 6, cooldown: 8 },
   { id: 'off-paycard', weight: (s: GameState) => ((s.card?.balance ?? 0) > 60 ? 2 : 0), cooldown: 4 },
   { id: 'off-roth', weight: (s: GameState) => (s.week >= 10 ? 0.8 : 0), once: true },
   { id: 'off-glasses', weight: 0.6, once: true, minWeek: 6 },

@@ -35,6 +35,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'lockeddown', name: 'Locked Down', desc: 'Froze your credit after identity theft.', icon: 'shield' },
   { id: 'depositback', name: 'Spotless Record', desc: 'Got your whole security deposit back.', icon: 'home' },
   { id: 'selfemployed', name: 'Self-Employed', desc: 'Paid your gig taxes on time.', icon: 'money' },
+  { id: 'certified', name: 'Certified', desc: 'Finished an online course and earned a job skill.', icon: 'study' },
+  { id: 'newjob', name: 'Better Offer', desc: 'Interviewed for a new job and took it.', icon: 'work' },
+  { id: 'redflag', name: 'Red Flag Spotter', desc: 'Reported a job scam instead of paying it.', icon: 'shield' },
 ];
 
 export function checkAchievements(s: GameState): void {

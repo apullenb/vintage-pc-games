@@ -6,6 +6,7 @@ import { SCENES } from '../content/scenes.ts';
 import { MINIGAMES } from '../content/minigames/index.ts';
 import type { Choice, Data, Scene } from '../content/types.ts';
 import { checkAchievements } from '../content/achievements.ts';
+import { careerWeek } from '../content/careers.ts';
 import {
   canPay,
   cardRoom,
@@ -224,6 +225,8 @@ function runFood(s: GameState): void {
 
 // ---------- upkeep ----------
 function runUpkeep(s: GameState): void {
+  // Skills, courses, job changes, commute (content/careers.ts).
+  careerWeek(s);
   // The job itself.
   if (s.job) {
     // Construction slows down in the dead of winter: apprentices get cut hours, not paid time off.

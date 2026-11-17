@@ -23,11 +23,14 @@ describe('full playthroughs', () => {
       console.log(path, 'wise wins', wins.length, '/', results.length, 'avg', Math.round(avg), 'min', Math.min(...scores), 'saved', Math.round(saved), results.filter((r) => r.outcome === 'lost').map((r) => r.reason));
       expect(wins.length).toBe(results.length);
       // A good year, not a perfect one: around $1,500–$3,500 saved (a bit more living at home) and a B+/A score.
+      // Home is the exception: a sensible player there earns a certification and trades a part-time
+      // $15 register job for a full-time one with benefits while still paying parent rent, so they
+      // save (and score) more. That payoff is the point of courses and the job board.
       expect(avg).toBeGreaterThan(780);
-      expect(avg).toBeLessThan(path === 'home' ? 935 : 900);
+      expect(avg).toBeLessThan(path === 'home' ? 960 : 900);
       expect(saved).toBeGreaterThan(1500);
-      // Living at home plus a promotion from extra shifts lets you save a lot more.
-      expect(saved).toBeLessThan(path === 'home' ? 6500 : 3800);
+      // Living at home plus a better job (or a promotion from extra shifts) lets you save a lot more.
+      expect(saved).toBeLessThan(path === 'home' ? 9000 : 3800);
     });
     it(`${path}: reckless choices cost you`, () => {
       const wise = [];

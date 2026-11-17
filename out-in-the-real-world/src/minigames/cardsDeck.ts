@@ -3,6 +3,7 @@
 import { HANDBOOK } from '../content/handbook.ts';
 import type { GameState, PathId } from '../engine/types.ts';
 import { shuffle } from './cardsFx.ts';
+import { COURSE_BY_ID } from '../content/courses.ts';
 
 export interface Card {
   id: string;
@@ -78,6 +79,11 @@ export const HANDBOOK_CARDS: Record<string, [string, string]> = {
   'extended-warranty': ['Extended warranty', 'Pricey repair coverage full of exclusions.'],
   'insurance-shopping': ['Insurance quotes', 'Same coverage can cost hundreds more elsewhere. Compare yearly.'],
   'cancel-trap': ['Cancel trap', 'A gym that makes quitting hard. Read the rules first.'],
+  'job-interview': ['STAR answer', 'Problem, what you did, and how it turned out.'],
+  'two-weeks-notice': ['Two weeks’ notice', 'Telling your boss you’re leaving, so you keep the reference.'],
+  'job-scam': ['Job scam', 'A “job” that asks YOU to pay a fee to start.'],
+  'networking': ['Referral', 'A friend vouches for you so your resume gets read.'],
+  'tuition-help': ['Tuition assistance', 'Your employer pays for classes, often with strings attached.'],
 };
 
 const P = (id: string, label: string, clue: string): Card => ({ id, label, clue, kind: 'path' });
@@ -131,13 +137,19 @@ export interface Round {
 export const ROUNDS = 14;
 
 // Build a fresh set of rounds: mostly terms the player has unlocked, a few brand-new ones, and path cards.
-export function buildRounds(s: GameState, r: () => number, n = ROUNDS): Round[] {
+// An online course's own cards (term, clue), used instead of the path's study cards.
+export function courseCards(id: string): Card[] | null {
+  const c = COURSE_BY_ID[id];
+  return c ? c.cards.map(([label, clue], i) => P(`k-${c.id}-${i}`, label, clue)) : null;
+}
+
+export function buildRounds(s: GameState, r: () => number, n = ROUNDS, course = ''): Round[] {
   const known = new Set(s.handbook);
   const unlocked = shuffle(HANDBOOK.filter((e) => known.has(e.id)).map((e) => handbookCard(e.id)!), r);
   const fresh = shuffle(HANDBOOK.filter((e) => !known.has(e.id) && HANDBOOK_CARDS[e.id]).map((e) => handbookCard(e.id, true)!), r);
-  const path = shuffle([...(PATH_CARDS[s.path] ?? PATH_CARDS.home)], r);
+  const path = shuffle([...(courseCards(course) ?? PATH_CARDS[s.path] ?? PATH_CARDS.home)], r);
 
-  const nPath = Math.min(path.length, 4);
+  const nPath = Math.min(path.length, courseCards(course) ? 6 : 4);
   const nFresh = Math.min(fresh.length, unlocked.length >= 6 ? 3 : n - nPath - unlocked.length);
   const answers: Card[] = [...path.slice(0, nPath), ...fresh.slice(0, Math.max(0, nFresh))];
   for (const c of unlocked) if (answers.length < n) answers.push(c);

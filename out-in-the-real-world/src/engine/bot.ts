@@ -3,7 +3,8 @@ import { activitiesFor } from '../content/activities.ts';
 import { CAREER_NEED } from '../content/chapters.ts';
 import { SCENES } from '../content/scenes.ts';
 import { newState } from '../content/paths.ts';
-import { canPay, round2 } from './core.ts';
+import { canPay, num, round2 } from './core.ts';
+import { bestTarget, currentCourse } from '../content/careers.ts';
 import { begin, choose, finishMinigame, defaultPlan, foodOptions, moveMoney, payBills, proceed, sceneChoices, startWeek, taskStatus } from './engine.ts';
 import { monthlyBills } from '../content/scenes/tasks.ts';
 import type { GameState, PathId, PayMethod, Plan, SlotId } from './types.ts';
@@ -61,6 +62,13 @@ export function botPlan(s: GameState, style: Style): Plan {
 
   taskPass(s, plan, used, free, set);
   const need = CAREER_NEED[s.path];
+  // Career moves: apply when a skill made you qualified for a clearly better job, and take one
+  // course early in the year (home and work paths) when money allows.
+  const enrolled = !!currentCourse(s);
+  if (free('evening') && bestTarget(s)) set('evening', 'apply');
+  else if (free('evening') && !enrolled && (s.path === 'home' || s.path === 'work') && !num(s, 'coursesDone') && s.week >= 5 && s.stats.energy > 50 && s.stats.cash + s.stats.savings > 1100)
+    set('evening', 'course');
+  const studyId = enrolled ? 'course' : 'study';
   // Meal prep most Sundays, but like most people, one week a month gets away from you (and takeout
   // wins), unless money is tight.
   const flush = s.stats.cash > 400 && s.stats.cash + s.stats.savings > 800;
@@ -79,8 +87,13 @@ export function botPlan(s: GameState, style: Style): Plan {
     }
     if (s.stats.energy < 45) continue;
     const behind = s.stats.xp < (need.xp + 8) * Math.min(1, s.week / 32);
-    if (ids.includes('study') && ((behind && s.stats.energy > 40) || (s.stats.xp < need.xp + 8 && s.stats.energy > 60 && !used.has('study')))) {
-      set(slot, 'study');
+    // In a course: a session most weeks, so it actually gets finished.
+    if (enrolled && ids.includes('course') && s.stats.energy > 45 && !used.has('course')) {
+      set(slot, 'course');
+      continue;
+    }
+    if (ids.includes(studyId) && ((behind && s.stats.energy > 40) || (s.stats.xp < need.xp + 8 && s.stats.energy > 60 && !used.has(studyId)))) {
+      set(slot, studyId);
       continue;
     }
     // With a real cushion saved, most people loosen up a little: a second night out.

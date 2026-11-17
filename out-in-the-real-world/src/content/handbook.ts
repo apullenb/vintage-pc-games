@@ -70,6 +70,11 @@ export const HANDBOOK: Entry[] = [
   { id: 'extended-warranty', term: 'Extended warranties', text: 'A “vehicle service contract” is insurance for car repairs. They’re often pricey, full of exclusions (“wear items”), and can deny claims if you can’t prove regular maintenance. Putting the same money in a repair fund often works out better.' },
   { id: 'insurance-shopping', term: 'Shopping for insurance', text: 'The same coverage for the same driver can cost hundreds of dollars more at one company than another. Get several quotes every year. Apps that track your driving can lower your rate, or raise it if you speed and brake hard.' },
   { id: 'cancel-trap', term: 'Canceling memberships', text: 'Read how to cancel BEFORE you sign up. Some gyms and services make you cancel in person or by certified letter. Keep proof that you canceled and check your statement afterward. Unpaid dues can be sent to collections.' },
+  { id: 'job-interview', term: 'Job interviews', text: 'Keep “tell me about yourself” to a minute: what you do now, what you’ve learned, why this job. Answer “tell me about a time” questions with a real example: the problem, what you did, how it turned out. Always have a question ready for them.' },
+  { id: 'two-weeks-notice', term: 'Two weeks’ notice', text: 'Telling your boss you’re leaving two weeks ahead isn’t required by law, but it keeps your reference. Quit on the spot and that boss won’t vouch for you. Some employers end things the day you give notice, so have some savings first.' },
+  { id: 'job-scam', term: 'Job scams', text: 'Real employers pay you, not the other way around. Red flags: pay way above normal, hired without a real interview, a “starter kit” fee, buying equipment from their vendor, or a check you’re supposed to deposit and send part of back.' },
+  { id: 'networking', term: 'Referrals', text: 'Many jobs are filled through someone who knows someone. A referral gets your resume read and helps in the interview. It won’t replace a required license or certification.' },
+  { id: 'tuition-help', term: 'Tuition assistance', text: 'Many employers pay for classes and certifications. Read the fine print: you may need to work there a while first, and leaving soon after can mean paying it back.' },
 ];
 
 export const HANDBOOK_BY_ID: Record<string, Entry> = Object.fromEntries(HANDBOOK.map((e) => [e.id, e]));

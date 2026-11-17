@@ -49,11 +49,11 @@ export function cardsScore(results: Result[], total: number): number {
 
 const mult = (streak: number): number => Math.min(4, 1 + Math.floor(streak / 3));
 
-export function Flashcards({ s, onDone, reducedMotion }: MiniProps) {
+export function Flashcards({ s, data, onDone, reducedMotion }: MiniProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const labels = useRef<(HTMLDivElement | null)[]>([]);
   const input = useInput();
-  const rounds = useMemo<Round[]>(() => buildRounds(s, rng((Date.now() ^ (s.seed * 7919)) >>> 0)), [s]);
+  const rounds = useMemo<Round[]>(() => buildRounds(s, rng((Date.now() ^ (s.seed * 7919)) >>> 0), undefined, String(data.course ?? '')), [s, data.course]);
   const person = useMemo(() => playerPerson(s.look), [s.look]);
   const doneRef = useRef(onDone);
   doneRef.current = onDone;

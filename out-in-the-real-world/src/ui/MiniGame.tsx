@@ -3,6 +3,7 @@
 // Replays happen here, before onFinish: the engine applies the accepted run exactly once.
 import { Component, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { MINIGAMES } from '../content/minigames/index.ts';
+import { shiftKind } from '../content/minigames/shift.ts';
 import { SKIP_SCORE, txt } from '../engine/engine.ts';
 import type { GameState, MiniResult, Step } from '../engine/types.ts';
 import { MINIGAME_UI, preloadMinigame } from '../minigames/index.ts';
@@ -56,7 +57,7 @@ function controlsFor(id: string, g: GameState, data: Record<string, number | str
         { key: 'SHIFT', touch: data.vehicle === 'bike' ? 'SPRINT' : 'BOOST', does: data.vehicle === 'bike' ? 'Sprint (tires you)' : 'Speed burst ×3' },
       ];
     case 'shift':
-      return SHIFT_CTLS[g.path] ?? SHIFT_CTLS.work;
+      return SHIFT_CTLS[shiftKind(g)] ?? SHIFT_CTLS.work;
     case 'busdash':
       return [
         { key: '↑ SPACE', touch: 'Tap / JUMP', does: 'Jump low stuff (hold = higher)' },
