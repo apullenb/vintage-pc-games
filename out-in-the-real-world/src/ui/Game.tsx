@@ -4,7 +4,7 @@ import { isHome, weatherFor, type TimeOfDay, type Weather } from '../art/atmos.t
 import { CAST, castFor, type Outfit } from '../art/people.ts';
 import { ACHIEVEMENTS } from '../content/achievements.ts';
 import { CHAPTERS, chapterStartWeek } from '../content/chapters.ts';
-import { HANDBOOK, HANDBOOK_BY_ID } from '../content/handbook.ts';
+import { ALL_HANDBOOK as HANDBOOK, HANDBOOK_BY_ID } from '../content/handbook.ts';
 import { pathName } from '../content/paths.ts';
 import { monthlyBills, monthlyNet } from '../content/scenes/tasks.ts';
 import { CREDIT_WAIT, creditAge, creditLabel, creditScore, money } from '../engine/core.ts';
@@ -35,6 +35,9 @@ import { Tutorial } from './Tutorial.tsx';
 import { MiniGameHost } from './MiniGame.tsx';
 import { GradesMini, GradesPanel } from './Grades.tsx';
 import { gpaText, liveGpa, majorName } from '../content/college.ts';
+import { YEAR1_CHAPTERS, YEAR1_WEEKS, shownWeek, skipLabel, student } from '../content/phase2.ts';
+import { YearOneDetails, YearOneReport } from './NextPhase.tsx';
+import { nextPhase } from '../engine/engine.ts';
 
 type ModalId = 'money' | 'handbook' | 'awards' | 'missions' | 'menu' | 'grades' | null;
 
@@ -80,6 +83,12 @@ function moodFor(s: GameState, art: ArtId): { tod: TimeOfDay; weather: Weather; 
   }
   const outfit: Outfit = isHome(art) ? 'hoodie' : WORKPLACE[s.path] === art ? s.path : 'casual';
   return { tod, weather: weatherFor(s.week), outfit };
+}
+
+// Year one counts weeks 1–36; the next phase restarts the count.
+function weekView(g: GameState): { week: number; total: number } {
+  if (g.phase2 && !g.over) return { week: Math.min(Math.max(1, g.week - YEAR1_WEEKS), TOTAL_WEEKS - YEAR1_WEEKS), total: TOTAL_WEEKS - YEAR1_WEEKS };
+  return { week: Math.min(g.week, YEAR1_WEEKS), total: YEAR1_WEEKS };
 }
 
 export function Game({ g, setG, meta, setMeta, onQuit, onNewGame }: { g: GameState; setG: (g: GameState) => void; meta: Meta; setMeta: (m: Meta) => void; onQuit: () => void; onNewGame: () => void }) {
@@ -129,7 +138,12 @@ export function Game({ g, setG, meta, setMeta, onQuit, onNewGame }: { g: GameSta
   else if (h.t === 'summary') panel = <SummaryPanel s={g} onContinue={() => commit(proceed(g))} />;
   else if (h.t === 'chapterEnd') panel = <ChapterEndPanel s={g} onContinue={() => commit(proceed(g))} />;
   else if (h.t === 'gameOver') panel = <GameOverPanel s={g} onRetry={() => { const r = retryChapter(g); if (r) setG(r); }} onQuit={onQuit} />;
-  else if (h.t === 'ending') panel = <EndingPanel s={g} meta={meta} setMeta={setMeta} onQuit={onQuit} onNewGame={onNewGame} />;
+  else if (h.t === 'ending')
+    panel = g.phase2 ? (
+      <EndingPanel s={g} meta={meta} setMeta={setMeta} onQuit={onQuit} onNewGame={onNewGame} />
+    ) : (
+      <YearOneReport s={g} onNext={() => commit(nextPhase(g))} onQuit={onQuit} onNewGame={onNewGame} />
+    );
 
   return (
     <div className={`game ${h?.t === 'ending' ? 'is-ending' : ''}`}>
@@ -169,7 +183,18 @@ export function Game({ g, setG, meta, setMeta, onQuit, onNewGame }: { g: GameSta
         ))}
       </div>
       {showTutorial && <Tutorial g={g} onDone={() => setMeta({ ...meta, tutorialDone: true })} />}
-      {card && <ChapterCard key={g.chapter} n={g.chapter} title={chapter.title} subtitle={chapter.subtitle} look={g.look} path={g.path} onDone={() => setCardShown(g.chapter)} />}
+      {card && (
+        <ChapterCard
+          key={g.chapter}
+          n={g.chapter}
+          title={chapter.title}
+          subtitle={chapter.subtitle}
+          kicker={g.chapter === YEAR1_CHAPTERS ? skipLabel(g) : undefined}
+          look={g.look}
+          path={g.path}
+          onDone={() => setCardShown(g.chapter)}
+        />
+      )}
       {modal === 'money' && <MoneyModal g={g} setG={setG} onClose={() => setModal(null)} />}
       {modal === 'missions' && (
         <Modal title={`Chapter ${g.chapter + 1}: ${chapter.title}`} onClose={() => setModal(null)}>
@@ -237,11 +262,15 @@ function hudTip(id: TipId, g: GameState): { title: string; text: string; money?:
   const sc = creditScore(g);
   const ch = Math.min(g.chapter, CHAPTERS.length - 1);
   switch (id) {
-    case 'week':
+    case 'week': {
+      const wv = weekView(g);
       return {
-        title: `Week ${Math.min(g.week, TOTAL_WEEKS)} of ${TOTAL_WEEKS}`,
-        text: `Your first year on your own is ${TOTAL_WEEKS} weeks, split into ${CHAPTERS.length} chapters. You’re in chapter ${ch + 1}, “${CHAPTERS[ch].title}”. Each chapter has missions to finish before it ends.`,
+        title: `Week ${wv.week} of ${wv.total}`,
+        text: g.phase2
+          ? `The next phase is ${wv.total} weeks, in ${CHAPTERS.length - YEAR1_CHAPTERS} chapters: a bigger paycheck, a nicer car, and maybe a house. You’re in chapter ${ch + 1}, “${CHAPTERS[ch].title}”. Each chapter has missions to finish before it ends.`
+          : `Your first year on your own is ${wv.total} weeks, split into ${YEAR1_CHAPTERS} chapters. You’re in chapter ${ch + 1}, “${CHAPTERS[ch].title}”. Each chapter has missions to finish before it ends.`,
       };
+    }
     case 'cash':
       return {
         title: `Checking: ${money(g.stats.cash, true)}`,
@@ -280,7 +309,7 @@ function hudTip(id: TipId, g: GameState): { title: string; text: string; money?:
         text: `Work, class, and errands use energy. Rest and good food fill it back up. When it gets low you can get sick and lose days.${g.stats.energy < 30 ? ' You’re running low: plan some rest!' : ''}`,
       };
     case 'rep':
-      return g.path === 'college'
+      return student(g)
         ? { title: `Professors’ opinion: ${g.stats.rep} / 100`, text: 'How your professors think you’re doing. Going to class and studying raise it. Skipping class lowers it.' }
         : {
             title: `Boss rating: ${g.stats.rep} / 100`,
@@ -384,17 +413,20 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
   const tipW = Math.min(300, vw - 16);
   const tipLeft = tip ? Math.max(8, Math.min(tip.x - tipW / 2, vw - tipW - 8)) : 0;
-  const repLabel = g.path === 'college' ? 'Professors' : 'Boss';
+  const repLabel = student(g) ? 'Professors' : 'Boss';
+  const wv = weekView(g);
+  // On the year-one report card you're still in year one's last chapter.
+  const hudCh = Math.min(g.chapter, (g.phase2 ? CHAPTERS.length : YEAR1_CHAPTERS) - 1);
 
   return (
     <header className="hud" ref={ref}>
-      <button className="hud-when hud-stat" {...stat('week', false)} aria-label={`Week ${Math.min(g.week, TOTAL_WEEKS)} of ${TOTAL_WEEKS}. What does this mean?`}>
+      <button className="hud-when hud-stat" {...stat('week', false)} aria-label={`Week ${wv.week} of ${wv.total}. What does this mean?`}>
         <span className="hud-week">
-          Week {Math.min(g.week, TOTAL_WEEKS)}
-          <small>/{TOTAL_WEEKS}</small>
+          Week {wv.week}
+          <small>/{wv.total}</small>
         </span>
         <span className="hud-ch">
-          Ch.{Math.min(g.chapter + 1, CHAPTERS.length)} {CHAPTERS[Math.min(g.chapter, CHAPTERS.length - 1)].title}
+          Ch.{hudCh + 1} {CHAPTERS[hudCh].title}
         </span>
       </button>
       <div className="hud-money" data-coach="money">
@@ -424,7 +456,7 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
             <Icon name="energy" size={12} /> <Bar value={g.stats.energy} tone="energy" />
           </span>
         </button>
-        <button className="hud-stat b" {...stat('rep', false)} aria-label={`${g.path === 'college' ? 'Professors’ opinion' : 'Boss rating'} ${g.stats.rep} out of 100`}>
+        <button className="hud-stat b" {...stat('rep', false)} aria-label={`${student(g) ? 'Professors’ opinion' : 'Boss rating'} ${g.stats.rep} out of 100`}>
           <small>{repLabel}</small>
           <span>
             <Icon name="boss" size={12} /> <Bar value={g.stats.rep} tone="rep" />
@@ -436,7 +468,7 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
             <Icon name="star" size={12} /> <Bar value={g.stats.xp} max={120} tone="xp" />
           </span>
         </button>
-        {g.path === 'college' && (
+        {student(g) && (
           <button className={`hud-stat gpa ${(liveGpa(g) ?? 4) < 2.5 ? 'low' : ''}`} {...stat('gpa', 'grades')} aria-label={`GPA ${gpaText(liveGpa(g))}. Show grades.`}>
             <small>GPA</small>
             <span>{gpaText(liveGpa(g))}</span>
@@ -543,7 +575,7 @@ function Missions({ g, onGrades }: { g: GameState; onGrades?: () => void }) {
           </li>
         ))}
       </ul>
-      {g.path === 'college' && onGrades && <GradesMini g={g} onOpen={onGrades} />}
+      {student(g) && onGrades && <GradesMini g={g} onOpen={onGrades} />}
       {upcoming.length > 0 && (
         <div className="appts">
           <h4>
@@ -551,7 +583,7 @@ function Missions({ g, onGrades }: { g: GameState; onGrades?: () => void }) {
           </h4>
           {upcoming.map((a, i) => (
             <div key={i} className="appt">
-              Week {a.week}, {a.slot}: {a.label}
+              Week {shownWeek(g, a.week)}, {a.slot}: {a.label}
             </div>
           ))}
         </div>
@@ -561,7 +593,7 @@ function Missions({ g, onGrades }: { g: GameState; onGrades?: () => void }) {
         <div>
           {g.job ? `${g.job.title}, ${g.job.place} · ${money(g.job.wage, true)}/hr` : 'Unemployed'}
         </div>
-        <div>{g.housing.name}</div>
+        <div>{g.housing.name}{g.housing.kind === 'owned' ? ' (you own it!)' : ''}</div>
         <div>{g.car ? `${g.car.name} (condition ${Math.round(g.car.condition)}%)` : `Getting around: ${g.transport === 'borrow' ? 'borrowing Mom’s car' : g.transport}`}</div>
         <div>Health insurance: {g.health === 'none' ? 'NONE' : g.health === 'employer' ? 'employer plan' : g.health === 'parents' ? 'parents’ plan' : 'school plan'}</div>
       </div>
@@ -606,10 +638,19 @@ function MoneyModal({ g, setG, onClose }: { g: GameState; setG: (g: GameState) =
           <small>Retirement (401k/IRA)</small>
           <strong>{money(g.retire, true)}</strong>
         </div>
+        {g.phase2?.home && (
+          <div className="acct">
+            <small>Home: {g.phase2.home.name}</small>
+            <strong>{money(g.phase2.home.value)}</strong>
+            <span className="muted small">
+              Mortgage owed {money(g.loans.find((l) => l.kind === 'mortgage')?.balance ?? 0)} · equity {money(g.phase2.home.value - (g.loans.find((l) => l.kind === 'mortgage')?.balance ?? 0))}
+            </span>
+          </div>
+        )}
       </div>
       <div className="transfer">
         <span>Move money:</span>
-        {[50, 100, 250, 500].map((v) => (
+        {[50, 100, 250, 500, ...(g.phase2 ? [2000] : [])].map((v) => (
           <button key={v} className={`pill ${amt === v ? 'on' : ''}`} aria-pressed={amt === v} onClick={() => setAmt(v)}>
             {money(v)}
           </button>
@@ -631,7 +672,7 @@ function MoneyModal({ g, setG, onClose }: { g: GameState; setG: (g: GameState) =
       </div>
       <div className="autosave">
         <span>Auto-save each payday:</span>
-        {[0, 50, 100, 150, 250].map((v) => (
+        {(g.phase2 ? [0, 100, 250, 500, 750] : [0, 50, 100, 150, 250]).map((v) => (
           <button key={v} className={`pill ${g.autoSave === v ? 'on' : ''}`} aria-pressed={g.autoSave === v} onClick={() => setG(setAutoSave(g, v))}>
             {v ? money(v) : 'Off'}
           </button>
@@ -791,7 +832,7 @@ function EndingPanel({ s, meta, setMeta, onQuit, onNewGame }: { s: GameState; me
   return (
     <div className="panel-inner ending">
       <div className="panel-head">
-        <h3>One year on your own</h3>
+        <h3>{s.phase2 ? 'Out in the real world: final results' : 'One year on your own'}</h3>
       </div>
       <div className="grade-row">
         <span className="grade">{f.grade}</span>
@@ -819,6 +860,7 @@ function EndingPanel({ s, meta, setMeta, onQuit, onNewGame }: { s: GameState; me
           <li key={e}>{e}</li>
         ))}
       </ul>
+      {s.phase2 && <YearOneDetails y1={s.phase2.y1} />}
       <p className="muted small">Try another path: every start has different tradeoffs.</p>
       <div className="row">
         <button className="btn primary" onClick={onNewGame}>

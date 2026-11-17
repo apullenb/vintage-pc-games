@@ -4,6 +4,7 @@ import { BOSSES, HAIR_STYLES, HAIRS, SHIRTS, SKINS, playerPerson, type Outfit } 
 import { mix } from '../art/px.ts';
 import { PATHS, newState } from '../content/paths.ts';
 import { begin } from '../engine/engine.ts';
+import { YEAR1_WEEKS, canStartPhase2 } from '../content/phase2.ts';
 import type { GameState, Look, NpcId, PathId } from '../engine/types.ts';
 import { applyBigText } from './a11y.ts';
 import { setMuted, sfx } from './audio.ts';
@@ -75,7 +76,7 @@ export function App() {
   return (
     <Title
       meta={meta}
-      canContinue={!!g && !g.over}
+      canContinue={!!g && (!g.over || canStartPhase2(g))}
       g={g}
       onContinue={() => setScreen('game')}
       onNew={() => {
@@ -104,13 +105,13 @@ function Title({ meta, canContinue, g, onContinue, onNew, onMute }: { meta: Meta
         <div className="title-btns">
           {canContinue && g && (
             <button className="btn primary big" onClick={() => { sfx('select'); onContinue(); }}>
-              Continue <small>Week {Math.min(g.week, 36)} · {g.name}</small>
+              Continue <small>{canStartPhase2(g) ? 'Year one done' : g.phase2 ? `Next phase, week ${g.week - YEAR1_WEEKS}` : `Week ${Math.min(g.week, YEAR1_WEEKS)}`} · {g.name}</small>
             </button>
           )}
           <button className={`btn big ${canContinue ? '' : 'primary'}`} onClick={() => { sfx('select'); onNew(); }}>
             New life
           </button>
-          {g && g.over && (
+          {g && g.over && !canStartPhase2(g) && (
             <button className="btn" onClick={() => { sfx('click'); onContinue(); }}>
               See {g.name}’s final results
             </button>

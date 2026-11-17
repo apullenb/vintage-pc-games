@@ -183,13 +183,14 @@ export function debt(s: GameState): number {
 }
 export function badDebt(s: GameState): number {
   let d = s.card ? s.card.balance : 0;
-  for (const l of s.loans) if (l.kind !== 'student') d += l.balance;
+  for (const l of s.loans) if (l.kind !== 'student' && l.kind !== 'mortgage') d += l.balance;
   return round2(d);
 }
 export function netWorth(s: GameState): number {
   const car = s.car ? s.car.value : 0;
+  const home = s.phase2?.home?.value ?? 0;
   const owed = (s.card ? s.card.balance : 0) + s.loans.reduce((a, l) => a + l.balance, 0);
-  return round2(s.stats.cash + s.stats.savings + s.retire + car + (s.card?.deposit ?? 0) - owed);
+  return round2(s.stats.cash + s.stats.savings + s.retire + car + home + (s.card?.deposit ?? 0) - owed);
 }
 
 // ---------- credit ----------
@@ -213,7 +214,8 @@ export function creditScore(s: GameState): number | null {
   }
   const recent = c.inquiries.filter((w) => s.week - w < 26).length;
   sc -= recent * 7;
-  if (s.loans.some((l) => l.kind === 'car' && l.balance > 0)) sc += 15;
+  // A mix of installment loans (car, mortgage) helps a little.
+  if (s.loans.some((l) => (l.kind === 'car' || l.kind === 'mortgage') && l.balance > 0)) sc += 15;
   sc -= c.collections * 90;
   return clamp(Math.round(sc), 300, 850);
 }
@@ -274,7 +276,7 @@ export function hoursOf(s: GameState, amount: number): number {
 
 // Taking a weekday off: unpaid hours and a small hit with the boss (or a missed class).
 export function missWork(s: GameState, why: string): void {
-  if (s.path === 'college') {
+  if (s.path === 'college' && !s.phase2) {
     if (s.flags.enrolled !== false) {
       xp(s, -3);
       inc(s, 'skips');

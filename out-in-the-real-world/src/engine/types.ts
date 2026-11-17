@@ -65,7 +65,7 @@ export interface Loan {
   balance: number;
   apr: number;
   payment: number; // monthly
-  kind: 'car' | 'student' | 'personal';
+  kind: 'car' | 'student' | 'personal' | 'mortgage';
   deferred?: boolean; // student loans: no payments while in school
 }
 
@@ -89,7 +89,7 @@ export interface Job {
 }
 
 export interface Housing {
-  kind: 'parents' | 'dorm' | 'shared' | 'studio' | 'room';
+  kind: 'parents' | 'dorm' | 'shared' | 'studio' | 'room' | 'owned';
   name: string;
   rent: number; // monthly
   utilities: number; // monthly
@@ -234,6 +234,7 @@ export interface GameState {
   over: boolean;
   won: boolean;
   school?: School; // college path only (older saves may not have it)
+  phase2?: Phase2; // the next phase of life, after year one (older saves may not have it)
 }
 
 // ---------- college ----------
@@ -282,6 +283,51 @@ export interface School {
   honors?: boolean; // invited to the honors program
   internship?: string; // summer internship lined up
 
+}
+
+// ---------- the next phase (after year one) ----------
+export type Tier = 'top' | 'mid' | 'low';
+
+// Year one, frozen at the moment you moved on: the report card you earned.
+export interface YearOne {
+  total: number;
+  grade: string;
+  title: string;
+  lines: { label: string; value: string; points: number; max: number }[];
+  savings: number;
+  netWorth: number;
+  credit: number | null;
+  careerDone: boolean;
+  stars: number;
+}
+
+export interface Home {
+  name: string;
+  kind: 'condo' | 'house';
+  price: number; // what you paid
+  value: number; // what it's worth now
+  down: number; // down payment
+  tax: number; // monthly property tax
+  insurance: number; // monthly homeowners insurance
+  hoa: number; // monthly HOA dues
+  pmi: number; // monthly mortgage insurance (0 at 20% down)
+  boughtWeek: number;
+}
+
+export interface Phase2 {
+  years: number; // how long the time skip was
+  tier: Tier; // top = hit your year-one milestone
+  story: string; // what happened in those years
+  recap: string[]; // what those years did to your money
+  job: string; // the job you started the phase with
+  next: { title: string; wage: number; place?: string } | null; // the second-chance level-up, if any
+  levelUp: string | null; // that goal, in words
+  need: { xp: number; rep: number }; // to take your shot at it
+  y1: YearOne;
+  nw0: number; // net worth on day one of the new phase
+  efundGoal: number; // three months of costs
+  home?: Home;
+  approval?: { week: number; score: number | null; apr: number; maxPrice: number; fha: boolean };
 }
 
 export interface Look {

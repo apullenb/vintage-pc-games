@@ -1,21 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { playGame } from './bot.ts';
+import { playFrom, playGame } from './bot.ts';
 import { finalScore } from './score.ts';
+import { netWorth } from './core.ts';
+import { canStartPhase2, grossMonthly } from '../content/phase2.ts';
 import type { PathId } from './types.ts';
 import { activitiesFor } from '../content/activities.ts';
 import { newState } from '../content/paths.ts';
-import { begin, choose, defaultPlan, finishMinigame, foodOptions, payBills, proceed, retryChapter, sceneChoices, startWeek } from './engine.ts';
+import { begin, choose, defaultPlan, finishMinigame, foodOptions, nextPhase, payBills, proceed, retryChapter, sceneChoices, startWeek } from './engine.ts';
 import { SLOTS, type GameState, type PayMethod } from './types.ts';
 
 const PATHS: PathId[] = ['home', 'college', 'trade', 'work'];
 
 const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
 
-describe('full playthroughs', () => {
+// Year one on its own (bots stop at the year-one report card).
+const yearOne = (path: PathId, seed: number, style: 'wise' | 'reckless') => playGame(path, seed, style, undefined, undefined, 1);
+
+describe('year one playthroughs', () => {
   for (const path of PATHS) {
     it(`${path}: a sensible player finishes the year, with money tight but manageable`, () => {
       const results = [];
-      for (let seed = 1; seed <= 16; seed++) results.push(playGame(path, seed * 7919, 'wise'));
+      for (let seed = 1; seed <= 16; seed++) results.push(yearOne(path, seed * 7919, 'wise'));
       const wins = results.filter((r) => r.outcome === 'won');
       const scores = wins.map((r) => finalScore(r.s).total);
       const avg = mean(scores);
@@ -33,8 +38,8 @@ describe('full playthroughs', () => {
       const wise = [];
       const reckless = [];
       for (let seed = 1; seed <= 20; seed++) {
-        wise.push(playGame(path, seed * 104729, 'wise'));
-        reckless.push(playGame(path, seed * 104729, 'reckless'));
+        wise.push(yearOne(path, seed * 104729, 'wise'));
+        reckless.push(yearOne(path, seed * 104729, 'reckless'));
       }
       const score = (r: ReturnType<typeof playGame>) => (r.outcome === 'won' ? finalScore(r.s).total : 0);
       const w = mean(wise.map(score));
@@ -50,6 +55,76 @@ describe('full playthroughs', () => {
   }
 });
 
+// Both phases: year one, the time skip, then the bigger paycheck, the car, and the house.
+describe('next-phase playthroughs', () => {
+  for (const path of PATHS) {
+    it(`${path}: a sensible player makes it through the next phase`, () => {
+      const runs = [];
+      for (let seed = 1; seed <= 12; seed++) runs.push(playGame(path, seed * 7919, 'wise'));
+      const scores = runs.map((r) => finalScore(r.s).total);
+      const avg = mean(scores);
+      const buyers = runs.filter((r) => r.s.flags.homeDecided === 'buy');
+      const cars = runs.filter((r) => r.s.flags.carDecided && r.s.flags.carDecided !== 'keep' && r.s.flags.carDecided !== 'default');
+      console.log(path, 'next phase wise avg', Math.round(avg), 'min', Math.min(...scores), 'homes', buyers.length, 'cars', cars.length, 'nw', Math.round(mean(runs.map((r) => netWorth(r.s)))), runs.filter((r) => r.outcome === 'lost').map((r) => r.reason));
+      for (const r of runs) {
+        expect(r.outcome).toBe('won');
+        expect(r.s.phase2).toBeTruthy();
+        expect(r.s.chapterStars.length).toBe(9);
+      }
+      // A good result, not a perfect one.
+      expect(avg).toBeGreaterThan(760);
+      expect(avg).toBeLessThan(940);
+      // Sensible buyers keep the payment affordable and a cushion in the bank.
+      for (const r of buyers) {
+        const m = r.s.loans.find((l) => l.kind === 'mortgage')!;
+        expect((m.payment + r.s.housing.rent) / grossMonthly(r.s)).toBeLessThan(0.4);
+        expect(r.s.stats.savings + r.s.stats.cash).toBeGreaterThan(1500);
+      }
+      // A reasonable car: never the loaded SUV, never the add-on package, payment under ~12% of gross.
+      for (const r of cars) {
+        expect(r.s.flags.carDecided).not.toBe('suv');
+        expect(r.s.flags.carAddons).toBeFalsy();
+        const l = r.s.loans.find((x) => x.kind === 'car');
+        if (l) expect(l.payment / grossMonthly(r.s)).toBeLessThan(0.12);
+      }
+    });
+
+    it(`${path}: reckless spending catches up with you`, () => {
+      const wise = [];
+      const reckless = [];
+      for (let seed = 1; seed <= 12; seed++) {
+        wise.push(playGame(path, seed * 104729, 'wise'));
+        reckless.push(playGame(path, seed * 104729, 'reckless'));
+      }
+      const score = (r: ReturnType<typeof playGame>) => (r.outcome === 'won' ? finalScore(r.s).total : 0);
+      const w = mean(wise.map(score));
+      const k = mean(reckless.map(score));
+      const reached = reckless.filter((r) => r.s.phase2);
+      console.log(path, 'next phase wise', Math.round(w), 'reckless', Math.round(k), 'reached', reached.length, 'finished', reckless.filter((r) => r.outcome === 'won').length, 'lost', reckless.filter((r) => r.outcome === 'lost').map((r) => r.reason));
+      expect(w - k).toBeGreaterThan(400);
+      // The ones who make it to the next phase splurge: a pricey car, add-ons, or a lavish budget.
+      for (const r of reached.filter((x) => x.s.week > 48)) expect(r.s.flags.carDecided === 'suv' || r.s.flags.carAddons || r.s.flags.lifestyle === 'lavish' || r.s.flags.carDecided === 'new').toBe(true);
+    });
+  }
+
+  it('missing the year-one milestone means a lower start and a real second chance', () => {
+    for (const path of PATHS) {
+      const y1 = yearOne(path, 7919, 'wise').s;
+      expect(canStartPhase2(y1)).toBe(true);
+      const top = nextPhase(y1);
+      y1.flags.careerDone = false;
+      const low = nextPhase(y1);
+      expect(low.phase2!.tier).not.toBe('top');
+      expect(low.job!.wage).toBeLessThan(top.job!.wage);
+      expect(low.phase2!.next!.wage).toBeGreaterThan(low.job!.wage);
+      const r = playFrom(low, 'wise');
+      expect(r.outcome).toBe('won');
+      expect(r.s.flags.p2Up).toBe(true);
+      expect(r.s.job!.wage).toBeGreaterThanOrEqual(low.phase2!.next!.wage);
+    }
+  });
+});
+
 
 // A chaotic player: random plans, random choices, random bill skipping. The game must never get stuck.
 function chaos(path: PathId, seed: number): { s: GameState; retries: number } {
@@ -57,7 +132,7 @@ function chaos(path: PathId, seed: number): { s: GameState; retries: number } {
   const rnd = () => ((r = (r * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
   let s = begin(newState('Chaos', { skin: 0, hair: 0, hairStyle: 0, shirt: 0 }, path, seed));
   let retries = 0;
-  for (let i = 0; i < 8000; i++) {
+  for (let i = 0; i < 16000; i++) {
     const h = s.queue[0];
     if (!h) {
       const plan = defaultPlan(s);
@@ -98,7 +173,11 @@ function chaos(path: PathId, seed: number): { s: GameState; retries: number } {
       s = back;
       continue;
     }
-    if (h.t === 'ending') return { s, retries };
+    if (h.t === 'ending') {
+      if (!canStartPhase2(s)) return { s, retries };
+      s = nextPhase(s);
+      continue;
+    }
     s = proceed(s);
   }
   throw new Error(`chaos player stuck at week ${s.week}: ${JSON.stringify(s.queue[0]).slice(0, 200)}`);
@@ -110,7 +189,7 @@ describe('robustness', () => {
     for (const path of PATHS) {
       for (let seed = 1; seed <= 25; seed++) {
         const { s } = chaos(path, seed * 31337);
-        if (s.queue[0]?.t === 'ending') endings++;
+        if (s.queue[0]?.t === 'ending' && s.phase2) endings++;
         expect(Number.isFinite(s.stats.cash)).toBe(true);
         expect(s.stats.energy).toBeGreaterThanOrEqual(0);
       }

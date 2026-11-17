@@ -4,6 +4,7 @@ import { castFor, playerPerson, type Outfit, type Person } from '../art/people.t
 import { mix } from '../art/px.ts';
 import { activitiesFor, activityFor } from '../content/activities.ts';
 import { CHAPTERS } from '../content/chapters.ts';
+import { YEAR1_CHAPTERS, shownWeek, student } from '../content/phase2.ts';
 import { canPay, creditScore, money, round2, snap } from '../engine/core.ts';
 import {
   FOOD,
@@ -99,7 +100,7 @@ export function Planner({ s, onStart }: { s: GameState; onStart: (p: Plan) => vo
   return (
     <div className="panel-inner planner">
       <div className="panel-head">
-        <h3>Plan week {s.week}</h3>
+        <h3>Plan week {shownWeek(s)}</h3>
         <div className="tags">
           <span className={`tag ${left <= 2 ? 'warn' : ''}`}>{left === 1 ? 'Chapter deadline!' : `${left} weeks left in chapter`}</span>
         </div>
@@ -107,12 +108,12 @@ export function Planner({ s, onStart }: { s: GameState; onStart: (p: Plan) => vo
       <div className="week-info" data-coach="week-info">
         {s.job && (
           <span className={payday ? 'good' : ''}>
-            <Icon name="money" size={14} /> {payday ? 'Payday this week!' : `Next payday: week ${s.week + 1}`}
+            <Icon name="money" size={14} /> {payday ? 'Payday this week!' : `Next payday: week ${shownWeek(s, s.week + 1)}`}
           </span>
         )}
         {billTotal > 0 && (
           <span className={bills ? 'warn' : ''}>
-            <Icon name="docs" size={14} /> {bills ? 'Bills due this week' : `Bills due week ${nextBills}`}: about {money(billTotal)}
+            <Icon name="docs" size={14} /> {bills ? 'Bills due this week' : `Bills due week ${shownWeek(s, nextBills)}`}: about {money(billTotal)}
           </span>
         )}
       </div>
@@ -137,13 +138,13 @@ export function Planner({ s, onStart }: { s: GameState; onStart: (p: Plan) => vo
                 <Icon name={appt ? 'calendar' : a.icon} />
                 {appt ?? txt(a.name, s)}
               </span>
-              <span className={`slot-hint ${slot === 'weekday' && !appt && plan.slots.weekday !== 'work' && plan.slots.weekday !== 'class' && (s.job || s.path === 'college') ? 'daycost' : ''}`}>
-                {slot === 'weekday' && plan.slots.weekday !== 'work' && plan.slots.weekday !== 'class' && (s.job || s.path === 'college')
-                  ? s.path === 'college'
+              <span className={`slot-hint ${slot === 'weekday' && !appt && plan.slots.weekday !== 'work' && plan.slots.weekday !== 'class' && (s.job || student(s)) ? 'daycost' : ''}`}>
+                {slot === 'weekday' && plan.slots.weekday !== 'work' && plan.slots.weekday !== 'class' && (s.job || student(s))
+                  ? student(s)
                     ? 'Skips a day of class'
                     : `Costs a day off: −${money(8 * (s.job?.wage ?? 0))} pay`
                   : appt
-                    ? slot === 'weekday' && s.path !== 'college' && s.job
+                    ? slot === 'weekday' && !student(s) && s.job
                       ? `Scheduled · −${money(8 * s.job.wage)} pay`
                       : 'Scheduled'
                     : a.hint(s, slot).split(' · ')[0]}
@@ -691,7 +692,7 @@ export function SummaryPanel({ s, onContinue }: { s: GameState; onContinue: () =
   return (
     <div className="panel-inner summary">
       <div className="panel-head">
-        <h3>Week {s.week} recap</h3>
+        <h3>Week {shownWeek(s)} recap</h3>
       </div>
       <ul className="journal" aria-label="This week">
         {s.log.map((l, i) => (
@@ -749,7 +750,7 @@ export function ChapterEndPanel({ s, onContinue }: { s: GameState; onContinue: (
         Savings {money(s.stats.savings)} · Credit {creditScore(s) ?? 'none yet'} · Energy {s.stats.energy}
       </p>
       <button className="btn primary" onClick={onContinue} autoFocus>
-        {s.chapter + 1 < CHAPTERS.length ? 'Next chapter ▶' : 'See how your year turned out ▶'}
+        {s.chapter + 1 === YEAR1_CHAPTERS && !s.phase2 ? 'See your year-one report card ▶' : s.chapter + 1 < CHAPTERS.length ? 'Next chapter ▶' : 'See how it all turned out ▶'}
       </button>
     </div>
   );

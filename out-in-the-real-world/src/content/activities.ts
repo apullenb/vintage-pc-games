@@ -3,6 +3,7 @@ import { charge, energy, inc, log, minigame, money, num, rep, scene, xp } from '
 import type { GameState, SlotId } from '../engine/types.ts';
 import type { Activity } from './types.ts';
 import { COLLEGE_ACTIVITIES } from './college.ts';
+import { PHASE2_ACTIVITIES, student } from './phase2.ts';
 
 const ANY: SlotId[] = ['weekday', 'evening', 'saturday', 'sunday'];
 const FREE: SlotId[] = ['evening', 'saturday', 'sunday'];
@@ -31,8 +32,8 @@ const LIST: Activity[] = [
     slots: ['weekday'],
     desc: (s) => (s.job ? `${s.job.title} at ${s.job.place}. ${s.job.hours} hrs/week at ${money(s.job.wage)}/hr.` : 'No job right now.'),
     hint: () => 'Earn your regular pay · Showing up builds your boss’s trust',
-    avail: (s) => (s.job && s.path !== 'college' ? true : 'No job'),
-    hide: (s) => s.path === 'college' || !s.job,
+    avail: (s) => (s.job && !student(s) ? true : 'No job'),
+    hide: (s) => student(s) || !s.job,
     run: (s) => {
       rep(s, 1);
     },
@@ -67,19 +68,19 @@ const LIST: Activity[] = [
     slots: FREE,
     desc: (s) => (s.job ? `Extra hours at ${s.job.place}.` : 'No job.'),
     hint: (s) => {
-      const h = s.path === 'college' ? 4 : 6;
+      const h = student(s) ? 4 : 6;
       return `+${money(h * (s.job?.wage ?? 0))} on your next paycheck (before taxes) · −12 energy · Counts toward promotions`;
     },
     avail: (s) => (s.job ? true : 'You need a job'),
     hide: (s) => !s.job,
     run: (s) => {
-      const h = s.path === 'college' ? 4 : 6;
+      const h = student(s) ? 4 : 6;
       s.hoursThisPeriod += h;
       energy(s, -12);
       inc(s, 'extraShifts');
       // Covering shifts is how people get noticed: a little boss trust and on-the-job learning every time.
       rep(s, 1);
-      if (s.path !== 'college') xp(s, 1);
+      if (!student(s)) xp(s, 1);
       log(s, `Extra shift: +${h} hours on your next paycheck.`, 'good');
       minigame(s, 'shift');
     },
@@ -332,6 +333,7 @@ const LIST: Activity[] = [
   },
 ];
 LIST.push(...COLLEGE_ACTIVITIES); // office hours
+LIST.push(...PHASE2_ACTIVITIES); // the next phase: budget, 401(k), car, house
 
 export const ACTIVITIES: Record<string, Activity> = Object.fromEntries(LIST.map((a) => [a.id, a]));
 

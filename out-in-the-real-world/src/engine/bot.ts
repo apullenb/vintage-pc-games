@@ -5,7 +5,8 @@ import { MAJORS, coursePct, examPrep, freeSkips, termOf } from '../content/colle
 import { SCENES } from '../content/scenes.ts';
 import { newState } from '../content/paths.ts';
 import { canPay, round2 } from './core.ts';
-import { begin, choose, finishMinigame, defaultPlan, foodOptions, moveMoney, payBills, proceed, sceneChoices, startWeek, taskStatus } from './engine.ts';
+import { begin, choose, finishMinigame, defaultPlan, foodOptions, moveMoney, nextPhase, payBills, proceed, sceneChoices, startWeek, taskStatus } from './engine.ts';
+import { canStartPhase2, efundGoal, hasLevelUp } from '../content/phase2.ts';
 import { monthlyBills } from '../content/scenes/tasks.ts';
 import type { GameState, PathId, PayMethod, Plan, SlotId } from './types.ts';
 import { SLOTS } from './types.ts';
@@ -63,7 +64,8 @@ export function botPlan(s: GameState, style: Style): Plan {
   }
 
   taskPass(s, plan, used, free, set);
-  const need = CAREER_NEED[s.path];
+  // In the next phase, study only for a second-chance level-up.
+  const need = s.phase2 ? (hasLevelUp(s) ? s.phase2.need : { xp: 0, rep: 0 }) : CAREER_NEED[s.path];
   // Meal prep most Sundays, but like most people, one week a month gets away from you (and takeout
   // wins), unless money is tight.
   const flush = s.stats.cash > 400 && s.stats.cash + s.stats.savings > 800;
@@ -176,9 +178,16 @@ export interface BotRun {
 }
 
 const SAVINGS_GOALS: Record<string, number> = { 't-efund': 500, 't-1k': 1000, 't-fund5': 500, 't-final-fund': 1000 };
+const goalFor = (s: GameState, id: string): number => (id === 'p2-efund' || id === 'p2-fund-bonus' ? efundGoal(s) : (SAVINGS_GOALS[id] ?? 0));
 
-export function playGame(path: PathId, seed: number, style: Style, maxSteps = 6000, trace?: (s: GameState) => void): BotRun {
-  let s = begin(newState('Bot', { skin: 0, hair: 0, hairStyle: 0, shirt: 0 }, path, seed));
+// phases: 1 stops at the year-one report card; 2 (default) plays on through the next phase.
+export function playGame(path: PathId, seed: number, style: Style, maxSteps = 12000, trace?: (s: GameState) => void, phases: 1 | 2 = 2): BotRun {
+  return playFrom(begin(newState('Bot', { skin: 0, hair: 0, hairStyle: 0, shirt: 0 }, path, seed)), style, maxSteps, trace, phases);
+}
+
+// Keep playing from any state (a saved game, a year-one ending, a test setup).
+export function playFrom(s0: GameState, style: Style, maxSteps = 12000, trace?: (s: GameState) => void, phases: 1 | 2 = 2): BotRun {
+  let s = s0;
   let steps = 0;
   const visits = new Map<string, number>();
   while (steps++ < maxSteps) {
@@ -189,7 +198,7 @@ export function playGame(path: PathId, seed: number, style: Style, maxSteps = 60
         if (s.stats.cash > buffer) s = moveMoney(s, s.stats.cash - buffer, 'savings');
         // Chasing a savings mission: dip into the bill buffer, but keep a couple weeks of spending money
         // (plus half the month's bills on bills week).
-        const open = taskStatus(s).filter((t) => !t.done).map((t) => SAVINGS_GOALS[t.id] ?? 0);
+        const open = taskStatus(s).filter((t) => !t.done).map((t) => goalFor(s, t.id));
         const goal = Math.max(0, ...open);
         const keep = 400 + (s.week % 4 === 0 ? monthlyBills(s) / 2 : 0);
         if (goal > s.stats.savings && s.stats.cash > keep) s = moveMoney(s, Math.min(s.stats.cash - keep, goal - s.stats.savings), 'savings');
@@ -241,6 +250,10 @@ export function playGame(path: PathId, seed: number, style: Style, maxSteps = 60
       case 'gameOver':
         return { s, steps, outcome: 'lost', reason: h.reason };
       case 'ending':
+        if (phases === 2 && canStartPhase2(s)) {
+          s = nextPhase(s);
+          break;
+        }
         return { s, steps, outcome: 'won' };
       default:
         throw new Error(`unexpected step ${h.t}`);

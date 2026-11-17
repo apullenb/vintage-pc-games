@@ -1,12 +1,14 @@
 // The week loop. Pure functions: every call clones the state and returns a new one.
 import { ACTIVITIES, activityFor } from '../content/activities.ts';
-import { CHAPTERS, TASKS, chapterOf, chapterStartWeek, overdueTasks, tasksFor } from '../content/chapters.ts';
+import { CHAPTERS, TASKS, chapterOf, chapterStartWeek, overdueTasks, samePhase, tasksFor } from '../content/chapters.ts';
 import { EVENTS, OFFERS, storyBeats } from '../content/events.ts';
 import { SCENES } from '../content/scenes.ts';
 import { MINIGAMES } from '../content/minigames/index.ts';
 import type { Choice, Data, Scene } from '../content/types.ts';
 import { checkAchievements } from '../content/achievements.ts';
 import { collegeWeek } from '../content/college.ts';
+import { YEAR1_CHAPTERS, beginPhase2, canStartPhase2, phase2Week, yearOneOf } from '../content/phase2.ts';
+import { finalScore } from './score.ts';
 import {
   canPay,
   cardRoom,
@@ -240,7 +242,7 @@ function runUpkeep(s: GameState): void {
     case 'bus':
       energy(s, -3);
       // No monthly pass (or ride arrangement) means paying per trip, which costs more.
-      if (s.path !== 'college' && !s.subs.some((x) => x.id === 'buspass' || x.id === 'rides')) {
+      if ((s.path !== 'college' || s.phase2) && !s.subs.some((x) => x.id === 'buspass' || x.id === 'rides')) {
         const fare = s.path === 'trade' ? 60 : 25;
         spend(s, fare, s.path === 'trade' ? 'Rides to job sites' : 'Bus fares', 'small');
         log(s, s.path === 'trade' ? `No ride arrangement: paying coworkers per ride (${money(fare)}).` : `Bus fares without a monthly pass: ${money(fare)}.`);
@@ -276,7 +278,7 @@ function runUpkeep(s: GameState): void {
     setSick(s);
   }
   // Rep floor: lose the job.
-  if (s.job && s.stats.rep < 12 && s.path !== 'college') {
+  if (s.job && s.stats.rep < 12 && (s.path !== 'college' || s.phase2)) {
     s.queue.splice(s.queue.findIndex((q) => q.t === 'events'), 0, { t: 'scene', id: 'ev-fired', step: 'start' });
   }
   // Savings interest monthly.
@@ -398,6 +400,8 @@ function runEvents(s: GameState): void {
   const add: Step[] = [];
   // College: attendance, fees, and whatever is due this week (assignments, exams, report cards).
   const school = collegeWeek(s);
+  // The next phase: grace periods, homeowner surprises, a disputed credit error coming off.
+  school.steps.push(...phase2Week(s));
   // Story beats for this week (chapter openers, mission prompts).
   for (const id of storyBeats(s)) {
     markSeen(s, id);
@@ -445,7 +449,7 @@ export function makeStub(s: GameState): PayStub {
   const taxable = Math.max(0, gross - retire - health - dental);
   const federal = s.flags.w4exempt ? 0 : fedWithholding(taxable);
   // Health/dental premiums are pre-tax for FICA too; 401(k) money is not. On-campus student jobs are FICA-exempt.
-  const fica = s.path === 'college' ? 0 : round2((gross - health - dental) * 0.0765);
+  const fica = s.path === 'college' && !s.phase2 ? 0 : round2((gross - health - dental) * 0.0765);
   const state = round2(taxable * 0.035);
   const net = round2(gross - federal - fica - state - health - dental - retire);
   return { hours, wage, gross, federal, fica, state, health, dental, retire, match, net, autoSaved: 0, overdraftCleared: 0 };
@@ -486,7 +490,7 @@ function runPayday(s: GameState): void {
 export function billsFor(s: GameState): Bill[] {
   const b: Bill[] = [];
   const h = s.housing;
-  if (h.rent > 0) b.push({ id: 'rent', label: h.kind === 'parents' ? 'Rent to your parents' : 'Rent', amount: h.rent, kind: 'housing' });
+  if (h.rent > 0) b.push({ id: 'rent', label: h.kind === 'parents' ? 'Rent to your parents' : h.kind === 'owned' ? 'Property tax & insurance (escrow)' : 'Rent', amount: h.rent, kind: 'housing' });
   if (h.utilities > 0) {
     // Heating season (weeks 17–28) pushes the power bill up about 30%.
     const winter = s.week >= 17 && s.week <= 28;
@@ -576,6 +580,7 @@ export function payBills(s0: GameState, choices: Record<string, { amount: number
         const m = inc(s, 'loanMissed');
         log(s, `Missed the ${loan.name} payment: $25 late fee, credit hit.`, 'bad');
         if (m >= 2 && loan.kind === 'car') s.queue.splice(1, 0, { t: 'scene', id: 'ev-repo', step: 'start' });
+        if (m >= 2 && loan.kind === 'mortgage') s.queue.splice(1, 0, { t: 'gameOver', reason: 'foreclosed' });
       }
       continue;
     }
@@ -587,7 +592,7 @@ export function payBills(s0: GameState, choices: Record<string, { amount: number
         inc(s, 'rentMissed');
         charge(s, s.housing.kind === 'parents' ? 0 : 75, 'Late rent fee');
         if (s.housing.missed >= 2) {
-          s.queue.splice(1, 0, { t: 'gameOver', reason: s.housing.kind === 'parents' ? 'parents' : 'evicted' });
+          s.queue.splice(1, 0, { t: 'gameOver', reason: s.housing.kind === 'parents' ? 'parents' : s.housing.kind === 'owned' ? 'foreclosed' : 'evicted' });
         } else {
           s.queue.splice(1, 0, { t: 'scene', id: 'ev-rentlate', step: 'start' });
         }
@@ -843,7 +848,7 @@ export function chapterReport(s: GameState, apply: boolean): ChapterReport {
   const caughtUp: string[] = [];
   const stillOverdue: string[] = [];
   for (const t of TASKS) {
-    if (t.chapter >= s.chapter || t.optional || t.noCarry || (t.paths && !t.paths.includes(s.path)) || !s.tasksFailed[t.id] || s.tasksDone[t.id]) continue;
+    if (t.chapter >= s.chapter || !samePhase(t.chapter, s.chapter) || t.optional || t.noCarry || (t.paths && !t.paths.includes(s.path)) || !s.tasksFailed[t.id] || s.tasksDone[t.id]) continue;
     if (t.done(s)) {
       caughtUp.push(txt(t.title, s));
       if (apply) s.tasksDone[t.id] = true;
@@ -861,7 +866,8 @@ function endChapter(s: GameState): void {
   checkAchievements(s);
   s.chapter++;
   s.week++;
-  if (s.chapter >= CHAPTERS.length) {
+  // Year one ends with its report card; the next phase picks up from there (see nextPhase).
+  if (s.chapter >= CHAPTERS.length || (s.chapter === YEAR1_CHAPTERS && !s.phase2)) {
     s.won = true;
     s.over = true;
     s.queue = [{ t: 'ending' }];
@@ -871,6 +877,29 @@ function endChapter(s: GameState): void {
   s.weekSnap = snap(s) as unknown as Record<string, number>;
   s.checkpoint = null;
   s.checkpoint = JSON.stringify(s);
+}
+
+// From the year-one report card into the next phase of life: the time skip, the new job, and a
+// new place to live. Works for saves that finished year one before the next phase existed, too.
+export function nextPhase(s0: GameState): GameState {
+  if (!canStartPhase2(s0)) return s0;
+  const s = clone(s0);
+  beginPhase2(s, yearOneOf(s, finalScore(s)));
+  s.over = false;
+  s.won = false;
+  s.chapter = YEAR1_CHAPTERS;
+  s.week = chapterStartWeek(YEAR1_CHAPTERS);
+  s.log = [];
+  s.queue = [
+    { t: 'scene', id: 'p2-skip', step: 'start' },
+    { t: 'scene', id: 'p2-move', step: 'start' },
+    { t: 'scene', id: 'p2-benefits', step: 'start' },
+    { t: 'scene', id: 'chapter-intro', step: 'start' },
+  ];
+  s.weekSnap = snap(s) as unknown as Record<string, number>;
+  s.checkpoint = null;
+  s.checkpoint = JSON.stringify(s);
+  return advance(s);
 }
 
 // Restart the current chapter from its checkpoint.

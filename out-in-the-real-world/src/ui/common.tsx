@@ -322,9 +322,13 @@ const VIGNETTES: { art: ArtId; tod: TimeOfDay; weather: Weather; outfit: Outfit 
   { art: 'street', tod: 'day', weather: 'snow', outfit: 'casual' },
   { art: 'road', tod: 'day', weather: 'rain', outfit: 'casual' },
   { art: 'beach', tod: 'golden', weather: null, outfit: 'casual' },
+  // The next phase
+  { art: 'office', tod: 'morning', weather: null, outfit: 'casual' },
+  { art: 'carlot', tod: 'golden', weather: null, outfit: 'casual' },
+  { art: 'street', tod: 'evening', weather: 'leaves', outfit: 'casual' },
 ];
 
-export function ChapterCard({ n, title, subtitle, look, path, onDone }: { n: number; title: string; subtitle: string; look: Look; path: PathId; onDone: () => void }) {
+export function ChapterCard({ n, title, subtitle, look, path, onDone, kicker }: { n: number; title: string; subtitle: string; look: Look; path: PathId; onDone: () => void; kicker?: string }) {
   const v = VIGNETTES[Math.min(n, VIGNETTES.length - 1)];
   const [leaving, setLeaving] = useState(false);
   const done = useRef(onDone);
@@ -357,6 +361,7 @@ export function ChapterCard({ n, title, subtitle, look, path, onDone }: { n: num
     <div className="cc-block" aria-hidden="true" onClick={close} />
     <div className={`chapter-card ${leaving ? 'leaving' : ''}`} role="dialog" aria-modal="true" aria-labelledby="chapter-card-title" onClick={close}>
       <div className="cc-inner pixel-frame">
+        {kicker && <span className="cc-kicker">{kicker}</span>}
         <span className="cc-num">Chapter {n + 1}</span>
         <div className="cc-vignette">
           <SceneCanvas art={v.art} look={look} path={path} tod={v.tod} weather={v.weather} outfit={v.outfit} />

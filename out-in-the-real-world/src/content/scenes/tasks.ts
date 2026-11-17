@@ -31,7 +31,7 @@ export function loanPayment(principal: number, apr: number, months: number): num
 export function monthlyNet(s: GameState): number {
   if (!s.job) return 0;
   const g = s.job.wage * s.job.hours * 4.33;
-  const ded = s.path === 'college' ? 0.1 : 0.2;
+  const ded = s.path === 'college' && !s.phase2 ? 0.1 : 0.2;
   const prem = s.health === 'employer' ? s.job.premium * 2.17 : 0;
   return Math.round(g * (1 - ded - s.retirePct) - prem);
 }

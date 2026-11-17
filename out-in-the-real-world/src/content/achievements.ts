@@ -37,6 +37,10 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'deanslist', name: 'Dean’s List', desc: 'Earned a 3.5 GPA or better for a semester.', icon: 'star' },
   { id: 'intern', name: 'Hired Intern', desc: 'Landed a summer internship.', icon: 'work' },
   { id: 'selfemployed', name: 'Self-Employed', desc: 'Paid your gig taxes on time.', icon: 'money' },
+  { id: 'graduate', name: 'Walked the Stage', desc: 'Graduated from college.', icon: 'star' },
+  { id: 'secondwind', name: 'Second Wind', desc: 'Missed your year-one milestone, then leveled up anyway.', icon: 'star' },
+  { id: 'newwheels', name: 'New-to-You Wheels', desc: 'Bought a newer car in the next phase.', icon: 'car' },
+  { id: 'homeowner', name: 'Homeowner', desc: 'Closed on your first home.', icon: 'home' },
 ];
 
 export function checkAchievements(s: GameState): void {

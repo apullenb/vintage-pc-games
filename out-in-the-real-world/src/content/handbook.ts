@@ -74,4 +74,24 @@ export const HANDBOOK: Entry[] = [
   { id: 'cancel-trap', term: 'Canceling memberships', text: 'Read how to cancel BEFORE you sign up. Some gyms and services make you cancel in person or by certified letter. Keep proof that you canceled and check your statement afterward. Unpaid dues can be sent to collections.' },
 ];
 
-export const HANDBOOK_BY_ID: Record<string, Entry> = Object.fromEntries(HANDBOOK.map((e) => [e.id, e]));
+// Pages from the next phase (cars, homes, bigger paychecks). Kept in their own list: the Flashcard
+// Cram deck covers HANDBOOK, and these terms don't have flashcards yet.
+export const NEXT_PHASE_HANDBOOK: Entry[] = [
+  { id: 'lifestyle-creep', term: 'Lifestyle creep', text: 'When your income goes up, your spending quietly rises to match: nicer apartment, more takeout, a car payment. Decide what a raise is for (savings, debt, a goal) before it disappears.' },
+  { id: 'credit-report', term: 'Credit report', text: 'The record your score is built from: every account, balance and late payment. Get all three reports free at annualcreditreport.com. About 1 in 4 people find an error. Dispute mistakes in writing; it’s free.' },
+  { id: 'depreciation', term: 'Depreciation', text: 'How fast something loses value. A new car loses about 10–20% the first year. A 2–3-year-old certified pre-owned car skips the steepest drop.' },
+  { id: 'dealer-addons', term: 'Dealer add-ons', text: 'Extended warranties, paint protection, VIN etching and dealer GAP coverage are high-profit extras sold in the finance office, usually rolled into your loan. Say no, or buy GAP from your car insurer for a few dollars a month.' },
+  { id: 'grace-period', term: 'Grace period (student loans)', text: 'Federal student loan payments start six months after you graduate or drop below half-time. Interest on unsubsidized loans keeps growing the whole time. A shorter plan costs more per month and much less in total.' },
+  { id: 'rent-vs-buy', term: 'Rent vs. buy', text: 'Owning builds equity but comes with closing costs, repairs (about 1% of the price a year), and less flexibility. Renting costs more each year but keeps your cash free. Buying usually wins if you’ll stay 5+ years.' },
+  { id: 'preapproval', term: 'Mortgage pre-approval', text: 'A lender checks your credit, income, debts and savings and tells you how much they’ll lend. Sellers take your offer seriously with one. It’s a hard credit check, so do your rate shopping within a couple of weeks.' },
+  { id: 'dti', term: 'Debt-to-income (DTI)', text: 'Your monthly debt payments (including the new house payment) divided by your gross monthly income. Most lenders cap it around 43%. A car payment you take on today shrinks the house you can buy tomorrow.' },
+  { id: 'mortgage', term: 'Mortgage', text: 'A loan to buy a home, usually 30 years. Early payments are mostly interest. Your credit score sets your rate, and even 0.5% is tens of thousands of dollars over the loan.' },
+  { id: 'pmi', term: 'PMI (mortgage insurance)', text: 'With less than 20% down, you pay for insurance that protects the LENDER if you stop paying. Conventional PMI comes off once you reach 20% equity. FHA mortgage insurance usually stays.' },
+  { id: 'closing-costs', term: 'Closing costs', text: 'Fees to finish a home purchase: lender fees, title insurance, appraisal, prepaid taxes and insurance. Usually 2–5% of the price, on top of your down payment. Sellers sometimes pay part of it.' },
+  { id: 'escrow', term: 'Escrow', text: 'Your lender collects property tax and homeowners insurance with each mortgage payment and pays those bills for you. When taxes or insurance go up, so does your payment.' },
+  { id: 'home-inspection', term: 'Home inspection', text: 'A pro checks the roof, furnace, plumbing, wiring and foundation before you buy (about $400–600). Problems they find can lower the price or get repaired. Waiving it to win a bidding war is a gamble.' },
+  { id: 'roth-ira', term: 'Roth IRA', text: 'A retirement account you open yourself. You put in money you already paid tax on, and it grows tax-free. Grab your 401(k) match first, keep an emergency fund, then invest the extra.' },
+];
+
+export const ALL_HANDBOOK: Entry[] = [...HANDBOOK, ...NEXT_PHASE_HANDBOOK];
+export const HANDBOOK_BY_ID: Record<string, Entry> = Object.fromEntries(ALL_HANDBOOK.map((e) => [e.id, e]));

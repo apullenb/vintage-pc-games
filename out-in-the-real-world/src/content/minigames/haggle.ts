@@ -3,8 +3,10 @@ import { achieve, money, unlock } from '../../engine/core.ts';
 import type { MiniGameDef } from './types.ts';
 
 // What the negotiation is worth. The mini-game shows these live, so they must match what apply does.
+// A private seller's beater has lots of give (up to 25%); a dealer's car has a few percent.
+export const haggleRoom = (price: number): number => (price > 8000 ? 0.06 : 0.25);
 export function hagglePrice(price: number, score: number): number {
-  return price - Math.round((score * 0.25 * price) / 50) * 50;
+  return price - Math.round((score * haggleRoom(price) * price) / 50) * 50;
 }
 export function raiseFor(score: number): number {
   if (score < 0.35) return 0;
@@ -19,7 +21,7 @@ export const haggle: MiniGameDef = {
   stakes: (_s, d) =>
     d.item === 'raise'
       ? 'A strong case can get you up to $1.50 more per hour. A weak one gets a polite “not right now.” Your boss rating makes them more patient.'
-      : `Every move that lands knocks money off the ${money(Number(d.price ?? 2400))} sticker, up to 25% off.`,
+      : `Every move that lands knocks money off the ${money(Number(d.price ?? 2400))} sticker, up to ${Math.round(haggleRoom(Number(d.price ?? 2400)) * 100)}% off.`,
   art: 'carlot',
   apply: (s, r, d) => {
     if (d.item === 'raise') {
@@ -43,7 +45,9 @@ export const haggle: MiniGameDef = {
     const price = Number(d.price ?? 2400);
     const final = hagglePrice(price, r.score);
     const off = price - final;
-    s.queue.unshift({ t: 'scene', id: 'task-transport', step: 'haggled', data: { price: final } });
+    // Back to whichever car lot sent you here.
+    if (d.back) s.queue.unshift({ t: 'scene', id: String(d.back), step: String(d.backStep ?? 'start'), data: { ...d, price: final } });
+    else s.queue.unshift({ t: 'scene', id: 'task-transport', step: 'haggled', data: { price: final } });
     return {
       text: off > 0 ? `You talked them down ${money(off)}. Final offer: ${money(final)}.` : `The seller won’t budge. Still ${money(price)}.`,
       tip: 'Sellers expect you to negotiate. Know the car’s value before you go, bring the mechanic’s report, and be willing to walk away.',

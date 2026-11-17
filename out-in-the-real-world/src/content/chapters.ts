@@ -3,6 +3,7 @@ import { badDebt, charge, creditScore, log, money, num, rep } from '../engine/co
 import type { GameState, PathId } from '../engine/types.ts';
 import type { Chapter, Task } from './types.ts';
 import { gpaText, liveGpa } from './college.ts';
+import { PHASE2_CHAPTERS, PHASE2_TASKS, YEAR1_CHAPTERS } from './phase2.ts';
 
 export const CHAPTERS: Chapter[] = [
   {
@@ -68,7 +69,13 @@ export const CHAPTERS: Chapter[] = [
         work: 'ParcelPoint is promoting someone to Team Lead. They want someone reliable who finished their training.',
       })[s.path] + ' Rae is also planning a road trip to the coast to celebrate one year out. Can you make it work?',
   },
+  // The next phase of life (after the year-one report card).
+  ...PHASE2_CHAPTERS,
 ];
+
+// Year one is chapters 0–5; the next phase is the rest. Missed goals only follow you within a phase.
+export const phaseOf = (ch: number): 1 | 2 => (ch >= YEAR1_CHAPTERS ? 2 : 1);
+export const samePhase = (a: number, b: number): boolean => phaseOf(a) === phaseOf(b);
 
 export function chapterStartWeek(ch: number): number {
   let w = 1;
@@ -373,6 +380,7 @@ export const TASKS: Task[] = [
     how: 'Watch for Rae’s invite',
     done: (s) => !!s.flags.roadTrip,
   },
+  ...PHASE2_TASKS,
 ];
 
 export function tasksFor(s: GameState, ch: number): Task[] {
@@ -384,6 +392,7 @@ export function overdueTasks(s: GameState, ch: number): Task[] {
   return TASKS.filter(
     (t) =>
       t.chapter < ch &&
+      samePhase(t.chapter, ch) &&
       !t.optional &&
       !t.noCarry &&
       (!t.paths || t.paths.includes(s.path)) &&
