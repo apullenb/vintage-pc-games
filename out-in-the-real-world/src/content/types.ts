@@ -2,6 +2,8 @@
 import type { ArtId, GameState, NpcId, PathId, PayMethod, SlotId } from '../engine/types.ts';
 
 export type Data = Record<string, number | string>;
+// A scene backdrop: any ArtId, plus places only scenes visit (never stored in a save).
+export type SceneArt = ArtId | 'showroom' | 'house' | 'mortgage' | 'lecture' | 'interview' | 'loft';
 export type Txt = string | ((s: GameState, d: Data) => string);
 
 export interface Choice {
@@ -23,14 +25,14 @@ export interface Choice {
 export interface SceneStep {
   text: Txt;
   speaker?: NpcId | ((s: GameState) => NpcId);
-  art?: ArtId;
+  art?: SceneArt;
   choices: Choice[];
 }
 
 export interface Scene {
   id: string;
   title: Txt;
-  art: ArtId | ((s: GameState) => ArtId);
+  art: SceneArt | ((s: GameState) => SceneArt);
   speaker?: NpcId;
   kind?: 'story' | 'task' | 'event' | 'offer' | 'appt';
   steps: Record<string, SceneStep>;

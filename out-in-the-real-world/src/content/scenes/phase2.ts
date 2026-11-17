@@ -458,7 +458,7 @@ export const PHASE2_SCENES: Scene[] = [
   {
     id: 'p2-move',
     title: 'Where do you live now?',
-    art: 'apartment',
+    art: 'loft',
     kind: 'task',
     steps: {
       start: {
@@ -727,7 +727,7 @@ export const PHASE2_SCENES: Scene[] = [
   {
     id: 'appt-p2shot',
     title: (s) => (s.path === 'trade' ? 'Journeyman exam' : s.path === 'home' ? 'Certification exam' : 'The big moment'),
-    art: (s) => (s.path === 'trade' || s.path === 'home' ? 'library' : 'office'),
+    art: (s) => (s.path === 'trade' || s.path === 'home' ? 'lecture' : 'interview'),
     kind: 'appt',
     steps: {
       start: {
@@ -774,7 +774,7 @@ export const PHASE2_SCENES: Scene[] = [
   {
     id: 'p2-car',
     title: 'Dealer row',
-    art: 'carlot',
+    art: 'showroom',
     speaker: 'dealer',
     kind: 'task',
     steps: {
@@ -878,7 +878,7 @@ export const PHASE2_SCENES: Scene[] = [
   {
     id: 'p2-rentbuy',
     title: 'Rent vs. buy',
-    art: 'bank',
+    art: 'mortgage',
     speaker: 'banker',
     kind: 'task',
     steps: {
@@ -969,7 +969,7 @@ export const PHASE2_SCENES: Scene[] = [
   {
     id: 'p2-house',
     title: 'Open houses',
-    art: 'street',
+    art: 'house',
     kind: 'task',
     steps: {
       start: {

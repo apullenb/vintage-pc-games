@@ -152,7 +152,7 @@ export const COLLEGE_SCENES: Scene[] = [
   {
     id: 'col-exam',
     title: (_s, d) => (d?.exam === 'final' ? 'Finals week' : 'Midterms'),
-    art: 'library',
+    art: 'lecture',
     speaker: 'advisor',
     kind: 'story',
     steps: {

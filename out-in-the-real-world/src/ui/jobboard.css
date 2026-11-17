@@ -179,3 +179,59 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* The listings sit on a cork board as pinned postings. */
+.jb-list {
+  gap: 16px 12px;
+  padding: 16px 12px 12px;
+  border: 3px solid var(--line);
+  background:
+    radial-gradient(#6a442055 0.8px, transparent 1.2px) 0 0 / 5px 5px,
+    radial-gradient(#f0c88a44 0.8px, transparent 1.2px) 2px 3px / 7px 7px,
+    radial-gradient(circle at 25% 0%, #d8a868, #b07a40 70%, #8a5a2c);
+  box-shadow: inset 0 3px 0 #00000030, inset 0 0 0 2px #ffffff22;
+}
+.jb-card {
+  position: relative;
+  border-width: 2px;
+  background: linear-gradient(#fffdf6, #f6efdc);
+  box-shadow: 2px 4px 0 #2a160c66, inset 0 -3px 0 #e6dac0;
+}
+.jb-card:nth-child(4n + 2) {
+  transform: rotate(0.4deg);
+}
+.jb-card:nth-child(4n + 3) {
+  transform: rotate(-0.35deg);
+}
+.jb-card::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 13px;
+  height: 13px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffc2b8, #d0432f 55%, #6a1a10);
+  box-shadow: 2px 3px 0 #0005;
+}
+.jb-card.fits {
+  background: linear-gradient(#f6fcf2, #e2f2da);
+}
+.jb-card.fits::before {
+  background: radial-gradient(circle at 35% 30%, #c8ffd6, #2f9a5a 55%, #124a28);
+}
+.jb-card.picked {
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .jb-card:nth-child(n) {
+    transform: none;
+  }
+}
+@media (max-width: 520px) {
+  .jb-list {
+    padding: 14px 8px 8px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

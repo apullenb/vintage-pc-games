@@ -7,6 +7,7 @@ import { money } from '../engine/core.ts';
 import { finalScore } from '../engine/score.ts';
 import type { GameState, YearOne } from '../engine/types.ts';
 import { sfx } from './audio.ts';
+import { GradeMedal } from './common.tsx';
 import './phase2.css';
 
 export function YearOneReport({ s, onNext, onQuit, onNewGame }: { s: GameState; onNext: () => void; onQuit: () => void; onNewGame: () => void }) {
@@ -20,7 +21,7 @@ export function YearOneReport({ s, onNext, onQuit, onNewGame }: { s: GameState; 
         <h3>Year one: report card</h3>
       </div>
       <div className="grade-row">
-        <span className="grade">{f.grade}</span>
+        <GradeMedal grade={f.grade} />
         <div>
           <strong className="end-title">{f.title}</strong>
           <span className="muted">

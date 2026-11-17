@@ -7,6 +7,7 @@ import { CHAPTERS, chapterStartWeek } from '../content/chapters.ts';
 import { ALL_HANDBOOK as HANDBOOK, HANDBOOK_BY_ID } from '../content/handbook.ts';
 import { pathName } from '../content/paths.ts';
 import { monthlyBills, monthlyNet } from '../content/scenes/tasks.ts';
+import type { SceneArt } from '../content/types.ts';
 import { CREDIT_WAIT, creditAge, creditLabel, creditScore, money } from '../engine/core.ts';
 import {
   TOTAL_WEEKS,
@@ -28,7 +29,7 @@ import { SLOTS, type ArtId, type GameState, type NpcId, type PathId, type PayMet
 import { reducedMotion } from './a11y.ts';
 import { sfx } from './audio.ts';
 import { HistoryCharts } from './Charts.tsx';
-import { Bar, ChapterCard, Icon, Modal, SceneCanvas, TickMoney, TickNumber } from './common.tsx';
+import { Bar, ChapterCard, GradeMedal, Icon, Modal, SceneCanvas, TickMoney, TickNumber } from './common.tsx';
 import { BillsPanel, ChapterEndPanel, PaycheckPanel, Planner, ScenePanel, SummaryPanel } from './Panels.tsx';
 import type { Meta } from './save.ts';
 import { Tutorial } from './Tutorial.tsx';
@@ -42,7 +43,52 @@ import { JobBoard } from './JobBoard.tsx';
 
 type ModalId = 'money' | 'handbook' | 'awards' | 'missions' | 'menu' | 'grades' | 'jobs' | null;
 
-function artFor(s: GameState): { art: ArtId; speaker: NpcId | null; hidePlayer?: boolean } {
+// Saves keep the engine's ArtId for home; this is only how it's painted. A bought
+// house gets a real living room, and the next phase moves you somewhere new.
+function homeArt(s: GameState, art: SceneArt): SceneArt {
+  if (art !== s.housing.art) return art;
+  if (s.housing.kind === 'owned') return art === 'street' ? 'house' : 'loft';
+  if (s.phase2 && art === 'apartment') return 'loft';
+  return art;
+}
+
+// What the location tag says when nobody is talking: your home, your workplace, or the place.
+const PLACES: Partial<Record<SceneArt, string>> = {
+  dmv: 'DMV',
+  bank: 'The bank',
+  dentist: 'Dentist’s office',
+  clinic: 'Urgent care',
+  grocery: 'Grocery store',
+  warehouse: 'Warehouse',
+  jobsite: 'Job site',
+  campus: 'State U',
+  carlot: 'Used car lot',
+  street: 'Downtown',
+  office: 'The office',
+  library: 'Library',
+  party: 'A party',
+  road: 'On the road',
+  night: 'Downtown, late',
+  beach: 'The coast',
+  stage: 'Graduation',
+  showroom: 'Car dealership',
+  house: 'Open house',
+  mortgage: 'Loan office',
+  lecture: 'Exam hall',
+  interview: 'Interview room',
+  loft: 'Your new place',
+};
+function placeName(s: GameState, art: SceneArt): string {
+  if (art === homeArt(s, s.housing.art)) return s.housing.name;
+  if (s.job && art === s.job.art) return s.job.place;
+  return PLACES[art] ?? s.housing.name;
+}
+
+function artFor(s: GameState): { art: SceneArt; speaker: NpcId | null; hidePlayer?: boolean } {
+  const r = artOf(s);
+  return { ...r, art: homeArt(s, r.art) };
+}
+function artOf(s: GameState): { art: SceneArt; speaker: NpcId | null; hidePlayer?: boolean } {
   const h = s.queue[0];
   if (!h) return { art: s.housing.art, speaker: null };
   switch (h.t) {
@@ -71,7 +117,7 @@ function artFor(s: GameState): { art: ArtId; speaker: NpcId | null; hidePlayer?:
 // The week's light follows what's happening: planning in the morning, the
 // evening slot at dusk, bills after dinner, the recap at night.
 const WORKPLACE: Record<PathId, ArtId> = { work: 'warehouse', home: 'grocery', college: 'library', trade: 'jobsite' };
-function moodFor(s: GameState, art: ArtId): { tod: TimeOfDay; weather: Weather; outfit: Outfit } {
+function moodFor(s: GameState, art: SceneArt): { tod: TimeOfDay; weather: Weather; outfit: Outfit } {
   const h = s.queue[0];
   let tod: TimeOfDay = 'day';
   if (!h) tod = 'morning';
@@ -82,7 +128,7 @@ function moodFor(s: GameState, art: ArtId): { tod: TimeOfDay; weather: Weather; 
     const slot = SLOTS[Math.max(0, Math.min(3, 3 - left))];
     tod = slot === 'evening' ? 'evening' : slot === 'sunday' ? 'golden' : 'day';
   }
-  const outfit: Outfit = isHome(art) ? 'hoodie' : WORKPLACE[s.path] === art ? s.path : 'casual';
+  const outfit: Outfit = isHome(art) && (art !== 'house' || s.housing.kind === 'owned') ? 'hoodie' : WORKPLACE[s.path] === art ? s.path : 'casual';
   return { tod, weather: weatherFor(s.week), outfit };
 }
 
@@ -156,9 +202,9 @@ export function Game({ g, setG, meta, setMeta, onQuit, onNewGame }: { g: GameSta
           ) : (
           <>
           <div className="scene-frame">
-            <SceneCanvas art={art} look={g.look} speaker={speaker} talking={talking} hidePlayer={hidePlayer} path={g.path} night={h?.t === 'summary'} tod={tod} weather={weather} outfit={outfit} />
+            <SceneCanvas art={art} look={g.look} speaker={speaker} talking={talking} hidePlayer={hidePlayer} path={g.path} night={h?.t === 'summary'} tod={tod} weather={weather} outfit={outfit} ambient />
             <div className="scene-tag">
-              {speaker && CAST[speaker] ? <span className="speaker">{castFor(speaker, g.path).name}</span> : <span className="where">{g.housing.name}</span>}
+              {speaker && CAST[speaker] ? <span className="speaker">{castFor(speaker, g.path).name}</span> : <span className="where">{placeName(g, art)}</span>}
             </div>
           </div>
           <div className="panel">{panel}</div>
@@ -840,7 +886,7 @@ function EndingPanel({ s, meta, setMeta, onQuit, onNewGame }: { s: GameState; me
         <h3>{s.phase2 ? 'Out in the real world: final results' : 'One year on your own'}</h3>
       </div>
       <div className="grade-row">
-        <span className="grade">{f.grade}</span>
+        <GradeMedal grade={f.grade} />
         <div>
           <strong className="end-title">{f.title}</strong>
           <span className="muted">

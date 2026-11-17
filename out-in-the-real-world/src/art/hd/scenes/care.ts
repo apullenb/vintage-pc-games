@@ -32,23 +32,28 @@ function dentist(): HDSpec {
     npc: 124,
     floor: 98,
     horizon: 80,
-    fog: 0.06,
-    fogColor: '#e4f4f4',
-    bloom: 0.5,
+    fog: 0.02,
+    fogColor: '#d4ecec',
+    bloom: 0.3,
     windows: [[152, 10, 30, 24]],
     bg: (x) => {
-      wallHD(x, '#cfeef0', 80);
+      // a deeper aqua wall and a darker floor keep the white fixtures from washing out
+      wallHD(x, '#a8d8da', 80, (c) => {
+        c.fillStyle = vgrad(c, 0, 50, ['rgba(255,255,255,0.18)', 'rgba(255,255,255,0)']);
+        c.fillRect(0, 0, W, 50);
+      });
+      fillRR(x, 0, 2, W, 2.4, 0.4, litV(x, 2, 4.4, '#2fb5b0'));
       // tiled wainscot
-      x.fillStyle = vgrad(x, 52, 76, ['#b4e2e6', '#9ad4d8']);
+      x.fillStyle = vgrad(x, 52, 76, ['#7ac4ca', '#5aa8b0']);
       x.fillRect(0, 52, W, 24);
       for (let j = 52; j < 76; j += 6) {
-        box(x, 0, j, W, 0.4, rgba('#7ab8bc', 0.8));
+        box(x, 0, j, W, 0.4, rgba('#3a8a92', 0.8));
         box(x, 0, j + 0.4, W, 0.4, rgba('#ffffff', 0.4));
-        for (let i = (j / 6) % 2 ? 0 : 3; i < W; i += 6) box(x, i, j, 0.4, 6, rgba('#7ab8bc', 0.7));
+        for (let i = (j / 6) % 2 ? 0 : 3; i < W; i += 6) box(x, i, j, 0.4, 6, rgba('#3a8a92', 0.7));
       }
       fillRR(x, 0, 50.6, W, 1.6, 0.4, litV(x, 50.6, 52.2, '#e8f8f8'));
-      baseboardHD(x, 80, '#5a9aa0');
-      tileFloorHD(x, 80, '#f2fafa', '#d4e6e6', 12, { sheen: 0.35 });
+      baseboardHD(x, 80, '#2f6a72');
+      tileFloorHD(x, 80, '#dce8ea', '#a4bcc2', 12, { sheen: 0.22 });
       windowHD(x, 152, 10, 30, 24, '#f4f8f8');
       // x-ray lightbox frame
       fillRR(x, 10.5, 10.5, 31, 23, 1, litV(x, 10.5, 33.5, '#c8d0d8'));
@@ -160,16 +165,18 @@ function clinic(): HDSpec {
     npc: 124,
     floor: 98,
     horizon: 80,
-    fog: 0.06,
-    fogColor: '#e6eef6',
-    bloom: 0.5,
+    fog: 0.02,
+    fogColor: '#dce6ee',
+    bloom: 0.3,
     bg: (x) => {
-      wallHD(x, '#e2ecf4', 80);
-      x.fillStyle = vgrad(x, 48, 76, ['#d4e0ec', '#bccad8']);
+      // soft sage upper wall over a slate-blue wainscot: calm, not hospital-white
+      wallHD(x, '#d2e0d4', 80);
+      x.fillStyle = vgrad(x, 48, 76, ['#8aa2bc', '#6a84a2']);
       x.fillRect(0, 48, W, 28);
-      fillRR(x, 0, 45.6, W, 3.2, 0.4, litV(x, 45.6, 48.8, '#4ab474'));
-      baseboardHD(x, 80, '#5a6a7a');
-      tileFloorHD(x, 80, '#eef4f8', '#d4dce6', 12, { sheen: 0.3 });
+      for (let i = 6; i < W; i += 12) box(x, i, 49, 0.5, 27, rgba('#4a6280', 0.45));
+      fillRR(x, 0, 45.6, W, 3.2, 0.4, litV(x, 45.6, 48.8, '#3caa6a'));
+      baseboardHD(x, 80, '#3a4a5e');
+      tileFloorHD(x, 80, '#d8dee6', '#a8b4c4', 12, { sheen: 0.2 });
       lightSign(x, 'URGENT CARE', 96, 11.5, 50, 9, '#e0503c', '#ffffff', 0.06);
       // hand-washing poster
       softShadow(x, 59, 33, 8, 11, 0.2);

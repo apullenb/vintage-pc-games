@@ -325,7 +325,7 @@ export const JOB_SCENES: Scene[] = [
   {
     id: 'appt-jobint',
     title: (s) => `Interview: ${interviewListing(s)?.title ?? offerListing(s)?.title ?? 'new job'}`,
-    art: (s) => interviewListing(s)?.art ?? offerListing(s)?.art ?? 'office',
+    art: 'interview',
     speaker: 'hr',
     kind: 'appt',
     steps: {

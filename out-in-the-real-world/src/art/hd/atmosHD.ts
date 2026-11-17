@@ -1,9 +1,8 @@
 // HD atmosphere: the same time-of-day light and weather as atmos.ts, but with smooth
 // gradients, soft light shafts, anti-aliased rain streaks and round snowflakes.
 // Drawn on a context scaled to logical 192x108 units.
-import type { ArtId } from '../../engine/types.ts';
 import { isOutdoor, windowsOf, type AtmosOpts, type TimeOfDay } from '../atmos.ts';
-import { ell, H, hash, rgba, rgrad, vgrad, W, type Ctx } from './kit.ts';
+import { ell, H, hash, lgrad, rgba, rgrad, vgrad, W, type Ctx } from './kit.ts';
 
 interface Tint {
   top: string;
@@ -36,42 +35,110 @@ function tint(x: Ctx, t: Tint, strength: number): void {
   }
 }
 
-// A soft slanted shaft of low sun from a window down to the floor, with drifting motes.
-function sunbeam(x: Ctx, t: number, win: [number, number, number, number], floor: number, warm: string, slope: number): void {
-  const [wx, wy, ww] = win;
-  const by = Math.min(H, floor + 8);
+// A shaft of low sun from a window down to the floor: crisp-edged light through each
+// pane (the mullions cast real gaps), a bright window-shaped patch where it lands, and
+// drifting motes. Edges stay hard and the core bright so it reads as sunlight, not haze.
+function sunbeam(x: Ctx, t: number, win: [number, number, number, number], floor: number, warm: string, slope: number, k = 1): void {
+  const [wx, wy, ww, wh] = win;
+  const by = Math.min(H, floor + 6);
   const d = by - wy;
+  const dx = d * slope;
   x.save();
   x.globalCompositeOperation = 'screen';
-  const g = x.createLinearGradient(0, wy, 0, by);
-  g.addColorStop(0, rgba(warm, 0.26));
-  g.addColorStop(0.55, rgba(warm, 0.12));
-  g.addColorStop(1, rgba(warm, 0));
-  for (const [k, w] of [
-    [0, 1.15],
-    [0.18, 0.6],
-  ] as const) {
+  // two pane columns per window, separated by the mullion's shadow
+  const gap = Math.min(1.6, ww * 0.06);
+  const half = (ww - gap) / 2;
+  for (const c0 of [0, half + gap]) {
+    const g = x.createLinearGradient(0, wy, 0, by);
+    g.addColorStop(0, rgba(warm, 0.42 * k));
+    g.addColorStop(0.45, rgba(warm, 0.2 * k));
+    g.addColorStop(1, rgba(warm, 0.04 * k));
     x.beginPath();
-    x.moveTo(wx + ww * k, wy);
-    x.lineTo(wx + ww * (k + w * 0.85), wy);
-    x.lineTo(wx + d * slope + ww * (k + w), by);
-    x.lineTo(wx + d * slope + ww * k, by);
+    x.moveTo(wx + c0, wy + wh * 0.15);
+    x.lineTo(wx + c0 + half, wy + wh * 0.15);
+    x.lineTo(wx + c0 + half + dx, by);
+    x.lineTo(wx + c0 + dx, by);
+    x.closePath();
+    x.fillStyle = g;
+    x.fill();
+    // a hotter core along the leading edge of each shaft
+    x.beginPath();
+    x.moveTo(wx + c0 + half * 0.15, wy + wh * 0.15);
+    x.lineTo(wx + c0 + half * 0.45, wy + wh * 0.15);
+    x.lineTo(wx + c0 + half * 0.45 + dx, by);
+    x.lineTo(wx + c0 + half * 0.15 + dx, by);
     x.closePath();
     x.fillStyle = g;
     x.fill();
   }
-  // the pool where it lands
-  x.translate(wx + d * slope * 0.92 + ww * 0.55, floor + 4);
-  x.scale(1, 0.25);
-  x.fillStyle = rgrad(x, 0, 0, ww * 0.9, [[0, rgba(warm, 0.3)], [1, rgba(warm, 0)]]);
-  x.fillRect(-ww, -ww, ww * 2, ww * 2);
+  // where it lands: a sheared window-shaped patch with a mullion cross
+  const fy = floor - 3;
+  const fx = wx + (fy - wy) * slope;
+  const ph = Math.min(10, (H - fy) * 0.9);
+  x.translate(fx, fy);
+  x.transform(1, 0, slope * 0.9, 1, 0, 0);
+  x.fillStyle = rgba(warm, 0.34 * k);
+  x.fillRect(0, 0, half, ph);
+  x.fillRect(half + gap, 0, half, ph);
+  x.fillStyle = rgba(warm, 0.18 * k);
+  x.fillRect(-1, -0.6, ww + 2, ph + 1.2);
   x.restore();
-  for (let n = 0; n < 9; n++) {
-    const ph = t * 0.12 + hash(n * 13) * 10;
-    const dd = (ph * 20) % (floor - wy);
+  for (let n = 0; n < 12; n++) {
+    const p = t * 0.12 + hash(n * 13) * 10;
+    const dd = (p * 20) % (floor - wy);
     const mx = wx + dd * slope + hash(n * 7) * ww + Math.sin(t * 0.8 + n) * 2;
-    ell(x, mx, wy + dd, 0.35, 0.35, 'rgba(255,244,210,0.7)');
+    const tw = 0.5 + 0.5 * Math.sin(t * 2 + n * 3);
+    ell(x, mx, wy + dd, 0.35, 0.35, `rgba(255,246,214,${(0.45 + tw * 0.45).toFixed(2)})`);
   }
+}
+
+// Low sun outdoors (golden hour, evening): a warm key from the sun's side, a cool
+// fill on the far side, a crisp band of horizon glow, and long god rays.
+function lowSun(x: Ctx, t: number, warm: string, cool: string, horizon: number, rays: boolean): void {
+  x.save();
+  x.globalCompositeOperation = 'multiply';
+  x.fillStyle = lgrad(x, 0, 0, W, H * 0.7, [[0, 'rgba(255,255,255,0)'], [0.5, rgba(cool, 0.16)], [1, rgba(cool, 0.5)]]);
+  x.fillRect(0, 0, W, H);
+  x.globalCompositeOperation = 'screen';
+  x.fillStyle = lgrad(x, 0, 0, W * 0.75, H * 0.4, [[0, rgba(warm, 0.3)], [1, rgba(warm, 0)]]);
+  x.fillRect(0, 0, W, H);
+  // the horizon line glows: thin and bright rather than a broad milky wash
+  x.fillStyle = vgrad(x, horizon - 7, horizon + 4, [rgba(warm, 0), rgba(warm, 0.3), rgba(warm, 0)]);
+  x.fillRect(0, horizon - 7, W, 11);
+  if (rays) {
+    const sx = -24;
+    const sy = -14;
+    for (let k = 0; k < 7; k++) {
+      const a0 = 0.32 + k * 0.105 + Math.sin(t * 0.13 + k) * 0.006;
+      const a1 = a0 + 0.028 + hash(k * 5) * 0.03;
+      const len = 260;
+      const g = x.createLinearGradient(sx, sy, sx + Math.cos(a0) * len * 0.8, sy + Math.sin(a0) * len * 0.8);
+      const a = (0.15 + hash(k * 3) * 0.13) * (0.85 + 0.15 * Math.sin(t * 0.4 + k * 2));
+      g.addColorStop(0, rgba(warm, a));
+      g.addColorStop(0.6, rgba(warm, a * 0.5));
+      g.addColorStop(1, rgba(warm, 0));
+      x.beginPath();
+      x.moveTo(sx, sy);
+      x.lineTo(sx + Math.cos(a0) * len, sy + Math.sin(a0) * len);
+      x.lineTo(sx + Math.cos(a1) * len, sy + Math.sin(a1) * len);
+      x.closePath();
+      x.fillStyle = g;
+      x.fill();
+    }
+  }
+  x.restore();
+}
+
+// Indoors at golden hour: the room drops a little darker away from the window so the
+// beam has something to cut through.
+function roomDim(x: Ctx, wins: [number, number, number, number][], cool: string): void {
+  if (!wins.length) return;
+  const [wx, wy, ww] = wins[0];
+  x.save();
+  x.globalCompositeOperation = 'multiply';
+  x.fillStyle = rgrad(x, wx + ww / 2, wy + 30, W * 0.85, [[0, 'rgba(255,255,255,0)'], [0.4, rgba(cool, 0.1)], [1, rgba(cool, 0.32)]]);
+  x.fillRect(0, 0, W, H);
+  x.restore();
 }
 
 function rain(x: Ctx, t: number, x0: number, y0: number, w: number, h: number, n: number, seed: number, floor: number | null): void {
@@ -177,6 +244,7 @@ function birds(x: Ctx, t: number, seed: number): void {
 
 export interface AtmosHDOpts extends AtmosOpts {
   windows?: [number, number, number, number][];
+  horizon?: number;
 }
 
 export function atmosGroundHD(x: Ctx, o: AtmosHDOpts): void {
@@ -196,14 +264,21 @@ export function atmosGroundHD(x: Ctx, o: AtmosHDOpts): void {
 
 export function atmosAirHD(x: Ctx, t: number, o: AtmosHDOpts): void {
   const out = isOutdoor(o.art);
-  const wins = o.windows ?? windowsOf(o.art as ArtId);
+  const wins = o.windows ?? windowsOf(o.art);
   const tod = o.night ? 'day' : o.tod;
   if (o.weather === 'rain' && out) tint(x, OVERCAST, 0.5);
   else if (o.weather === 'snow' && out) tint(x, SNOWY, 0.45);
   const td = TINTS[tod];
-  if (td) tint(x, td, out ? 0.5 : 0.38);
-  if (!o.night && !o.weather && (tod === 'morning' || tod === 'golden' || tod === 'evening'))
-    for (const w of wins) sunbeam(x, t, w, o.floor, tod === 'morning' ? '#ffecbe' : '#ffaa6e', tod === 'morning' ? 0.55 : 0.9);
+  const low = !o.night && !o.weather && (tod === 'golden' || tod === 'evening');
+  if (td) tint(x, td, low ? (out ? 0.34 : 0.28) : out ? 0.5 : 0.38);
+  if (low) {
+    const warm = tod === 'golden' ? '#ffb060' : '#ff8a5a';
+    const cool = tod === 'golden' ? '#6a5aa0' : '#4a3a8a';
+    if (out) lowSun(x, t, warm, cool, o.horizon ?? o.floor - 30, o.art !== 'night');
+    else roomDim(x, wins, cool);
+  }
+  if (!o.night && !o.weather && (tod === 'morning' || low))
+    for (const w of wins) sunbeam(x, t, w, o.floor, tod === 'morning' ? '#ffecbe' : tod === 'golden' ? '#ffc070' : '#ff9a62', tod === 'morning' ? 0.55 : 0.9, tod === 'morning' ? 0.8 : 1);
   if (o.weather === 'rain') {
     if (out) rain(x, t, 0, 0, W, H, 80, 5, o.floor);
     else wins.forEach((w, k) => droplets(x, t, w, 40 + k));

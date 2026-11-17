@@ -1,7 +1,7 @@
 // Atmosphere over any scene: time-of-day light, weather, and a little ambient life.
 // Drawn in two passes around the people: `ground` (snow cover, wet sheen) before them,
 // `air` (tint, sun shafts, rain, snow, leaves, birds, vignette) after them.
-import type { ArtId } from '../engine/types.ts';
+import type { SceneArt as ArtId } from '../content/types.ts';
 import { cached, H, hash, rect, stipple, W, type Ctx } from './px.ts';
 
 export type TimeOfDay = 'morning' | 'day' | 'evening' | 'night' | 'golden';
@@ -18,7 +18,7 @@ const WINDOWS: Partial<Record<ArtId, [number, number, number, number][]>> = {
   office: [[10, 8, 56, 34]],
   party: [[71, 15, 34, 24]],
 };
-const HOMES = new Set<ArtId>(['bedroom', 'dorm', 'apartment']);
+const HOMES = new Set<ArtId>(['bedroom', 'dorm', 'apartment', 'loft', 'house']);
 
 export const isOutdoor = (a: ArtId): boolean => OUTDOOR.has(a);
 export const windowsOf = (a: ArtId): [number, number, number, number][] => WINDOWS[a] ?? [];
