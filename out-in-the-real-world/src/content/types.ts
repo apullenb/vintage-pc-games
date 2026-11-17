@@ -62,6 +62,7 @@ export interface Task {
   failText?: Txt; // what happens if it's not done by the deadline
   onFail?: (s: GameState) => void;
   hide?: (s: GameState) => boolean;
+  noCarry?: boolean; // if missed, it does NOT carry over to the next chapter
 }
 
 export interface Chapter {

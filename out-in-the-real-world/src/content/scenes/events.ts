@@ -994,6 +994,90 @@ export const EVENT_SCENES: Scene[] = [
     },
   },
   {
+    id: 'ev-promo1',
+    title: 'Moving up',
+    art: (s) => s.job?.art ?? 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `Your boss pulls you aside. \u201cYou keep picking up shifts and you actually show up. I noticed. I want to make you ${promoTitle(s, 1)}. It\u2019s $1.50 more an hour, and a little more responsibility.\u201d`,
+        speaker: 'boss',
+        choices: [
+          {
+            label: (s) => `Take it: ${promoTitle(s, 1)}`,
+            hint: '\u2713 +$1.50/hour \u00b7 \u2713 Looks great on a resume \u00b7 \u2717 More responsibility (\u22124 energy)',
+            bot: 3,
+            do: (s) => {
+              if (s.job) {
+                s.job.wage = Math.round((s.job.wage + 1.5) * 100) / 100;
+                s.job.title = promoTitle(s, 1);
+              }
+              setFlag(s, 'promo1');
+              energy(s, -4);
+              xp(s, 4);
+              achieve(s, 'promoted');
+            },
+            result: 'New title, new name tag, bigger paycheck. Your mom posts about it.',
+            tip: 'Reliability is the fastest way up in most jobs: showing up, covering shifts, and doing it well.',
+          },
+          {
+            label: 'Not yet, I need my free time',
+            hint: '\u2713 Keep your schedule \u00b7 \u2717 Leave money on the table',
+            bot: -1,
+            do: (s) => setFlag(s, 'promo1', 'declined'),
+            result: '\u201cOkay. The offer stands if you change your mind.\u201d (It doesn\u2019t, really.)',
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'ev-promo2',
+    title: 'Another step up',
+    art: (s) => s.job?.art ?? 'office',
+    kind: 'event',
+    steps: {
+      start: {
+        text: (s) =>
+          `\u201cYou\u2019ve become the person everyone calls when something goes wrong. Corporate approved a bump for you: ${promoTitle(s, 2)}, another $1.50 an hour, and more hours if you want them.\u201d`,
+        speaker: 'boss',
+        choices: [
+          {
+            label: 'Take the raise AND the extra hours',
+            hint: '\u2713 +$1.50/hr and +4 hrs/week \u00b7 \u2717 Less free time (\u22126 energy now, more drain weekly)',
+            bot: (s) => (s.stats.energy > 50 ? 3 : 1),
+            do: (s) => {
+              if (s.job) {
+                s.job.wage = Math.round((s.job.wage + 1.5) * 100) / 100;
+                s.job.hours += 4;
+                s.job.title = promoTitle(s, 2);
+              }
+              setFlag(s, 'promo2');
+              energy(s, -6);
+              xp(s, 5);
+            },
+            result: 'Bigger paychecks, longer weeks. You\u2019re officially \u201cthe reliable one.\u201d',
+          },
+          {
+            label: 'Take the raise, keep my hours',
+            hint: '\u2713 +$1.50/hr \u00b7 \u2713 Same schedule',
+            bot: (s) => (s.stats.energy > 50 ? 2 : 3),
+            do: (s) => {
+              if (s.job) {
+                s.job.wage = Math.round((s.job.wage + 1.5) * 100) / 100;
+                s.job.title = promoTitle(s, 2);
+              }
+              setFlag(s, 'promo2');
+              xp(s, 5);
+            },
+            result: 'More money for the same hours. Nice.',
+          },
+        ],
+      },
+    },
+  },
+  {
     id: 'ev-fired',
     title: 'Let go',
     art: 'office',
@@ -2477,6 +2561,8 @@ export const EVENTS = [
   { id: 'ev-laptop', weight: (s: GameState) => (s.path === 'college' ? 1 : 0), once: true, minWeek: 8 },
   { id: 'ev-bikestolen', weight: (s: GameState) => (s.transport === 'bike' ? 1 : 0), once: true },
   { id: 'ev-cover', weight: (s: GameState) => (s.job && s.path !== 'college' ? 1.4 : 0), cooldown: 4 },
+  { id: 'ev-promo1', weight: (s: GameState) => (s.job && s.path !== 'college' && !s.flags.promo1 && !s.flags.careerDone && s.week >= 10 && num(s, 'extraShifts') >= 4 && s.stats.rep >= 68 ? 40 : 0), once: true },
+  { id: 'ev-promo2', weight: (s: GameState) => (s.job && s.path !== 'college' && s.flags.promo1 === true && !s.flags.careerDone && s.week >= 20 && num(s, 'extraShifts') >= 9 && s.stats.rep >= 78 ? 40 : 0), once: true },
   { id: 'ev-raise', weight: (s: GameState) => (s.job && s.path !== 'college' && s.week >= 14 ? 1.2 : 0), once: true },
   { id: 'ev-bonus', weight: (s: GameState) => (s.job && s.path !== 'college' && num(s, 'daysOff') === 0 && s.week >= 10 ? 1.5 : 0), once: true },
   { id: 'ev-mentor', weight: 0.8, cooldown: 10 },
@@ -2517,3 +2603,15 @@ export const EVENTS = [
   { id: 'ev-overage', weight: (s: GameState) => (s.flags.dataTight && s.subs.some((x) => x.id === 'phone') ? 1.2 : 0), cooldown: 8 },
 ];
 
+
+// Job title after a mid-year promotion, by job.
+export function promoTitle(s: GameState, level: 1 | 2): string {
+  const art = s.job?.art;
+  const t: Record<string, [string, string]> = {
+    grocery: ['Lead Cashier', 'Front-End Supervisor'],
+    warehouse: ['Shift Lead', 'Senior Shift Lead'],
+    jobsite: ['Apprentice (Level 1.5)', 'Lead Apprentice'],
+    library: ['Senior Library Assistant', 'Circulation Lead'],
+  };
+  return (t[art ?? ''] ?? ['Shift Lead', 'Senior Shift Lead'])[level - 1];
+}

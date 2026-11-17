@@ -34,7 +34,15 @@ export function monthlyNet(s: GameState): number {
   const prem = s.health === 'employer' ? s.job.premium * 2.17 : 0;
   return Math.round(g * (1 - ded - s.retirePct) - prem);
 }
+// What a landlord sees on your recent pay stubs: extra shifts and side gigs count.
 export function monthlyGross(s: GameState): number {
+  const base = s.job ? s.job.wage * s.job.hours * 4.33 : 0;
+  const stubs = num(s, 'avgPaycheck');
+  const gigs = num(s, 'avgGig') * 2.17;
+  return Math.round((stubs ? stubs * 2.17 : base) + gigs);
+}
+// Just the base job, no extras (for comparison in text).
+export function baseMonthlyGross(s: GameState): number {
   return s.job ? Math.round(s.job.wage * s.job.hours * 4.33) : 0;
 }
 export function monthlyBills(s: GameState): number {
@@ -384,6 +392,7 @@ export const TASK_SCENES: Scene[] = [
             bot: 2,
             do: (s) => {
               setFlag(s, 'fafsa');
+              lateFafsa(s);
               s.loans.push({ name: 'Student loan', balance: 3500, apr: 0, payment: 0, kind: 'student', deferred: true });
               if (s.credit.firstWeek === null) s.credit.firstWeek = s.week;
               unlock(s, 'student-loan');
@@ -398,6 +407,7 @@ export const TASK_SCENES: Scene[] = [
             bot: -2,
             do: (s) => {
               setFlag(s, 'fafsa');
+              lateFafsa(s);
               s.loans.push({ name: 'Student loan', balance: 3500, apr: 0, payment: 0, kind: 'student', deferred: true });
               s.loans.push({ name: 'Unsubsidized loan', balance: 2000, apr: 0.065, payment: 0, kind: 'student', deferred: true });
               s.stats.cash = round2(s.stats.cash + 2000);
@@ -506,7 +516,7 @@ export const TASK_SCENES: Scene[] = [
             do: (s) => {
               setFlag(s, 'transportSet');
               if (s.path === 'trade') {
-                s.subs.push({ id: 'rides', label: 'Rides to job sites', cost: 240 });
+                if (!s.subs.some((x) => x.id === 'rides')) s.subs.push({ id: 'rides', label: 'Rides to job sites', cost: 240 });
                 s.transport = 'bus';
               } else if (s.path !== 'college') {
                 s.transport = 'bus';
@@ -756,7 +766,8 @@ export const TASK_SCENES: Scene[] = [
       start: {
         text: (s) => {
           const g = monthlyGross(s);
-          return `Most landlords require your monthly income to be at least 3× the rent, and they check your credit.\n\nYour gross income: ~${money(g)}/month → max rent ~${money(g / 3)}.\nYour credit: ${creditScore(s) ?? 'no score yet'}.${creditScore(s) === null ? ' (No credit = double deposit.)' : ''}`;
+          const extra = g - baseMonthlyGross(s);
+          return `Most landlords require your monthly income to be at least 3× the rent, and they check your credit.\n\nYour recent pay stubs show ~${money(g)}/month${extra > 50 ? ` (that includes ${money(extra)} from extra shifts and side gigs)` : ''} → max rent ~${money(g / 3)}.\nYour credit: ${creditScore(s) ?? 'no score yet'}.${creditScore(s) === null ? ' (No credit = double deposit.)' : ''}`;
         },
         speaker: 'landlord',
         choices: [
@@ -1243,6 +1254,16 @@ export const TASK_SCENES: Scene[] = [
 ];
 
 // ---------- helpers ----------
+// Filing the FAFSA after the priority deadline still gets federal aid, but not the school's priority grant.
+function lateFafsa(s: GameState): void {
+  const plan = s.subs.find((x) => x.id === 'tuitionplan');
+  if (plan) {
+    plan.cost = 150;
+    plan.label = 'Tuition payment plan (late FAFSA)';
+    log(s, 'Late FAFSA: federal aid came through, but you lost the priority grant. Payment plan drops to $150/month.', 'info');
+  }
+}
+
 // Mirrors the weekly food and personal costs in engine.ts (kept here to avoid an import cycle).
 const sharedHome = (s: GameState): boolean => s.housing.kind === 'parents' || s.housing.kind === 'dorm';
 function budgetFood(s: GameState): number {

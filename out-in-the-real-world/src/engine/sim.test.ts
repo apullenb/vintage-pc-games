@@ -24,9 +24,10 @@ describe('full playthroughs', () => {
       expect(wins.length).toBe(results.length);
       // A good year, not a perfect one: around $1,500–$3,500 saved (a bit more living at home) and a B+/A score.
       expect(avg).toBeGreaterThan(780);
-      expect(avg).toBeLessThan(900);
+      expect(avg).toBeLessThan(path === 'home' ? 935 : 900);
       expect(saved).toBeGreaterThan(1500);
-      expect(saved).toBeLessThan(path === 'home' ? 4500 : 3800);
+      // Living at home plus a promotion from extra shifts lets you save a lot more.
+      expect(saved).toBeLessThan(path === 'home' ? 6500 : 3800);
     });
     it(`${path}: reckless choices cost you`, () => {
       const wise = [];

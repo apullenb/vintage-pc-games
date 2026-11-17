@@ -67,7 +67,7 @@ const LIST: Activity[] = [
     desc: (s) => (s.job ? `Extra hours at ${s.job.place}.` : 'No job.'),
     hint: (s) => {
       const h = s.path === 'college' ? 4 : 6;
-      return `+${money(h * (s.job?.wage ?? 0))} on your next paycheck (before taxes) · −12 energy · Boss notices`;
+      return `+${money(h * (s.job?.wage ?? 0))} on your next paycheck (before taxes) · −12 energy · Counts toward promotions`;
     },
     avail: (s) => (s.job ? true : 'You need a job'),
     hide: (s) => !s.job,
@@ -76,6 +76,9 @@ const LIST: Activity[] = [
       s.hoursThisPeriod += h;
       energy(s, -12);
       inc(s, 'extraShifts');
+      // Covering shifts is how people get noticed: a little boss trust and on-the-job learning every time.
+      rep(s, 1);
+      if (s.path !== 'college') xp(s, 1);
       log(s, `Extra shift: +${h} hours on your next paycheck.`, 'good');
       minigame(s, 'shift');
     },
@@ -229,7 +232,7 @@ const LIST: Activity[] = [
     task: 't-fafsa',
     desc: 'The Free Application for Federal Student Aid. It decides how much help you get.',
     hint: () => 'Mission · Deadline at the end of this chapter',
-    hide: (s) => s.path !== 'college' || !!s.flags.fafsa || s.chapter > 0,
+    hide: (s) => s.path !== 'college' || !!s.flags.fafsa,
     run: (s) => scene(s, 'task-fafsa'),
   },
   {
@@ -240,7 +243,7 @@ const LIST: Activity[] = [
     task: 't-tools',
     desc: 'Apprentices bring their own hand tools. Your foreman gave you a list.',
     hint: () => 'Mission · Required by end of chapter',
-    hide: (s) => s.path !== 'trade' || !!s.flags.tools || s.chapter > 0,
+    hide: (s) => s.path !== 'trade' || (!!s.flags.tools && s.flags.tools !== 'loaner'),
     run: (s) => scene(s, 'task-tools'),
   },
   {
@@ -306,7 +309,7 @@ const LIST: Activity[] = [
     task: 't-taxes',
     desc: 'Your W-2 came in the mail. Time to file.',
     hint: () => 'Mission · Deadline at end of chapter',
-    hide: (s) => s.chapter !== 3 || !!s.flags.taxesFiled,
+    hide: (s) => s.chapter < 3 || !!s.flags.taxesFiled,
     run: (s) => scene(s, 'task-taxes'),
   },
   {

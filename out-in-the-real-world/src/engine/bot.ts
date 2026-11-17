@@ -55,7 +55,7 @@ export function botPlan(s: GameState, style: Style): Plan {
     else plan.food = foods.includes('ramen') ? 'ramen' : foods[0];
     // Reckless players still eventually do some missions, late.
     const left = s.chapter >= 0 ? 6 - ((s.week - 1) % 6) : 6;
-    if (left <= 2) taskPass(s, plan, used, free, set);
+    if (left <= 2) taskPass(s, plan, used, free, set, 'reckless');
     return plan;
   }
 
@@ -107,8 +107,10 @@ function taskPass(
   used: Set<string>,
   free: (slot: SlotId) => boolean,
   set: (slot: SlotId, id: string) => void,
+  style: Style = 'wise',
 ): void {
-  const open = taskStatus(s).filter((t) => !t.done).map((t) => t.id);
+  // Careless players don't go back for goals they already blew.
+  const open = taskStatus(s).filter((t) => !t.done && !(style === 'reckless' && t.overdue)).map((t) => t.id);
   for (const slot of ['evening', 'saturday', 'sunday', 'weekday'] as SlotId[]) {
     if (!free(slot)) continue;
     const opts = activitiesFor(s, slot).filter((x) => x.ok === true && x.a.task && open.includes(x.a.task) && !used.has(x.a.id));

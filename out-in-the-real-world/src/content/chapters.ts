@@ -135,8 +135,8 @@ export const TASKS: Task[] = [
     title: 'Buy your tool kit',
     desc: 'Apprentices bring their own hand tools to the job site.',
     how: 'Buy your tool kit (Saturday or evening)',
-    done: (s) => !!s.flags.tools,
-    failText: 'Your foreman lends you tools and is NOT thrilled about it. Boss rating −10.',
+    done: (s) => !!s.flags.tools && s.flags.tools !== 'loaner',
+    failText: 'Your foreman lends you tools and is NOT thrilled about it. Boss rating −10. (You still need your own.)',
     onFail: (s) => {
       rep(s, -10);
       s.flags.tools = 'loaner';
@@ -172,9 +172,9 @@ export const TASKS: Task[] = [
           ? 'Mom takes her car back. You’re on the bus ($65/month).'
           : 'You keep doing what you were doing, late buses and all.',
     onFail: (s) => {
-      s.flags.transportSet = true;
-      if (s.path === 'trade') s.subs.push({ id: 'rides', label: 'Rides to job sites', cost: 240 });
-      if (s.path === 'home') {
+      // Stopgap costs until you sort it out (the mission carries over).
+      if (s.path === 'trade' && !s.subs.some((x) => x.id === 'rides')) s.subs.push({ id: 'rides', label: 'Rides to job sites', cost: 240 });
+      if (s.path === 'home' && !s.subs.some((x) => x.id === 'buspass')) {
         s.transport = 'bus';
         s.subs.push({ id: 'buspass', label: 'Monthly bus pass', cost: 65 });
       }
@@ -220,6 +220,7 @@ export const TASKS: Task[] = [
   {
     id: 't-housing',
     chapter: 2,
+    noCarry: true,
     title: (s) =>
       ({
         home: 'Decide: move out or pay more rent',
@@ -303,6 +304,7 @@ export const TASKS: Task[] = [
   {
     id: 't-survive',
     chapter: 4,
+    noCarry: true,
     title: 'Handle the curveball, keep your housing',
     desc: 'Whatever life throws at you, don’t miss a housing payment this chapter.',
     how: 'Pay housing on bills day',
@@ -372,6 +374,20 @@ export const TASKS: Task[] = [
 
 export function tasksFor(s: GameState, ch: number): Task[] {
   return TASKS.filter((t) => t.chapter === ch && (!t.paths || t.paths.includes(s.path)) && !(t.hide && t.hide(s)));
+}
+
+// Missed goals from earlier chapters that you can still finish (they follow you until you do).
+export function overdueTasks(s: GameState, ch: number): Task[] {
+  return TASKS.filter(
+    (t) =>
+      t.chapter < ch &&
+      !t.optional &&
+      !t.noCarry &&
+      (!t.paths || t.paths.includes(s.path)) &&
+      !!s.tasksFailed[t.id] &&
+      !s.tasksDone[t.id] &&
+      !t.done(s),
+  );
 }
 
 export const lowDebt = (s: GameState): boolean => badDebt(s) < 300;

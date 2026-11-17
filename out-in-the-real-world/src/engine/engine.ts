@@ -1,6 +1,6 @@
 // The week loop. Pure functions: every call clones the state and returns a new one.
 import { ACTIVITIES, activityFor } from '../content/activities.ts';
-import { CHAPTERS, TASKS, chapterOf, chapterStartWeek, tasksFor } from '../content/chapters.ts';
+import { CHAPTERS, TASKS, chapterOf, chapterStartWeek, overdueTasks, tasksFor } from '../content/chapters.ts';
 import { EVENTS, OFFERS, storyBeats } from '../content/events.ts';
 import { SCENES } from '../content/scenes.ts';
 import { MINIGAMES } from '../content/minigames/index.ts';
@@ -461,6 +461,14 @@ function runPayday(s: GameState): void {
   s.retire = round2(s.retire + stub.retire + stub.match);
   if (s.autoSave > 0 && s.stats.cash > 0) stub.autoSaved = save(s, Math.min(s.autoSave, s.stats.cash));
   inc(s, 'paychecks');
+  // Landlords and lenders look at recent pay stubs (extra shifts count) plus side-gig income.
+  const prevAvg = num(s, 'avgPaycheck');
+  s.flags.avgPaycheck = Math.round(prevAvg ? prevAvg * 0.5 + stub.gross * 0.5 : stub.gross);
+  const gigNow = num(s, 'gigTax');
+  const gigSince = Math.max(0, gigNow - num(s, 'gigAtLastPay'));
+  s.flags.gigAtLastPay = gigNow;
+  const prevGig = num(s, 'avgGig');
+  s.flags.avgGig = Math.round(prevGig * 0.5 + gigSince * 0.5);
   inc(s, 'wagesYear', stub.gross);
   inc(s, 'fedWithheld', stub.federal);
   inc(s, 'stateWithheld', stub.state);
@@ -764,18 +772,32 @@ export interface TaskStatus {
   done: boolean;
   optional: boolean;
   progress: string;
+  overdue?: boolean;
 }
 
 export function taskStatus(s: GameState, ch = s.chapter): TaskStatus[] {
-  return tasksFor(s, ch).map((t) => ({
+  const late = overdueTasks(s, ch).map((t) => ({
     id: t.id,
-    title: txt(t.title, s),
+    title: `Overdue: ${txt(t.title, s)}`,
     desc: txt(t.desc, s),
     how: txt(t.how, s),
-    done: !!s.tasksDone[t.id] || t.done(s),
-    optional: !!t.optional,
+    done: false,
+    optional: false,
     progress: t.progress ? t.progress(s) : '',
+    overdue: true,
   }));
+  return [
+    ...tasksFor(s, ch).map((t) => ({
+      id: t.id,
+      title: txt(t.title, s),
+      desc: txt(t.desc, s),
+      how: txt(t.how, s),
+      done: !!s.tasksDone[t.id] || t.done(s),
+      optional: !!t.optional,
+      progress: t.progress ? t.progress(s) : '',
+    })),
+    ...late,
+  ];
 }
 
 export interface ChapterReport {
@@ -783,6 +805,8 @@ export interface ChapterReport {
   done: string[];
   missed: { title: string; consequence: string }[];
   bonus: string[];
+  caughtUp: string[]; // overdue goals from earlier chapters finished this chapter
+  stillOverdue: string[];
 }
 
 // Computes (and applies, when apply=true) the end-of-chapter result.
@@ -812,9 +836,19 @@ export function chapterReport(s: GameState, apply: boolean): ChapterReport {
       missed.push({ title: txt(t.title, s), consequence });
     }
   }
+  // Earlier goals you finished late (they stop following you), and ones still hanging over you.
+  const caughtUp: string[] = [];
+  const stillOverdue: string[] = [];
+  for (const t of TASKS) {
+    if (t.chapter >= s.chapter || t.optional || t.noCarry || (t.paths && !t.paths.includes(s.path)) || !s.tasksFailed[t.id] || s.tasksDone[t.id]) continue;
+    if (t.done(s)) {
+      caughtUp.push(txt(t.title, s));
+      if (apply) s.tasksDone[t.id] = true;
+    } else stillOverdue.push(txt(t.title, s));
+  }
   let stars = req === 0 ? 3 : reqDone === req ? 2 : reqDone > 0 ? 1 : 0;
   if (stars === 2 && bonus.length > 0) stars = 3;
-  return { stars, done, missed, bonus };
+  return { stars, done, missed, bonus, caughtUp, stillOverdue };
 }
 
 function endChapter(s: GameState): void {
@@ -889,6 +923,7 @@ export type { Snap };
 
 // ---------- mini-games ----------
 export const SKIP_SCORE = 0.4; // auto-play result when a player skips: playing pays off
+export const AUTOPLAY_FEE = 10; // and skipping costs a little money
 
 export function finishMinigame(s0: GameState, r: MiniResult): GameState {
   const s = clone(s0);
@@ -901,6 +936,11 @@ export function finishMinigame(s0: GameState, r: MiniResult): GameState {
   const d = head.data ?? {};
   s.queue.shift();
   const out = def.apply(s, { ...r, score }, d);
+  if (!r.played) {
+    // Skipping isn't free: you pay someone, rush it, or cut a corner.
+    charge(s, AUTOPLAY_FEE, 'Auto-play');
+    out.text += `\n\n(Auto-play cost you ${money(AUTOPLAY_FEE)}.)`;
+  }
   const deltas = diff(before, snap(s));
   inc(s, 'minigamesPlayed', r.played ? 1 : 0);
   const title = txt(def.title, s, d);

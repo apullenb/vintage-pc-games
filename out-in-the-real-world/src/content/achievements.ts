@@ -29,6 +29,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'chef', name: 'Meal Prep Master', desc: 'Cooked your own food 6 weeks.', icon: 'food' },
   { id: 'rested', name: 'Work-Life Balance', desc: 'Finished the year without burning out.', icon: 'rest' },
   { id: 'rehired', name: 'Back on Your Feet', desc: 'Got a new job after losing one.', icon: 'work' },
+  { id: 'promoted', name: 'Moving Up', desc: 'Earned a promotion by picking up extra shifts.', icon: 'star' },
   { id: 'debtfree', name: 'Debt-Free', desc: 'Finished with no credit card or car debt.', icon: 'star' },
   { id: 'auditor', name: 'Read Every Line', desc: 'Caught a mistake on a bill or a paycheck.', icon: 'docs' },
   { id: 'lockeddown', name: 'Locked Down', desc: 'Froze your credit after identity theft.', icon: 'shield' },

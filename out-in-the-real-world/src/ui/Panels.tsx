@@ -731,6 +731,11 @@ export function ChapterEndPanel({ s, onContinue }: { s: GameState; onContinue: (
           <Icon name="star" /> {t}
         </div>
       ))}
+      {r.caughtUp.map((t) => (
+        <div key={`cu-${t}`} className="report good">
+          <Icon name="check" /> Caught up: {t}
+        </div>
+      ))}
       {r.missed.map((m) => (
         <div key={m.title} className="report bad">
           <Icon name="close" /> <span>

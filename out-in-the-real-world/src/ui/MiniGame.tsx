@@ -140,7 +140,7 @@ class LoadGuard extends Component<{ children: ReactNode; onSkip: () => void }, {
       <div className="mg-loading" role="alert">
         <span>Couldn’t load this mini-game.</span>
         <button className="btn" onClick={this.props.onSkip}>
-          Skip (auto-play)
+          Skip (auto-play, −$10)
         </button>
       </div>
     );
@@ -249,7 +249,7 @@ export function MiniGameHost({ g, head, onFinish, onContinue }: { g: GameState; 
             Restart
           </button>
           <button className="btn small ghost" onClick={() => onFinish({ score: SKIP_SCORE, played: false })}>
-            Give up (auto-play)
+            Give up (auto-play, −$10)
           </button>
         </div>
       </div>
@@ -332,10 +332,10 @@ export function MiniGameHost({ g, head, onFinish, onContinue }: { g: GameState; 
               Play ▶
             </button>
             <button className="btn" onClick={() => onFinish({ score: SKIP_SCORE, played: false })} title="Skip and take an average-ish result">
-              Skip (auto-play)
+              Skip (auto-play, −$10)
             </button>
           </div>
-          <p className="muted small">Skipping gives a so-so result. Playing well beats it, and you can retry before you keep a run.</p>
+          <p className="muted small">Skipping costs $10 and gives a so-so result. Playing well beats it, and you can retry before you keep a run.</p>
         </div>
       </div>
     </>
