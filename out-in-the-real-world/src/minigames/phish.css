@@ -18,7 +18,13 @@
   box-shadow:
     0 0 0 3px var(--line),
     inset 0 0 0 2px #4a3e5e,
-    0 6px 0 3px var(--line);
+    0 6px 0 3px var(--line),
+    0 0 26px 2px rgba(130, 96, 255, 0.35);
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0) 40%), linear-gradient(#2a2238, #1c1424);
+}
+/* the lit screen spills a little glow onto the bezel */
+.ph-canvas .mini-canvas.hd2-canvas {
+  box-shadow: 0 0 14px rgba(150, 110, 255, 0.45);
 }
 .ph-canvas .mini-canvas {
   max-height: none;

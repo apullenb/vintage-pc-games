@@ -6,10 +6,11 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { castFor } from '../art/people.ts';
 import { INK, rect, type Ctx } from '../art/px.ts';
-import { ctxOf, MiniHud, PixelCanvas, TouchPad, useInput, useLoop, type MiniProps } from './kit.tsx';
-import { BOSS_H, BOSS_W, bossSprite, CARD_H, CARD_W, cardSprite, DOCK_Y, drawBolt, drawDock, drawField, drawGlare, drawLink, drawShip, drawStatusBar, MINI_H, MINI_W, miniSprite, PH, PW, SHIP_Y } from './phishArt.ts';
+import { MiniHud, TouchPad, useInput, useLoop, type MiniProps } from './kit.tsx';
+import { blit, ell, HD, Hd2Canvas, hdCtx, lin, pool, rgba, rr, sbox, shadow, vfill } from './hd2Kit.tsx';
+import { BOSS_H, BOSS_W, bossSprite, CARD_H, CARD_W, cardSprite, DOCK_Y, drawBolt, drawDock, drawField, drawGlare, drawLink, drawShip, drawStatusBar, hdBossSprite, hdCardSprite, hdMiniSprite, MINI_H, MINI_W, miniSprite, PH, PW, SHIP_Y } from './phishArt.ts';
 import { BOSS_AT, buildSchedule, GAME_LEN, MINIS, phishScore, type Channel, type Msg, type PhishStats, type Spawn } from './phishData.ts';
-import { beep, bigText, centered, clamp, COUNT_TIME, countLabel, cue, drawBanner, drawCount, Fx, note, noise, pick, ptext, ptw, rnd, soundInit } from './thriftPhishFx.ts';
+import { beep, bigText, centered, clamp, COUNT_TIME, countLabel, cue, drawBanner, drawCount, Fx, note, noise, pick, ptw, rnd, soundInit, stext } from './thriftPhishFx.ts';
 import './phish.css';
 
 const SHIP_SPEED = 150;
@@ -468,52 +469,76 @@ function step(g: G, dt: number, input: ReturnType<typeof useInput>): void {
 }
 
 // ---------- drawing ----------
+function hdSpriteOf(c: Card): HTMLCanvasElement {
+  if (!c.msg) return hdMiniSprite(c.mini, c.flash > 0);
+  const hl = c.state !== 'fall' && c.scam ? c.msg.flag : -1;
+  return hdCardSprite(c.msg, hl, c.tone);
+}
+
 function drawCard(x: Ctx, c: Card, t: number, rm: boolean): void {
-  const spr = spriteOf(c);
-  const px = Math.round(c.x);
-  let py = Math.round(c.y);
+  const spr = hdSpriteOf(c);
+  const sw = c.w + 2;
+  const sh0 = c.h + 2;
+  const px = c.x;
+  let py = c.y;
+  x.imageSmoothingEnabled = true;
   if (c.state === 'dying') {
     // glitch: horizontal slices jump around, with a red/cyan ghost
     const slices = 5;
-    const sh = Math.ceil((c.h + 2) / slices);
+    const sh = Math.ceil(sh0 / slices);
     for (let i = 0; i < slices; i++) {
       const off = rm ? 0 : Math.round(rnd(-4, 4));
       x.globalAlpha = 0.5;
-      x.drawImage(spr, 0, i * sh, c.w + 2, sh, px + off - 2, py + i * sh, c.w + 2, sh);
+      x.drawImage(spr, 0, i * sh * HD, sw * HD, sh * HD, px + off - 2, py + i * sh, sw, sh);
       x.globalAlpha = 1;
-      x.drawImage(spr, 0, i * sh, c.w + 2, sh, px + off, py + i * sh, c.w + 2, sh);
+      x.drawImage(spr, 0, i * sh * HD, sw * HD, sh * HD, px + off, py + i * sh, sw, sh);
     }
     x.globalAlpha = 0.35;
-    rect(x, px, py, c.w, c.h, c.scam ? '#ff3a6a' : '#3affd0');
+    rr(x, px, py, c.w, c.h, 3);
+    x.fillStyle = c.scam ? '#ff3a6a' : '#3affd0';
+    x.fill();
     x.globalAlpha = 1;
+    pool(x, px + c.w / 2, py + c.h / 2, c.w * 0.7, c.h, c.scam ? '#ff3a6a' : '#3affd0', 0.35);
+    x.imageSmoothingEnabled = false;
     return;
   }
   if (c.state === 'landing') {
     if (!c.scam) {
       // shrink down into the dock
       const k = Math.min(1, c.dieT / 0.45);
-      const w = Math.round((c.w + 2) * (1 - k * 0.8));
-      const h = Math.round((c.h + 2) * (1 - k * 0.8));
-      x.drawImage(spr, Math.round(c.x + c.w / 2 - w / 2), Math.round(DOCK_Y - h + k * 12), w, h);
+      const w = sw * (1 - k * 0.8);
+      const h = sh0 * (1 - k * 0.8);
+      pool(x, c.x + c.w / 2, DOCK_Y, 14, 6, '#7cf08a', 0.5 * (1 - k));
+      x.drawImage(spr, c.x + c.w / 2 - w / 2, DOCK_Y - h + k * 12, w, h);
+      x.imageSmoothingEnabled = false;
       return;
     }
     py = DOCK_Y - c.h + (Math.floor(t * 20) % 2);
-    x.drawImage(spr, px + (rm ? 0 : Math.round(rnd(-1, 1))), py);
+    pool(x, px + c.w / 2, py + c.h / 2, c.w * 0.7, c.h, '#ff3a3a', 0.4);
+    x.drawImage(spr, px + (rm ? 0 : rnd(-1, 1)), py, sw, sh0);
+    x.imageSmoothingEnabled = false;
     return;
   }
   if (c.rush && c.y > 40 && !rm) py += Math.floor(t * 30) % 2;
-  x.drawImage(spr, px, py);
+  if (c.rush && c.y > 30) pool(x, px + c.w / 2, py + c.h / 2, c.w * 0.65, c.h, '#ff5a3a', 0.25);
+  x.drawImage(spr, px, py, sw, sh0);
   if (c.flash > 0) {
     x.globalAlpha = 0.7;
-    rect(x, px, py, c.w, c.h, '#ffffff');
+    rr(x, px, py, c.w, c.h, 3);
+    x.fillStyle = '#ffffff';
+    x.fill();
     x.globalAlpha = 1;
   }
   if (c.rush && c.y > 30) {
     // urgency lines
     const k = Math.floor(t * 12) % 2;
-    rect(x, px - 3, py + 4 + k, 2, 1, '#ff7a5a');
-    rect(x, px + c.w + 1, py + 10 - k, 2, 1, '#ff7a5a');
+    x.fillStyle = '#ff7a5a';
+    rr(x, px - 3.5, py + 4 + k, 2.5, 0.9, 0.45);
+    x.fill();
+    rr(x, px + c.w + 1, py + 10 - k, 2.5, 0.9, 0.45);
+    x.fill();
   }
+  x.imageSmoothingEnabled = false;
 }
 
 function draw(x: Ctx, g: G, touch: boolean): void {
@@ -525,11 +550,14 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   // boss
   const b = g.boss;
   if (b && b.state !== 'dead') {
-    const spr = bossSprite(Math.floor(g.t * 4), 1 - b.hp / BOSS_HP);
-    x.drawImage(spr, Math.round(b.x - BOSS_W / 2), Math.round(b.y));
+    const spr = hdBossSprite(Math.floor(g.t * 4), 1 - b.hp / BOSS_HP);
+    pool(x, b.x, b.y + BOSS_H / 2, BOSS_W * 0.6, BOSS_H, Math.floor(g.t * 4) % 2 ? '#ff4a3a' : '#ffe27a', 0.25);
+    blit(x, spr, b.x - BOSS_W / 2, b.y, BOSS_W + 2, BOSS_H + 2);
     if (b.flash > 0.04) {
       x.globalAlpha = 0.3;
-      rect(x, b.x - BOSS_W / 2 + 3, b.y + 3, BOSS_W - 6, BOSS_H - 6, '#ffffff');
+      rr(x, b.x - BOSS_W / 2 + 3, b.y + 3, BOSS_W - 6, BOSS_H - 6, 2.5);
+      x.fillStyle = '#ffffff';
+      x.fill();
       x.globalAlpha = 1;
     }
     // chains dangling off the corners (it's a chain letter, after all)
@@ -537,19 +565,22 @@ function draw(x: Ctx, g: G, touch: boolean): void {
       const ax = b.x + side * (BOSS_W / 2 - 10);
       for (let k = 0; k < 4; k++) {
         const sw = Math.sin(g.t * 3 + k * 0.6 + side) * k * 1.2;
-        const lx = Math.round(ax + sw);
-        const ly = Math.round(b.y + BOSS_H - 1 + k * 4);
-        rect(x, lx - 2, ly - 1, 5, 5, INK);
-        rect(x, lx - 1, ly, 3, 3, k % 2 ? '#c8ccd8' : '#f2b632');
-        rect(x, lx, ly + 1, 1, 1, INK);
+        const lx = ax + sw;
+        const ly = b.y + BOSS_H - 1 + k * 4;
+        x.lineWidth = 1.9;
+        x.strokeStyle = 'rgba(28,20,36,0.9)';
+        ell(x, lx + 0.5, ly + 1.5, 1.6, 2);
+        x.stroke();
+        x.lineWidth = 0.9;
+        x.strokeStyle = k % 2 ? '#d8dce8' : '#f2b632';
+        x.stroke();
       }
     }
     // HP bar
     const bw = 80;
-    const hy = Math.round(b.y) - 4;
-    rect(x, b.x - bw / 2 - 1, hy, bw + 2, 4, INK);
-    rect(x, b.x - bw / 2, hy + 1, Math.round((bw * b.hp) / BOSS_HP), 2, '#ff5a4a');
-    rect(x, b.x - bw / 2, hy + 1, Math.round((bw * b.hp) / BOSS_HP), 1, '#ffb0a0');
+    const hy = b.y - 4;
+    sbox(x, b.x - bw / 2 - 1, hy, bw + 2, 4, '#2a1e3a', { r: 2, gloss: 0.1, lw: 0.6 });
+    if (b.hp > 0) sbox(x, b.x - bw / 2, hy + 1, Math.max(2, (bw * b.hp) / BOSS_HP), 2, '#ff5a4a', { r: 1, gloss: 0.6, outline: null });
   }
   for (const c of g.cards) drawCard(x, c, g.t, fx.rm);
   for (const l of g.links) drawLink(x, l.x, l.y, g.t);
@@ -574,7 +605,7 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   // streak meter by the ship
   if (g.streak >= 2 && g.phase === 'play') {
     const s = `x${g.streak}`;
-    ptext(x, s, clamp(g.shipX + 12, 2, PW - ptw(s) - 2), SHIP_Y + 2, g.streak >= 5 ? '#ff9af0' : '#7cf08a');
+    stext(x, s, clamp(g.shipX + 12, 2, PW - ptw(s) - 2), SHIP_Y + 2, g.streak >= 5 ? '#ff9af0' : '#7cf08a');
   }
   if (g.announce && g.announce.t > 0) {
     const a = g.announce;
@@ -583,11 +614,11 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   if (g.banner && g.banner.t > 0 && g.phase === 'play') {
     const bn = g.banner;
     const blink = bn.head === 'WARNING!' && Math.floor(g.t * 6) % 2;
-    x.globalAlpha = 0.8;
-    rect(x, 0, 88, PW, 30, '#0c0816');
-    x.globalAlpha = 1;
-    rect(x, 0, 88, PW, 1, bn.c);
-    rect(x, 0, 117, PW, 1, bn.c);
+    x.fillStyle = lin(x, 0, 88, 0, 118, ['rgba(30,18,52,0.85)', 'rgba(12,8,22,0.85)']);
+    x.fillRect(0, 88, PW, 30);
+    x.fillStyle = lin(x, 0, 0, PW, 0, [rgba(bn.c, 0), rgba(bn.c, 1), rgba(bn.c, 0)]);
+    x.fillRect(0, 88, PW, 0.8);
+    x.fillRect(0, 117.2, PW, 0.8);
     if (!blink) bigText(x, bn.head, PW / 2, 98, 3, bn.c, INK, '#ffffff');
     centered(x, bn.sub, PW / 2, 108, '#f4eedd', null);
   }
@@ -609,18 +640,20 @@ function draw(x: Ctx, g: G, touch: boolean): void {
 const reportReady = (g: G): boolean => g.phase === 'report' && g.pt > 1.4;
 
 function drawReport(x: Ctx, g: G, touch: boolean): void {
-  x.globalAlpha = 0.75;
-  rect(x, 0, 0, PW, PH, '#0c0816');
-  x.globalAlpha = 1;
+  x.fillStyle = 'rgba(12,8,22,0.75)';
+  x.fillRect(0, 0, PW, PH);
   const w = 156;
   const h = 124;
   const px = Math.round(PW / 2 - w / 2);
   const k = Math.min(1, g.pt / 0.3);
   const py = Math.round(PH - (PH - 40) * (1 - Math.pow(1 - k, 3)));
-  rect(x, px - 1, py - 1, w + 2, h + 2, INK);
-  rect(x, px, py, w, h, '#fbf6ea');
-  rect(x, px, py, w, 12, '#3f6fd0');
-  rect(x, px, py, w, 1, '#8aa8f0');
+  shadow(x, px + w / 2 + 2, py + h + 2, w * 0.55, 5, 0.5);
+  sbox(x, px - 1, py - 1, w + 2, h + 2, '#fbf6ea', { r: 3, gloss: 0.15, lw: 0.8 });
+  x.save();
+  rr(x, px - 1, py - 1, w + 2, h + 2, 3);
+  x.clip();
+  vfill(x, px - 1, py - 1, w + 2, 13, ['#7aa0f0', '#3f6fd0', '#2a50a8']);
+  x.restore();
   centered(x, 'SECURITY REPORT', PW / 2, py + 4, '#ffffff', null);
   const s = g.st;
   const scams = s.scamsHit + s.scamsMissed;
@@ -636,16 +669,17 @@ function drawReport(x: Ctx, g: G, touch: boolean): void {
   rows.forEach(([l, r, c], i) => {
     if (g.pt < 0.35 + i * 0.1) return;
     const y = py + 17 + i * 9;
-    ptext(x, l, px + 7, y, '#3a2e4a');
-    ptext(x, r, px + w - 7 - ptw(r), y, c);
+    stext(x, l, px + 7, y, '#3a2e4a', null);
+    stext(x, r, px + w - 7, y, c, null, 'right');
   });
   if (g.pt > 1) {
     const y0 = py + 17 + rows.length * 9 + 3;
-    for (let i = px + 7; i < px + w - 7; i += 3) rect(x, i, y0, 2, 1, '#9a8aa8');
-    ptext(x, 'RED FLAGS TO REMEMBER:', px + 7, y0 + 5, '#7a6f86');
+    x.fillStyle = '#9a8aa8';
+    for (let i = px + 7; i < px + w - 7; i += 3) x.fillRect(i, y0, 2, 0.6);
+    stext(x, 'RED FLAGS TO REMEMBER:', px + 7, y0 + 5, '#7a6f86', null);
     const top = [...g.lessons.entries()].filter(([w2]) => !w2.startsWith('REAL')).sort((a, b2) => b2[1] - a[1]).slice(0, 3);
     const tips = top.length ? top.map(([w2]) => w2) : ['WEIRD LINKS', 'FAKE DOMAINS', 'URGENCY'];
-    tips.forEach((tp, i) => ptext(x, `* ${tp}`, px + 9, y0 + 13 + i * 7, '#c0392b'));
+    tips.forEach((tp, i) => stext(x, `* ${tp}`, px + 9, y0 + 13 + i * 7, '#c0392b', null));
   }
   if (g.pt > 1.2) {
     const sc = phishScore(s);
@@ -653,8 +687,10 @@ function drawReport(x: Ctx, g: G, touch: boolean): void {
     x.save();
     x.translate(px + w - 30, py + h - 16);
     x.rotate(-0.22);
-    rect(x, -24, -7, 48, 14, good ? '#2f9a5a' : '#c0392b');
-    rect(x, -22, -5, 44, 10, '#fbf6ea');
+    rr(x, -24, -7, 48, 14, 2.5);
+    x.lineWidth = 1.6;
+    x.strokeStyle = good ? '#2f9a5a' : '#c0392b';
+    x.stroke();
     centered(x, sc >= 0.75 ? 'SECURE' : sc >= 0.45 ? 'SO-SO' : 'PHISHED', 0, -2, good ? '#2f9a5a' : '#c0392b', null);
     x.restore();
   }
@@ -715,7 +751,7 @@ export function Phishing({ s, onDone, reducedMotion }: MiniProps) {
         hudKey.current = key;
         setHud({ hit: st.scamsHit, missed: st.scamsMissed, saved: st.realSaved, shot: st.realShot });
       }
-      const x = ctxOf(canvas.current);
+      const x = hdCtx(canvas.current);
       if (x) draw(x, g, touch);
     },
     true,
@@ -733,7 +769,7 @@ export function Phishing({ s, onDone, reducedMotion }: MiniProps) {
         ]}
       />
       <div className="ph-canvas" style={{ '--ar': String(PW / PH) } as CSSProperties}>
-        <PixelCanvas
+        <Hd2Canvas
           canvasRef={canvas}
           width={PW}
           height={PH}
