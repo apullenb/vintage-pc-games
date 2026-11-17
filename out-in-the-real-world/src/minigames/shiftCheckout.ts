@@ -2,10 +2,13 @@
 // as it crosses. Then bag it: heavy things (cans, jugs, melons) at the BOTTOM, squishables (eggs,
 // bread, chips) on TOP. Scan the odd coupon, and when a SALE item rings up at full price, hit FIX
 // before you bag it. If the bagging spot backs up, the belt stops and the line grows.
-import { playerPerson, SHIRTS, SKINS, HAIRS, drawPerson, type Person } from '../art/people.ts';
-import { bevel, cached, disc, dither, grad, hash, INK, outlineRect, rect, shade, stipple, text, textWidth, type Ctx } from '../art/px.ts';
+import { playerPerson, SHIRTS, SKINS, HAIRS, type Person } from '../art/people.ts';
+import { blit, ctext, cyl, glare, otext, haze, label, layer, lin, pool, rgba, rr, sbox, shadow, vfill } from './hd2Kit.tsx';
+import { hdGrocery, shelfProducts } from './hd2Groceries.ts';
+import { person } from './hd2Person.ts';
+import { INK, text, textWidth, type Ctx } from '../art/px.ts';
 import { sfx } from '../ui/audio.ts';
-import { centered, hit, irnd, outlined, pick, rnd, shiftScore, type ModeEnv, type ShiftMode } from './shiftKit.ts';
+import { hit, irnd, pick, rnd, shiftScore, type ModeEnv, type ShiftMode } from './shiftKit.ts';
 
 type Kind = 'can' | 'milk' | 'melon' | 'soap' | 'spuds' | 'juice' | 'eggs' | 'bread' | 'chips' | 'tomato' | 'banana' | 'cupcake' | 'coupon';
 const HEAVY: Kind[] = ['can', 'milk', 'melon', 'soap', 'spuds', 'juice'];
@@ -43,111 +46,6 @@ interface Item {
 }
 
 const isHeavy = (k: Kind): boolean => HEAVY.includes(k);
-
-export function drawGrocery(x: Ctx, k: Kind, cx: number, by: number): void {
-  cx = Math.round(cx);
-  by = Math.round(by);
-  const R = (dx: number, dy: number, w: number, h: number, c: string) => rect(x, cx + dx, by + dy, w, h, c);
-  const O = (dx: number, dy: number, w: number, h: number) => R(dx - 1, dy - 1, w + 2, h + 2, INK);
-  switch (k) {
-    case 'can':
-      O(-3, -9, 7, 9);
-      R(-3, -9, 7, 9, '#d0d4dc');
-      R(-3, -7, 7, 5, '#d0302a');
-      R(-3, -5, 7, 1, '#f4f0e4');
-      R(-3, -9, 7, 1, '#f4f6f8');
-      break;
-    case 'milk':
-      O(-4, -11, 9, 11);
-      R(-4, -9, 9, 9, '#f4f6f8');
-      R(-3, -11, 5, 2, '#f4f6f8');
-      R(-2, -12, 3, 1, '#3f7fd8');
-      R(2, -8, 2, 4, '#c8ccd8');
-      R(-3, -5, 5, 3, '#3f7fd8');
-      break;
-    case 'melon':
-      O(-6, -9, 13, 9);
-      R(-6, -8, 13, 7, '#3c8a4a');
-      R(-5, -9, 11, 9, '#3c8a4a');
-      for (let i = -4; i <= 4; i += 3) R(i, -9, 1, 9, '#7ac85a');
-      R(-4, -8, 3, 1, '#9ae07a');
-      break;
-    case 'soap':
-      O(-4, -11, 8, 11);
-      R(-4, -9, 8, 9, '#ff8a1e');
-      R(-2, -11, 3, 2, '#3f7fd8');
-      R(-3, -6, 6, 3, '#f4f0e4');
-      R(2, -9, 2, 9, '#d06a10');
-      break;
-    case 'spuds':
-      O(-5, -9, 11, 9);
-      R(-5, -7, 11, 7, '#a8784a');
-      R(-4, -9, 9, 2, '#a8784a');
-      R(-1, -10, 3, 1, '#6a4a2a');
-      R(-3, -5, 2, 2, '#c8985a');
-      R(1, -4, 2, 2, '#c8985a');
-      break;
-    case 'juice':
-      O(-3, -11, 7, 11);
-      R(-3, -9, 7, 9, '#f2b632');
-      R(-2, -11, 5, 2, '#f4f0e4');
-      R(-2, -6, 5, 3, '#ff8a1e');
-      break;
-    case 'eggs':
-      O(-6, -6, 12, 6);
-      R(-6, -6, 12, 6, '#c8b89a');
-      for (let i = -5; i <= 3; i += 3) R(i, -8, 2, 2, '#f4ecd8');
-      R(-6, -3, 12, 1, '#a8987a');
-      break;
-    case 'bread':
-      O(-6, -7, 12, 7);
-      R(-6, -6, 12, 6, '#d8a060');
-      R(-5, -7, 10, 1, '#d8a060');
-      R(-5, -6, 10, 2, '#a86a30');
-      R(-3, -3, 6, 2, '#f4e8c8');
-      break;
-    case 'chips':
-      O(-4, -11, 9, 11);
-      R(-4, -10, 9, 10, '#e0503c');
-      R(-4, -11, 9, 1, '#f4f0e4');
-      R(-2, -7, 5, 4, '#f2c230');
-      R(-4, -1, 9, 1, '#a83a2a');
-      break;
-    case 'tomato':
-      O(-5, -6, 11, 6);
-      disc(x, cx - 3, by - 3, 2, '#e0402c');
-      disc(x, cx + 2, by - 3, 2, '#d0302a');
-      disc(x, cx, by - 5, 2, '#f05a3c');
-      R(0, -8, 1, 1, '#3caa6a');
-      R(-3, -6, 1, 1, '#3caa6a');
-      break;
-    case 'banana':
-      O(-6, -6, 12, 5);
-      R(-6, -4, 3, 3, '#f2d048');
-      R(-4, -3, 8, 3, '#f2d048');
-      R(3, -5, 3, 3, '#f2d048');
-      R(-4, -1, 8, 1, '#c8a020');
-      R(5, -6, 1, 1, '#6a4a2a');
-      break;
-    case 'cupcake':
-      O(-5, -8, 11, 8);
-      R(-5, -8, 11, 8, '#d8eef8');
-      R(-4, -6, 4, 3, '#ef7fae');
-      R(1, -6, 4, 3, '#ef7fae');
-      R(-4, -3, 4, 2, '#c8985a');
-      R(1, -3, 4, 2, '#c8985a');
-      break;
-    case 'coupon':
-      O(-6, -6, 13, 6);
-      R(-6, -6, 13, 6, '#f8f4e8');
-      R(-6, -6, 13, 1, '#3caa6a');
-      R(-6, -1, 13, 1, '#3caa6a');
-      text(x, '%', cx - 5, by - 5, '#3caa6a');
-      R(0, -4, 5, 1, '#8a8a9a');
-      R(0, -2, 4, 1, '#8a8a9a');
-      break;
-  }
-}
 
 function customer(): Person {
   return {
@@ -319,57 +217,96 @@ export function checkoutMode({ fx, level, look }: ModeEnv): ShiftMode {
   }
 
   const bg = (): HTMLCanvasElement =>
-    cached('shift-checkout-bg', 192, 108, (x) => {
-      grad(x, 0, 0, 192, 60, ['#e8e0c8', '#d8d0b8', '#c8c0a8']);
-      // shelves of groceries in the back
+    layer('hd-checkout-bg', 192, 108, (x) => {
+      // back wall of shelving, warm under fluorescents
+      vfill(x, 0, 0, 192, 60, ['#fbf3dc', '#e8dcbc', '#c9bb98']);
       for (const sy of [8, 24, 40]) {
-        rect(x, 0, sy + 11, 192, 2, '#8a7a6a');
-        for (let i = 0; i < 192; i += 4) {
-          const h = 5 + Math.floor(hash(i + sy * 7) * 6);
-          const col = ['#e0503c', '#3f7fd8', '#3caa6a', '#f2b632', '#9a5ad0', '#f4f0e4', '#ff8a1e'][Math.floor(hash(i * 3 + sy) * 7)];
-          rect(x, i, sy + 11 - h, 3, h, shade(col, 0.82));
-        }
+        // recessed shelf bay: darker at the back top, lit at the front lip
+        vfill(x, 0, sy - 1, 192, 13, ['#6a5c4c', '#9a8a72', '#c8b896']);
+        shelfProducts(x, 0, 192, sy + 11, sy * 13 + 7, ['#e0503c', '#3f7fd8', '#3caa6a', '#f2b632', '#9a5ad0', '#f4f0e4', '#ff8a1e'], 0.2);
+        sbox(x, -2, sy + 11, 196, 2.2, '#b8a88e', { r: 0.4, gloss: 0.5, outline: 'rgba(60,40,30,0.5)' });
+        vfill(x, 0, sy + 13.2, 192, 3, ['rgba(40,28,20,0.35)', 'rgba(40,28,20,0)']);
       }
-      stipple(x, 0, 0, 192, 60, '#000000', 0.08);
+      // aerial haze pushes the shelves back
+      haze(x, 0, 0, 192, 60, '#fff6e0', 0.28, 0.1);
+      // ceiling and its tubes
+      vfill(x, 0, 0, 192, 4, ['#cfc6b0', '#e8e0cc']);
+      for (const tx of [8, 72, 136]) {
+        sbox(x, tx, 0.6, 48, 1.8, '#fffef4', { r: 0.9, gloss: 0.6, outline: 'rgba(120,110,90,0.6)' });
+        pool(x, tx + 24, 3, 40, 22, '#fff4d0', 0.32);
+      }
       // lane light
-      rect(x, 60, 0, 1, 8, '#4a4a5a');
-      bevel(x, 52, 8, 18, 10, '#3caa6a');
-      text(x, '4', 59, 11, '#ffffff');
-      // the counter
-      rect(x, 0, 60, 192, 48, '#5a5a6a');
-      grad(x, 0, 72, 192, 36, ['#3c8a5a', '#2e6e48', '#24583a']);
-      rect(x, 0, 72, 192, 1, '#1c1424');
-      dither(x, 0, 86, 192, 2, '#24583a', '#3c8a5a');
-      text(x, 'FRESH FIELDS', 6, 94, '#d8f0c8');
-      // belt bed
-      rect(x, 0, 61, BELT_END + 2, 11, '#1c1424');
-      rect(x, 0, 62, BELT_END, 9, '#2a2a34');
+      cyl(x, 60, 0, 1.4, 8, '#5a5a6a');
+      sbox(x, 52, 8, 18, 10, '#2e9a5a', { r: 2, gloss: 0.5 });
+      pool(x, 61, 13, 14, 9, '#7cf08a', 0.35);
+      label(x, '4', 61, 13.3, 8, '#f4fff0', 'rgba(10,60,30,0.9)');
+      // the counter: steel lip, belt bed, laminate front
+      vfill(x, 0, 59.5, 192, 2.5, ['#f4f6fa', '#9aa2b0', '#5a6070']);
+      rr(x, -2, 61, BELT_END + 4, 11.5, 2);
+      x.fillStyle = '#1c1424';
+      x.fill();
+      vfill(x, 0, 62, BELT_END, 9, ['#4a4a58', '#2a2a34', '#1e1e26']);
+      vfill(x, 0, 72, 192, 36, ['#4cab70', '#2e7a4c', '#1e5434']);
+      vfill(x, 0, 72, 192, 1.6, ['#c8f0d0', 'rgba(60,140,90,0)']);
+      x.fillStyle = 'rgba(10,30,20,0.25)';
+      for (let i = 0; i < 192; i += 24) x.fillRect(i, 73, 0.5, 35);
+      // soft reflection of the store lights in the laminate
+      for (const tx of [8, 72, 136]) pool(x, tx + 24, 76, 22, 3, '#ffffff', 0.12);
+      vfill(x, 0, 86, 192, 2, ['rgba(20,50,30,0.5)', 'rgba(150,220,170,0.35)']);
+      label(x, 'FRESH FIELDS', 7, 96.5, 6.5, '#e6ffd8', 'rgba(10,40,20,0.85)', 'left', 900);
       // scanner glass
-      rect(x, LASER - 7, 62, 14, 9, '#3a5a6a');
-      dither(x, LASER - 7, 62, 14, 9, '#3a5a6a', '#4a7a8a');
-      outlineRect(x, LASER - 8, 61, 16, 11, '#8a92a4');
-      // bagging shelf
-      rect(x, BELT_END + 2, 70, 74, 2, '#8a92a4');
-      // register pole
-      rect(x, 135, 46, 3, 15, '#4a4a5a');
+      rr(x, LASER - 8, 61, 16, 11, 1.5);
+      x.fillStyle = '#9aa2b0';
+      x.fill();
+      vfill(x, LASER - 7, 62, 14, 9, ['#4a8a9a', '#2a5a6a', '#183a48']);
+      glare(x, LASER - 7, 62, 14, 9, 0.35);
+      // bagging shelf + register pole
+      vfill(x, BELT_END + 2, 69.5, 76, 2.5, ['#f4f6fa', '#9aa2b0', '#5a6070']);
+      cyl(x, 135, 46, 3, 15, '#5a5a6a', { spec: 0.4 });
     });
 
   function drawBag(x: Ctx, ox: number): void {
     const bx = BAG_X + ox;
+    shadow(x, bx + BAG_W / 2, BAG_BOT + 0.5, BAG_W * 0.6, 2.4, 0.4);
+    // back of the tote
+    rr(x, bx, BAG_TOP + 8, BAG_W, BAG_BOT - BAG_TOP - 8, 2);
+    x.fillStyle = 'rgba(40,110,80,0.35)';
+    x.fill();
     // contents
-    for (const it of items) if (it.st === 'bag') drawGrocery(x, it.kind, it.fx1 + ox, it.fy1);
-    // see-through tote
-    x.globalAlpha = 0.28;
-    rect(x, bx, BAG_TOP + 8, BAG_W, BAG_BOT - BAG_TOP - 8, '#c8e8d8');
-    x.globalAlpha = 1;
-    outlineRect(x, bx - 1, BAG_TOP + 7, BAG_W + 2, BAG_BOT - BAG_TOP - 6, INK);
-    outlineRect(x, bx, BAG_TOP + 8, BAG_W, BAG_BOT - BAG_TOP - 8, '#3caa6a');
+    for (const it of items) if (it.st === 'bag') hdGrocery(x, it.kind, it.fx1 + ox, it.fy1, false);
+    // see-through front with a sheen
+    rr(x, bx, BAG_TOP + 8, BAG_W, BAG_BOT - BAG_TOP - 8, 2);
+    x.fillStyle = lin(x, bx, 0, bx + BAG_W, 0, ['rgba(200,240,220,0.35)', 'rgba(200,240,220,0.1)', 'rgba(60,140,100,0.3)']);
+    x.fill();
+    x.lineWidth = 1.1;
+    x.strokeStyle = '#2e8a5a';
+    x.stroke();
+    x.lineWidth = 0.4;
+    x.strokeStyle = 'rgba(200,255,220,0.7)';
+    rr(x, bx + 0.8, BAG_TOP + 8.8, BAG_W - 1.6, BAG_BOT - BAG_TOP - 9.6, 1.5);
+    x.stroke();
+    glare(x, bx, BAG_TOP + 8, BAG_W, BAG_BOT - BAG_TOP - 8, 0.2);
     // handles
-    rect(x, bx + 5, BAG_TOP, 2, 8, '#3caa6a');
-    rect(x, bx + BAG_W - 7, BAG_TOP, 2, 8, '#3caa6a');
-    rect(x, bx + 5, BAG_TOP, BAG_W - 10, 2, '#3caa6a');
-    // layer divider + labels
-    for (let i = 2; i < BAG_W - 2; i += 3) rect(x, bx + i, BAG_TOP + 21, 1, 1, '#8ac8a8');
+    x.lineCap = 'round';
+    x.lineWidth = 1.6;
+    x.strokeStyle = '#2e8a5a';
+    x.beginPath();
+    x.moveTo(bx + 6, BAG_TOP + 8.5);
+    x.bezierCurveTo(bx + 6, BAG_TOP - 1.5, bx + BAG_W - 6, BAG_TOP - 1.5, bx + BAG_W - 6, BAG_TOP + 8.5);
+    x.stroke();
+    x.lineWidth = 0.5;
+    x.strokeStyle = 'rgba(190,255,215,0.7)';
+    x.stroke();
+    x.lineCap = 'butt';
+    // layer divider
+    x.setLineDash([1, 1.5]);
+    x.lineWidth = 0.5;
+    x.strokeStyle = 'rgba(160,230,200,0.8)';
+    x.beginPath();
+    x.moveTo(bx + 2, BAG_TOP + 21.5);
+    x.lineTo(bx + BAG_W - 2, BAG_TOP + 21.5);
+    x.stroke();
+    x.setLineDash([]);
   }
 
   return {
@@ -460,74 +397,99 @@ export function checkoutMode({ fx, level, look }: ModeEnv): ShiftMode {
       } else if (px < 118) scan();
     },
     draw(x, t) {
-      x.drawImage(bg(), 0, 0);
-      // belt treads
-      const off = Math.floor(belt) % 6;
-      for (let i = -6; i < BELT_END; i += 6) if (i + off < LASER - 8 || i + off > LASER + 7) rect(x, i + off, 63, 1, 7, '#3a3a46');
+      blit(x, bg(), 0, 0, 192, 108);
+      // belt treads, lit on top
+      const off = belt % 6;
+      for (let i = -6; i < BELT_END; i += 6) {
+        const bx = i + off;
+        if (bx < LASER - 8 || bx > LASER + 7) {
+          x.fillStyle = 'rgba(110,110,130,0.55)';
+          x.fillRect(bx, 63, 0.6, 7);
+          x.fillStyle = 'rgba(0,0,0,0.4)';
+          x.fillRect(bx + 0.6, 63, 0.5, 7);
+        }
+      }
       // you, behind the scanner
-      drawPerson(x, me, 74, 36, Math.floor(t * 2) % 2, false, { face: 1, clipY: 24, blink: Math.floor(t * 10) % 43 === 0 });
+      person(x, me, 74, 36, Math.floor(t * 2) % 2, false, { face: 1, clipY: 24, blink: Math.floor(t * 10) % 43 === 0 });
       // customer
       const cy = 35 + Math.round((1 - custIn) * 26);
-      drawPerson(x, cust, 170 + (bagOut > 0 ? Math.round((0.6 - bagOut) * 60) : 0), cy, Math.floor(t * 2) % 2, false, { face: -1, clipY: 60 - cy });
-      // register screen
-      rect(x, 119, 23, 36, 24, INK);
-      bevel(x, 120, 24, 34, 22, '#4a4a5a', false);
+      person(x, cust, 170 + (bagOut > 0 ? Math.round((0.6 - bagOut) * 60) : 0), cy, Math.floor(t * 2) % 2, false, { face: -1, clipY: 60 - cy });
+      // counter edge shadow under the people
+      vfill(x, 0, 60, 192, 2, ['rgba(20,10,30,0.25)', 'rgba(20,10,30,0)']);
+      // register monitor
+      shadow(x, 137, 47, 18, 3, 0.35);
+      sbox(x, 119, 23, 36, 24, '#4a4a5a', { r: 2.5, gloss: 0.3 });
       const warnBlink = screen.warn && Math.floor(t * 5) % 2 === 0;
-      rect(x, 122, 26, 30, 18, warnBlink ? '#3a1414' : '#0e2a1c');
+      rr(x, 121.5, 25.5, 31, 19, 1.4);
+      x.fillStyle = warnBlink ? lin(x, 0, 25, 0, 45, ['#5a1a18', '#2a0a0a']) : lin(x, 0, 25, 0, 45, ['#14402a', '#0a2016']);
+      x.fill();
       const fg = screen.warn ? '#ff7a5a' : '#7cf08a';
+      pool(x, 137, 34, 15, 9, fg, 0.22);
       text(x, screen.text, 137 - Math.floor(textWidth(screen.text) / 2), 28, fg);
       if (screen.sub) {
         const sub = screen.sub.length > 7 ? screen.sub.slice(0, 7) : screen.sub;
         text(x, sub, 137 - Math.floor(textWidth(sub) / 2), 35, screen.warn ? '#ffe27a' : '#5ac87a');
       }
-      // laser
+      x.fillStyle = 'rgba(0,0,0,0.18)';
+      for (let sy = 26; sy < 44; sy += 1) x.fillRect(122, sy + 0.5, 30, 0.25);
+      glare(x, 121.5, 25.5, 31, 19, 0.16);
+      // laser: a hot core with bloom on the belt
       const lc = laserFlash > 0 ? (laserGood ? '#7cf08a' : '#ff5a4a') : '#ff3a2a';
-      rect(x, LASER, 54, 1, 16, lc);
-      x.globalAlpha = 0.25 + 0.1 * Math.sin(t * 20);
-      rect(x, LASER - 2, 56, 5, 14, lc);
-      x.globalAlpha = 1;
+      const pulse = 0.75 + 0.25 * Math.sin(t * 20);
+      pool(x, LASER + 0.5, 62, 6, 10, lc, 0.5 * pulse);
+      pool(x, LASER + 0.5, 70, 10, 2.5, lc, 0.7);
+      x.fillStyle = lin(x, 0, 54, 0, 70, [rgba(lc, 0.2), rgba(lc, 1)]);
+      x.fillRect(LASER, 54, 1, 16);
+      x.fillStyle = 'rgba(255,240,230,0.9)';
+      x.fillRect(LASER + 0.35, 56, 0.3, 14);
       // bag (slides off when full)
       const bo = bagOut > 0 ? Math.round((0.6 - bagOut) * 80) : 0;
       drawBag(x, bo);
       // groceries
       for (const it of items) {
         if (it.st === 'bag') continue;
-        drawGrocery(x, it.kind, it.x, it.y);
+        hdGrocery(x, it.kind, it.x, it.y, it.st !== 'fly');
+        if (Math.abs(it.x - LASER) < 6 && it.st === 'belt') pool(x, LASER, it.y - 5, 5, 6, lc, 0.25);
         if (it.sale && it.st !== 'fly') {
           const lab = it.fixed ? 'OK' : 'SALE';
           const tw = textWidth(lab) + 2;
           const sx = Math.round(it.x - tw / 2);
           const sy = Math.round(it.y) - 19;
-          rect(x, sx - 1, sy - 1, tw + 2, 8, INK);
-          rect(x, sx, sy, tw, 6, it.fixed ? '#7cf08a' : '#f2d048');
+          sbox(x, sx - 1, sy - 1, tw + 2, 8, it.fixed ? '#7cf08a' : '#f2d048', { r: 1.5, gloss: 0.45 });
           text(x, lab, sx + 1, sy + 1, INK);
-          rect(x, Math.round(it.x), sy + 7, 1, 2, INK);
+          x.fillStyle = 'rgba(28,20,36,0.8)';
+          x.fillRect(it.x - 0.3, sy + 7, 0.6, 2);
         }
-        if (it.scanned && it.st === 'belt' && it.kind !== 'coupon') rect(x, Math.round(it.x) - 1, Math.round(it.y) + 1, 3, 1, '#7cf08a');
+        if (it.scanned && it.st === 'belt' && it.kind !== 'coupon') pool(x, it.x, it.y + 1, 3, 1.2, '#7cf08a', 0.8);
       }
       // bagging hint for the first few items
       const front = waiting()[0];
       if (front && front.st === 'wait') {
         if (shown < hintsFor || pt < 8) {
           const heavy = isHeavy(front.kind);
-          outlined(x, heavy ? 'HEAVY' : 'SOFT', 124, 49, heavy ? '#ffc89a' : '#bfe8ff');
-          outlined(x, heavy ? 'BOTTOM' : 'TOP', 124, 55, '#fff3c4');
+          otext(x, heavy ? 'HEAVY' : 'SOFT', 123, 48, heavy ? '#ffc89a' : '#bfe8ff');
+          otext(x, heavy ? 'BOTTOM' : 'TOP', 123, 55, '#fff3c4');
         }
-        const blink = Math.floor(t * 4) % 2;
-        if (blink) outlineRect(x, Math.round(front.x) - 7, BELT_Y - 13, 15, 15, '#ffe27a');
+        const blink = 0.55 + 0.45 * Math.sin(t * 12);
+        x.lineWidth = 0.8;
+        x.strokeStyle = rgba('#ffe27a', blink);
+        rr(x, front.x - 7, BELT_Y - 13, 15, 15, 2.5);
+        x.stroke();
+        pool(x, front.x, BELT_Y - 6, 9, 9, '#ffe27a', 0.18 * blink);
       }
       if (front && !front.hinted) {
         front.hinted = true;
         shown++;
       }
       // scan-window brackets
-      rect(x, LASER - WIN, 72, 1, 3, '#ff9a7a');
-      rect(x, LASER + WIN, 72, 1, 3, '#ff9a7a');
+      x.fillStyle = '#ff9a7a';
+      x.fillRect(LASER - WIN, 72, 0.8, 3);
+      x.fillRect(LASER + WIN, 72, 0.8, 3);
       if (stopped) {
         const b = Math.floor(t * 4) % 2;
-        if (b) centered(x, 'BELT STOPPED: BAG FASTER!', 70, 78, '#ffe27a');
-      } else if (pt > 0 && pt < 3) centered(x, 'SCAN ON THE RED LASER', 60, 78, '#fff3c4');
-      text(x, `$${total.toFixed(2)}`, 6, 101, '#fff3c4');
+        if (b) ctext(x, 'BELT STOPPED: BAG FASTER!', 70, 78, '#ffe27a');
+      } else if (pt > 0 && pt < 3) ctext(x, 'SCAN ON THE RED LASER', 60, 78, '#fff3c4');
+      otext(x, `$${total.toFixed(2)}`, 7, 100, '#fff3c4', 6.5);
     },
     hud: () => [
       { label: 'Bagged', value: bagged },
