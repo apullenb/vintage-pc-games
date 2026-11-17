@@ -1,11 +1,13 @@
 // Moving Day: pack the rental truck before it's due back (heavy on the bottom, fragile on top),
 // then drive it across town. Brake for the bumps: anything packed badly may break on the way.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { dot, INK, line, outlineRect, rect, type Ctx } from '../art/px.ts';
-import { drawPerson, playerPerson } from '../art/people.ts';
+import { INK, type Ctx } from '../art/px.ts';
+import { playerPerson } from '../art/people.ts';
+import { blit, Hd2Canvas, hdCtx, lin, pool, rad, rr, sbox, tint, vignette2 } from './hd2Kit.tsx';
+import { person as drawPerson } from './hd2Person.ts';
 import { bigText, burst, drawFloaters, drawParticles, once, outlined, rng, sound, soundInit, stepFloaters, stepParticles, type Floater, type Particle } from './cardsFx.ts';
-import { clamp01, ctxOf, MiniHud, PixelCanvas, useInput, useLoop, vignette, type Key, type MiniProps } from './kit.tsx';
-import { CELL, CX, CY, DCELL, drawBump, drawCity, drawNewPlace, drawRoad, drawSmallTruck, drawStreetside, drawTruck, driveSky, FLOOR, SMALL_BAY_W, itemSprite, packBackground, PH, PW, WEIGHT_COLOR, type BumpKind } from './movingArt.ts';
+import { clamp01, MiniHud, useInput, useLoop, type Key, type MiniProps } from './kit.tsx';
+import { CELL, CX, CY, DCELL, drawBump, drawItem, drawCity, drawNewPlace, drawRoad, drawSmallTruck, drawStreetside, drawTruck, driveSky, FLOOR, SMALL_BAY_W, itemSprite, packBackground, PH, PW, WEIGHT_COLOR, type BumpKind } from './movingArt.ts';
 import { anyFit, assess, COLS, dims, fits, jolt, landRow, movingScore, pickItems, preview, ROWS, type ItemDef, type Placed } from './movingLogic.ts';
 import './moving.css';
 
@@ -318,16 +320,22 @@ export function Moving({ s, onDone, reducedMotion }: MiniProps) {
 
   // ---------- drawing ----------
   function draw(st: typeof g.current): void {
-    const x = ctxOf(canvas.current);
+    const x = hdCtx(canvas.current);
     if (!x) return;
     x.save();
-    if (st.shake > 0) x.translate(Math.round((Math.random() - 0.5) * 4), Math.round((Math.random() - 0.5) * 3));
+    if (st.shake > 0) x.translate((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3);
     if (st.phase === 'drive' || st.phase === 'arrive' || st.phase === 'done') drawDrive(x, st);
     else drawPack(x, st);
     drawParticles(x, st.ps);
     drawFloaters(x, st.fl);
     x.restore();
-    vignette(x, PW, PH, 0.22);
+    vignette2(x, PW, PH, 0.38);
+  }
+  function hl(x: Ctx, px: number, py: number, w: number, h: number, c: string): void {
+    x.lineWidth = 0.9;
+    x.strokeStyle = c;
+    rr(x, px, py, w, h, 1.5);
+    x.stroke();
   }
 
   function itemXY(p: Placed): [number, number] {
@@ -335,33 +343,17 @@ export function Moving({ s, onDone, reducedMotion }: MiniProps) {
   }
 
   function drawPack(x: Ctx, st: typeof g.current): void {
-    x.drawImage(packBackground(), 0, 0);
-    // late-morning sun: a few slow light rays fanning down from it
-    if (!reducedMotion) {
-      x.save();
-      x.fillStyle = '#fff4c8';
-      for (let k = 0; k < 4; k++) {
-        const a = 2.2 + k * 0.2 + Math.sin(st.time * 0.5 + k) * 0.03;
-        x.globalAlpha = 0.08 + 0.03 * Math.sin(st.time * 1.3 + k * 2);
-        x.beginPath();
-        x.moveTo(176, 14);
-        x.lineTo(176 + Math.cos(a) * 260, 14 + Math.sin(a) * 260);
-        x.lineTo(176 + Math.cos(a + 0.07) * 260, 14 + Math.sin(a + 0.07) * 260);
-        x.closePath();
-        x.fill();
-      }
-      x.restore();
-    }
+    blit(x, packBackground(), 0, 0, PW, PH);
     drawTruck(x, 0, 0, 0);
     const risk = assess(st.placed);
     const blink = Math.floor(st.time * 5) % 2 === 0;
     for (const p of st.placed) {
       let [px, py] = itemXY(p);
       const wob = risk.wobbly.includes(p);
-      if (wob && !reducedMotion) px += Math.round(Math.sin(st.time * 18));
-      x.drawImage(itemSprite(p.def, CELL, p.w !== p.def.w), px, py);
-      if (risk.crushed.includes(p) && blink) outlineRect(x, px - 1, py - 1, p.w * CELL + 2, p.h * CELL + 2, '#ff4a3a');
-      if (wob && blink) outlineRect(x, px - 1, py - 1, p.w * CELL + 2, p.h * CELL + 2, '#ffb04a');
+      if (wob && !reducedMotion) px += Math.sin(st.time * 18);
+      drawItem(x, itemSprite(p.def, CELL, p.w !== p.def.w), px, py);
+      if (risk.crushed.includes(p) && blink) hl(x, px - 1, py - 1, p.w * CELL + 2, p.h * CELL + 2, '#ff4a3a');
+      if (wob && blink) hl(x, px - 1, py - 1, p.w * CELL + 2, p.h * CELL + 2, '#ffb04a');
       if (risk.crushed.includes(p)) outlined(x, '!', px + p.w * CELL - 4, py + 1, '#ff4a3a');
     }
     // ghost + drop guide
@@ -374,58 +366,102 @@ export function Moving({ s, onDone, reducedMotion }: MiniProps) {
       const gx = CX + st.col * CELL;
       const gy = FLOOR - (row + h) * CELL;
       const col = !ok || st.nofit > 0 ? '#ff4a3a' : pv.crush.length ? '#ff8a3a' : pv.wobbly ? '#ffb04a' : '#ffffff';
-      for (let yy = CY; yy < gy; yy += 3) {
-        dot(x, gx, yy, 'rgba(255,255,255,0.35)');
-        dot(x, gx + w * CELL - 1, yy, 'rgba(255,255,255,0.35)');
-      }
+      // the drop column, lit like a shaft of sun into the bay
+      x.save();
+      x.globalCompositeOperation = 'lighter';
+      x.fillStyle = lin(x, 0, CY, 0, gy, ['rgba(255,244,200,0.04)', 'rgba(255,244,200,0.16)']);
+      x.fillRect(gx, CY, w * CELL, gy - CY);
+      x.restore();
       x.globalAlpha = 0.55 + 0.15 * Math.sin(st.time * 8);
-      x.drawImage(itemSprite(d, CELL, st.rot), gx, gy);
+      drawItem(x, itemSprite(d, CELL, st.rot), gx, gy, 0.8);
       x.globalAlpha = 1;
-      if (blink || ok) outlineRect(x, gx - 1, gy - 1, w * CELL + 2, h * CELL + 2, col);
+      if (blink || ok) hl(x, gx - 1, gy - 1, w * CELL + 2, h * CELL + 2, col);
       if (!ok) {
-        line(x, gx, gy, gx + w * CELL - 1, gy + h * CELL - 1, '#ff4a3a');
-        line(x, gx + w * CELL - 1, gy, gx, gy + h * CELL - 1, '#ff4a3a');
+        x.save();
+        x.lineCap = 'round';
+        x.lineWidth = 1.2;
+        x.strokeStyle = '#ff4a3a';
+        x.beginPath();
+        x.moveTo(gx + 1, gy + 1);
+        x.lineTo(gx + w * CELL - 1, gy + h * CELL - 1);
+        x.moveTo(gx + w * CELL - 1, gy + 1);
+        x.lineTo(gx + 1, gy + h * CELL - 1);
+        x.stroke();
+        x.restore();
       }
       for (const q of pv.crush) {
         const [qx, qy] = itemXY(q);
-        if (blink) outlineRect(x, qx - 1, qy - 1, q.w * CELL + 2, q.h * CELL + 2, '#ff4a3a');
+        if (blink) hl(x, qx - 1, qy - 1, q.w * CELL + 2, q.h * CELL + 2, '#ff4a3a');
       }
       // arrow over the drop columns
-      const ay = CY - 13 + Math.round(Math.sin(st.time * 6));
-      const ax = gx + Math.floor((w * CELL) / 2);
-      for (let j = 0; j < 4; j++) rect(x, ax - 3 + j, ay + j, 7 - j * 2, 1, col === '#ffffff' ? '#fff36a' : col);
-      rect(x, ax - 1, ay - 3, 3, 3, col === '#ffffff' ? '#fff36a' : col);
+      const ay = CY - 13 + Math.sin(st.time * 6);
+      const ax = gx + (w * CELL) / 2;
+      const ac = col === '#ffffff' ? '#fff36a' : col;
+      pool(x, ax, ay + 1, 6, 5, ac, 0.4);
+      x.beginPath();
+      x.moveTo(ax - 1.4, ay - 3);
+      x.lineTo(ax + 1.4, ay - 3);
+      x.lineTo(ax + 1.4, ay);
+      x.lineTo(ax + 3.6, ay);
+      x.lineTo(ax, ay + 4);
+      x.lineTo(ax - 3.6, ay);
+      x.lineTo(ax - 1.4, ay);
+      x.closePath();
+      x.lineJoin = 'round';
+      x.lineWidth = 0.8;
+      x.strokeStyle = INK;
+      x.stroke();
+      x.fillStyle = lin(x, 0, ay - 3, 0, ay + 4, [tint(ac, 1.3), ac]);
+      x.fill();
       // tag: name + weight
       const tag = `${d.name.toUpperCase()}`;
       const tw = tag.length * 4 + 3;
       const tx = Math.max(1, Math.min(PW - tw - 1, ax - tw / 2));
-      rect(x, tx, 1, tw, 8, INK);
-      rect(x, tx + 1, 2, tw - 2, 6, WEIGHT_COLOR[d.weight]);
+      sbox(x, tx, 1, tw, 8, WEIGHT_COLOR[d.weight], { r: 2, gloss: 0.5, lw: 0.7 });
       outlined(x, tag, tx + 2, 2, '#ffffff');
       if (pv.crush.length && blink) outlined(x, 'WILL CRUSH!', ax - 21, CY + 2, '#ff8a3a');
       else if (pv.wobbly && blink) outlined(x, 'TOP-HEAVY!', ax - 19, CY + 2, '#ffb04a');
     }
     if (st.falling) {
       const f = st.falling;
-      x.drawImage(itemSprite(f.p.def, CELL, f.p.w !== f.p.def.w), CX + f.p.col * CELL, Math.round(f.y));
+      drawItem(x, itemSprite(f.p.def, CELL, f.p.w !== f.p.def.w), CX + f.p.col * CELL, f.y);
     }
     // curb
     drawCurb(x, st);
     // player at the old door, heaving when something gets loaded
     const fr = st.heave > 0 ? 1 : Math.floor(st.time * 2) % 2;
     drawPerson(x, person, 13, CURB_Y - 30 - (st.heave > 0.15 ? 2 : 0), fr, st.heave > 0, { face: 1 });
+    // sun shafts slanting in from the upper right, over everything
+    x.save();
+    x.globalCompositeOperation = 'lighter';
+    for (let k = 0; k < 4; k++) {
+      const a = 2.2 + k * 0.2 + (reducedMotion ? 0 : Math.sin(st.time * 0.5 + k) * 0.03);
+      const al = 0.07 + (reducedMotion ? 0 : 0.03 * Math.sin(st.time * 1.3 + k * 2));
+      const ex = 176 + Math.cos(a) * 260;
+      const ey = 14 + Math.sin(a) * 260;
+      const ex2 = 176 + Math.cos(a + 0.08) * 260;
+      const ey2 = 14 + Math.sin(a + 0.08) * 260;
+      x.beginPath();
+      x.moveTo(176, 14);
+      x.lineTo(ex, ey);
+      x.lineTo(ex2, ey2);
+      x.closePath();
+      x.fillStyle = rad(x, 176, 14, 0, 220, [`rgba(255,244,200,${(al * 2.2).toFixed(3)})`, `rgba(255,244,200,${al.toFixed(3)})`, 'rgba(255,244,200,0)']);
+      x.fill();
+    }
+    x.restore();
     // drag preview
     if (st.drag && st.drag.fromCurb && st.drag.y > FLOOR + 6 && d) {
-      x.globalAlpha = 0.85;
       const [w, h] = curDims();
-      x.drawImage(itemSprite(d, CELL, st.rot), Math.round(st.drag.x - (w * CELL) / 2), Math.round(st.drag.y - h * CELL));
-      x.globalAlpha = 1;
+      drawItem(x, itemSprite(d, CELL, st.rot), st.drag.x - (w * CELL) / 2, st.drag.y - h * CELL, 0.85);
     }
     // clock bar across the truck roof
     if (st.phase === 'pack' || st.phase === 'count') {
       const frac = clamp01(st.clock / CLOCK);
-      rect(x, CX, CY - 4, 90, 2, '#3a3a44');
-      rect(x, CX, CY - 4, Math.round(90 * frac), 2, frac > 0.35 ? '#3caa6a' : frac > 0.15 ? '#f2b632' : blink ? '#ff4a3a' : '#a83a2a');
+      rr(x, CX, CY - 4.4, 90, 2.8, 1.4);
+      x.fillStyle = '#3a3a44';
+      x.fill();
+      if (frac > 0.01) sbox(x, CX, CY - 4.4, Math.max(2.8, 90 * frac), 2.8, frac > 0.35 ? '#3caa6a' : frac > 0.15 ? '#f2b632' : blink ? '#ff4a3a' : '#a83a2a', { r: 1.4, gloss: 0.6, outline: null });
     }
     if (st.phase === 'count') {
       x.fillStyle = 'rgba(18,14,31,0.45)';
@@ -459,20 +495,16 @@ export function Moving({ s, onDone, reducedMotion }: MiniProps) {
     const lay = curbLayout(st);
     lay.forEach((o, i) => {
       const selected = i === st.sel && st.phase === 'pack';
-      const lift = selected ? 2 + Math.round(Math.sin(st.time * 6)) : 0;
-      x.fillStyle = 'rgba(40,30,40,0.25)';
-      x.fillRect(o.x, CURB_Y - 1, o.w, 2);
-      x.drawImage(itemSprite(o.d, o.s, false), o.x, CURB_Y - o.h - lift);
-      if (selected) {
-        const c = Math.floor(st.time * 4) % 2 ? '#fff36a' : '#f2b632';
-        outlineRect(x, o.x - 2, CURB_Y - o.h - lift - 2, o.w + 4, o.h + 4, c);
-      }
+      const lift = selected ? 2 + Math.sin(st.time * 6) : 0;
+      if (selected) pool(x, o.x + o.w / 2, CURB_Y - o.h / 2, o.w * 0.8 + 3, o.h * 0.8 + 3, '#fff36a', 0.35);
+      drawItem(x, itemSprite(o.d, o.s, false), o.x, CURB_Y - o.h - lift);
+      if (selected) hl(x, o.x - 2, CURB_Y - o.h - lift - 2, o.w + 4, o.h + 4, Math.floor(st.time * 4) % 2 ? '#fff36a' : '#f2b632');
     });
   }
 
   function drawDrive(x: Ctx, st: typeof g.current): void {
     const scroll = st.dist;
-    x.drawImage(driveSky(), 0, 0);
+    blit(x, driveSky(), 0, 0, PW, 80);
     drawCity(x, scroll * 0.2);
     drawStreetside(x, scroll * 0.6);
     drawRoad(x, scroll);
@@ -488,13 +520,19 @@ export function Moving({ s, onDone, reducedMotion }: MiniProps) {
     for (const p of st.placed) {
       const hop = st.hop.get(p) ?? 0;
       const px = bay.cx + p.col * DCELL;
-      const py = bay.cy + (ROWS - p.row - p.h) * DCELL - Math.round(hop * Math.abs(Math.sin(st.time * 30)));
-      x.drawImage(itemSprite(p.def, DCELL, p.w !== p.def.w, !!p.broken), px, py);
+      const py = bay.cy + (ROWS - p.row - p.h) * DCELL - hop * Math.abs(Math.sin(st.time * 30));
+      drawItem(x, itemSprite(p.def, DCELL, p.w !== p.def.w, !!p.broken), px, py);
       if (p.broken) {
         const w = p.w * DCELL;
         const h = p.h * DCELL;
-        line(x, px, py, px + w - 1, py + h - 1, '#ff4a3a');
-        line(x, px + w - 1, py, px, py + h - 1, '#ff4a3a');
+        x.lineWidth = 0.8;
+        x.strokeStyle = '#ff4a3a';
+        x.beginPath();
+        x.moveTo(px + 0.5, py + 0.5);
+        x.lineTo(px + w - 0.5, py + h - 0.5);
+        x.moveTo(px + w - 0.5, py + 0.5);
+        x.lineTo(px + 0.5, py + h - 0.5);
+        x.stroke();
       }
     }
     // driver in the cab window
@@ -509,10 +547,11 @@ export function Moving({ s, onDone, reducedMotion }: MiniProps) {
     }
     // speedometer
     const sp = Math.round(st.speed / 2.2);
-    rect(x, 4, 113, 46, 13, INK);
-    rect(x, 5, 114, 44, 11, '#2a2a3a');
-    rect(x, 6, 121, Math.round(42 * clamp01(st.speed / CRUISE)), 3, st.speed > HARD ? '#ff6a4a' : '#7ff0c0');
-    rect(x, 6 + Math.round(42 * (HARD / CRUISE)), 120, 1, 5, '#f6efdc');
+    sbox(x, 4, 113, 46, 13, '#2a2a3a', { r: 2.5, gloss: 0.2, lw: 0.7 });
+    const sf = 42 * clamp01(st.speed / CRUISE);
+    if (sf > 0.5) sbox(x, 6, 121, Math.max(3, sf), 3, st.speed > HARD ? '#ff6a4a' : '#7ff0c0', { r: 1.5, gloss: 0.6, outline: null });
+    x.fillStyle = '#f6efdc';
+    x.fillRect(6 + 42 * (HARD / CRUISE), 120, 0.7, 5);
     outlined(x, `${sp} MPH`, 7, 114, '#f6efdc');
     // upcoming bump warning
     const next = st.bumps.find((b) => !b.hit);
@@ -630,7 +669,7 @@ export function Moving({ s, onDone, reducedMotion }: MiniProps) {
         </MiniHud>
       )}
       <div className="mv-wrap">
-        <PixelCanvas canvasRef={canvas} width={PW} height={PH} onPointer={onPointer} />
+        <Hd2Canvas canvasRef={canvas} width={PW} height={PH} onPointer={onPointer} />
       </div>
       {driving ? (
         <div className="touchpad mv-pad">

@@ -1,6 +1,7 @@
-// Moving Day pixel art: furniture and boxes at any cell size, the rental truck, the street.
-import { bevel, cached, disc, dither, dot, grad, hash, INK, line, outlineRect, rect, shade, stipple, text, type Ctx } from '../art/px.ts';
+// Moving Day art: furniture and boxes at any cell size, the rental truck, the street.
+import { bevel, cached, disc, dot, grad, hash, INK, line, outlineRect, rect, shade, text, type Ctx } from '../art/px.ts';
 import { COLS, ROWS, type ItemDef, type Weight } from './movingLogic.ts';
+import { ball, cyl, drawSprite, ell, glare, haze, hfill, layer, lin, pool, ptext, rad, rr, sbox, shadow, smoothSprite, tint, vfill } from './hd2Kit.tsx';
 
 export const WEIGHT_COLOR: Record<Weight, string> = { heavy: '#4a4a6a', medium: '#b08a5a', light: '#5ab0e0', fragile: '#e0503c' };
 
@@ -238,6 +239,19 @@ function withBadge(src: HTMLCanvasElement, d: ItemDef, s: number, rot: boolean, 
   });
 }
 
+// Draws an item sprite smoothed (Scale2x twice) and form-shaded, at its natural logical size.
+const SMOOTH = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+export function drawItem(x: Ctx, src: HTMLCanvasElement, px: number, py: number, alpha = 1): void {
+  let c = SMOOTH.get(src);
+  if (!c) {
+    c = smoothSprite(`mv|${SMOOTH_N++}`, src.width, src.height, (g) => g.drawImage(src, 0, 0), { shade: 'box', pad: 0 });
+    SMOOTH.set(src, c);
+  }
+  shadow(x, px + src.width / 2, py + src.height, src.width * 0.55, 1.4, 0.3 * alpha);
+  drawSprite(x, c, px, py, 0, alpha);
+}
+let SMOOTH_N = 0;
+
 // ---------- the packing scene ----------
 export const CELL = 10;
 export const CX = 50; // cargo interior origin (left)
@@ -246,43 +260,69 @@ export const FLOOR = CY + ROWS * CELL;
 export const PW = 192;
 export const PH = 128;
 
+function skyline(x: Ctx, base: number, seed: number, step: number, c: string): void {
+  for (let i = 0; i < 14; i++) {
+    const bx = i * step - 4;
+    const bh = 18 + Math.floor(hash(i * 3 + seed) * 22);
+    hfill(x, bx, base - bh, step - 2, bh, [tint(c, 1.12), c, tint(c, 0.85)]);
+    x.fillStyle = 'rgba(230,240,255,0.5)';
+    for (let wy = base + 2 - bh; wy < base - 2; wy += 4) for (let wx = bx + 2; wx < bx + step - 4; wx += 3) x.fillRect(wx, wy, 1, 1.4);
+  }
+}
+function tree(x: Ctx, tx: number, ty: number, r: number): void {
+  shadow(x, tx + 1, ty + r + 9, r * 0.9, 1.6, 0.3);
+  cyl(x, tx, ty + r - 2, 2, 12, '#6a4a2a', { spec: 0.2 });
+  for (const [dx, dy, k] of [[-r * 0.5, 0, 0.8], [r * 0.5, 0.5, 0.75], [0, -r * 0.45, 1]] as const) ball(x, tx + 1 + dx, ty + dy, r * 0.75, k > 0.9 ? '#5aaa6a' : '#3e8a4e', r * 0.7, 0.25);
+}
+
 export function packBackground(): HTMLCanvasElement {
-  return cached('mv-pack-bg', PW, PH, (x) => {
-    // morning sky + far skyline
-    grad(x, 0, 0, PW, 70, ['#7ab8e8', '#a8d4f0', '#f2dcb8']);
-    disc(x, 176, 14, 7, '#fff4c8');
-    disc(x, 176, 14, 5, '#ffffff');
-    for (let i = 0; i < 12; i++) {
-      const bx = i * 17 - 4;
-      const bh = 18 + Math.floor(hash(i * 3) * 22);
-      rect(x, bx, 72 - bh, 15, bh, '#9ab0c8');
-      for (let wy = 74 - bh; wy < 70; wy += 4) for (let wx = bx + 2; wx < bx + 13; wx += 3) dot(x, wx, wy, '#c8d8e8');
-    }
+  return layer('mv-pack-bg-hd', PW, PH, (x) => {
+    // late-morning sky with a warm horizon
+    vfill(x, 0, 0, PW, 74, ['#5aa0e0', '#9acff0', '#f6e0bc']);
+    pool(x, 176, 14, 60, 50, '#fff0c0', 0.45);
+    ell(x, 176, 14, 7, 7);
+    x.fillStyle = rad(x, 176, 14, 0, 7, ['#ffffff', '#fffbe8', '#fff0c0']);
+    x.fill();
+    pool(x, 176, 14, 14, 14, '#ffffff', 0.7);
+    // far skyline, hazed by distance
+    skyline(x, 72, 0, 17, '#9ab0c8');
+    haze(x, 0, 40, PW, 74, '#e8eef6', 0.15, 0.55);
+    // across the street: a low garden wall and hedges behind the truck
+    vfill(x, 0, 72, PW, 28, ['#c8d0d8', '#a8b0b8']);
+    for (let i = 0; i < PW; i += 9) ball(x, i + 4, 82, 6, i % 18 ? '#4a8a52' : '#5a9a5e', 5, 0.15);
+    vfill(x, 0, 86, PW, 14, ['#b88a6a', '#9a6a4e', '#7a4e38']);
+    x.fillStyle = 'rgba(60,30,20,0.3)';
+    for (let y = 89; y < 100; y += 3) x.fillRect(0, y, PW, 0.5);
+    sbox(x, -1, 85, PW + 2, 2, '#d8ccb8', { r: 0.5, gloss: 0.5, outline: null });
+    haze(x, 0, 72, PW, 100, '#e8eef6', 0.35, 0.1);
     // trees
-    for (const tx of [60, 112, 150]) {
-      rect(x, tx, 60, 2, 12, '#6a4a2a');
-      disc(x, tx + 1, 56, 7, '#4a9a5a');
-      disc(x, tx - 1, 54, 4, '#6aba6a');
-    }
-    // old apartment (left)
-    rect(x, 0, 22, 40, 78, '#b0604a');
-    for (let y = 24; y < 100; y += 3) rect(x, 0, y, 40, 1, '#a0543e');
+    for (const tx of [60, 112, 150]) tree(x, tx, 56, 8);
+    // old apartment (left): shaded brick with recessed windows
+    hfill(x, 0, 22, 40, 78, ['#c8705a', '#b0604a', '#8a4636']);
+    x.fillStyle = 'rgba(90,30,20,0.25)';
+    for (let y = 24; y < 100; y += 3) x.fillRect(0, y, 40, 0.5);
+    vfill(x, 0, 22, 40, 2, ['#e8dcc0', '#a89878']);
     for (const [wx, wy] of [[4, 28], [22, 28], [4, 48], [22, 48]]) {
-      rect(x, wx, wy, 12, 12, '#f4ead0');
-      rect(x, wx + 1, wy + 1, 10, 10, '#5a8ab0');
-      rect(x, wx + 6, wy + 1, 1, 10, '#f4ead0');
+      sbox(x, wx, wy, 12, 12, '#f4ead0', { r: 0.6, gloss: 0.3 });
+      vfill(x, wx + 1, wy + 1, 10, 10, ['#9ad0f0', '#5a8ab0', '#3a6a90']);
+      glare(x, wx + 1, wy + 1, 10, 10, 0.4);
+      x.fillStyle = '#f4ead0';
+      x.fillRect(wx + 5.8, wy + 1, 0.6, 10);
+      vfill(x, wx + 1, wy + 1, 10, 2, ['rgba(0,0,0,0.3)', 'rgba(0,0,0,0)']);
     }
-    rect(x, 12, 70, 16, 30, '#5a3a2a');
-    rect(x, 14, 72, 12, 28, '#3a2418');
-    rect(x, 10, 68, 20, 2, '#e8dcc0');
-    dot(x, 24, 86, '#f2c84a');
+    sbox(x, 12, 70, 16, 30, '#5a3a2a', { r: 0.6, gloss: 0.2 });
+    vfill(x, 14, 72, 12, 28, ['#2a1810', '#4a3020']);
+    sbox(x, 10, 68, 20, 2.4, '#e8dcc0', { r: 0.6, gloss: 0.5 });
+    ball(x, 24, 86, 0.8, '#f2c84a', 0.8, 0.8);
+    hfill(x, 38, 22, 4, 78, ['rgba(20,10,20,0.35)', 'rgba(20,10,20,0)']);
     // street + curb + sidewalk
-    rect(x, 0, 100, PW, 12, '#4a4a58');
-    for (let i = 0; i < PW; i += 14) rect(x, i, 105, 7, 1, '#d8c84a');
-    rect(x, 0, 111, PW, 2, '#b8b4a8');
-    rect(x, 0, 113, PW, 15, '#d4cfc0');
-    for (let i = 0; i < PW; i += 16) rect(x, i, 113, 1, 15, '#bcb6a6');
-    stipple(x, 0, 120, PW, 8, '#c4bfb0', 0.3);
+    vfill(x, 0, 100, PW, 12, ['#3a3a48', '#55556a', '#4a4a58']);
+    x.fillStyle = '#e8d84a';
+    for (let i = 0; i < PW; i += 14) x.fillRect(i, 105, 7, 0.9);
+    vfill(x, 0, 111, PW, 2, ['#e0dcd0', '#9a968a']);
+    vfill(x, 0, 113, PW, 15, ['#e4dfd0', '#d0cab8', '#bcb6a6']);
+    x.fillStyle = 'rgba(120,110,95,0.4)';
+    for (let i = 0; i < PW; i += 16) x.fillRect(i, 113, 0.5, 15);
   });
 }
 
@@ -291,50 +331,83 @@ export function drawTruck(x: Ctx, ox: number, oy: number, t: number, bounce = 0)
   const y0 = oy + bounce;
   const BW = COLS * CELL;
   const BH = ROWS * CELL;
-  // cargo bay interior
-  rect(x, ox + CX - 4, y0 + CY - 4, BW + 8, 4, '#e8e8ee'); // roof
-  rect(x, ox + CX - 4, y0 + CY - 4, BW + 8, 1, '#ffffff');
-  rect(x, ox + CX - 4, y0 + CY, 4, BH, '#c8c8d4'); // back frame
-  rect(x, ox + CX - 3, y0 + CY, 1, BH, '#e8e8ee');
-  rect(x, ox + CX + BW, y0 + CY, 4, BH, '#c8c8d4'); // front wall
-  grad(x, ox + CX, y0 + CY, BW, BH, ['#5a5068', '#4a4258']);
-  for (let i = 1; i < COLS; i++) rect(x, ox + CX + i * CELL, y0 + CY, 1, BH, 'rgba(255,255,255,0.06)');
-  for (let j = 1; j < ROWS; j++) rect(x, ox + CX, y0 + CY + j * CELL, BW, 1, 'rgba(255,255,255,0.06)');
+  shadow(x, ox + CX + BW / 2 + 14, oy + FLOOR + 15, BW * 0.75, 3.5, 0.5);
+  // cargo bay interior: deep, darker toward the back wall and corners
+  vfill(x, ox + CX, y0 + CY, BW, BH, ['#3a3248', '#5a5068', '#4a4258']);
+  hfill(x, ox + CX, y0 + CY, BW, BH, ['rgba(0,0,0,0.3)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.25)']);
+  x.fillStyle = 'rgba(255,255,255,0.05)';
+  for (let i = 1; i < COLS; i++) x.fillRect(ox + CX + i * CELL, y0 + CY, 0.5, BH);
+  for (let j = 1; j < ROWS; j++) x.fillRect(ox + CX, y0 + CY + j * CELL, BW, 0.5);
   // tie-down rails
-  rect(x, ox + CX, y0 + CY + 20, BW, 1, 'rgba(0,0,0,0.25)');
-  rect(x, ox + CX, y0 + CY + 40, BW, 1, 'rgba(0,0,0,0.25)');
+  for (const ry of [20, 40]) vfill(x, ox + CX, y0 + CY + ry - 0.5, BW, 1.4, ['rgba(160,160,180,0.35)', 'rgba(0,0,0,0.35)']);
+  // roof + frames
+  sbox(x, ox + CX - 4, y0 + CY - 4, BW + 8, 4, '#e8e8ee', { r: 1, gloss: 0.6 });
+  x.fillStyle = '#f2b632';
+  x.fillRect(ox + CX - 4, y0 + CY - 4, BW + 8, 0.7);
+  cyl(x, ox + CX - 4, y0 + CY, 4, BH, '#c8c8d4', { spec: 0.5 });
+  cyl(x, ox + CX + BW, y0 + CY, 4, BH, '#b8b8c8', { spec: 0.4 });
+  vfill(x, ox + CX, y0 + CY, BW, 4, ['rgba(0,0,0,0.45)', 'rgba(0,0,0,0)']);
   // floor + chassis + loading ramp
-  rect(x, ox + CX - 4, y0 + FLOOR, BW + 40, 4, '#8a8a98');
-  rect(x, ox + CX - 4, y0 + FLOOR, BW + 40, 1, '#b8b8c4');
-  rect(x, ox + CX - 2, y0 + FLOOR + 4, BW + 36, 3, '#2a2a33');
-  line(x, ox + CX - 4, y0 + FLOOR + 1, ox + CX - 14, y0 + FLOOR + 21, '#9a9aa8');
-  line(x, ox + CX - 3, y0 + FLOOR + 1, ox + CX - 13, y0 + FLOOR + 21, '#6a6a78');
-  rect(x, ox + CX - 4, y0 + CY - 4, BW + 8, 1, '#f2b632');
-  rect(x, ox + CX - 4, y0 + CY - 1, BW + 8, 1, '#b8b8c4');
-  // cab: hood, windshield, door
+  sbox(x, ox + CX - 4, y0 + FLOOR, BW + 40, 4, '#8a8a98', { r: 0.6, gloss: 0.5 });
+  vfill(x, ox + CX - 2, y0 + FLOOR + 4, BW + 36, 3, ['#2a2a33', '#16161c']);
+  x.save();
+  x.lineCap = 'round';
+  x.lineWidth = 1.8;
+  x.strokeStyle = '#6a6a78';
+  x.beginPath();
+  x.moveTo(ox + CX - 3.5, y0 + FLOOR + 1);
+  x.lineTo(ox + CX - 13.5, y0 + FLOOR + 21);
+  x.stroke();
+  x.lineWidth = 0.6;
+  x.strokeStyle = '#d8d8e4';
+  x.stroke();
+  x.restore();
+  // cab: glossy red with a sky-reflecting windshield
   const cx0 = ox + CX + BW + 4;
-  rect(x, cx0, y0 + 50, 22, 40, '#e0503c');
-  rect(x, cx0 + 22, y0 + 64, 10, 26, '#e0503c');
-  rect(x, cx0, y0 + 50, 22, 1, '#f27a64');
-  rect(x, cx0 + 22, y0 + 64, 10, 1, '#f27a64');
-  rect(x, cx0 + 3, y0 + 54, 13, 11, '#9ad0f0');
-  rect(x, cx0 + 3, y0 + 54, 13, 1, '#ffffff');
-  line(x, cx0 + 4, y0 + 63, cx0 + 9, y0 + 56, '#d4ecf8');
-  for (let j = 0; j < 13; j++) dot(x, cx0 + 17 + Math.floor(j / 3), y0 + 52 + j, '#9ad0f0');
-  rect(x, cx0 + 2, y0 + 68, 1, 18, '#a83a2a');
-  rect(x, cx0 + 13, y0 + 70, 3, 1, '#3a3a44');
-  text(x, 'RENT', cx0 + 3, y0 + 76, '#ffe8e0');
-  rect(x, cx0 + 29, y0 + 70, 3, 4, '#fff4c8');
-  rect(x, cx0 + 24, y0 + 84, 9, 4, '#3a3a44');
-  rect(x, cx0 + 8, y0 + 50, 8, 2, '#f2b632'); // roof light
-  outlineRect(x, cx0 - 1, y0 + 49, 24, 42, INK);
+  x.beginPath();
+  x.moveTo(cx0, y0 + 90);
+  x.lineTo(cx0, y0 + 52);
+  x.quadraticCurveTo(cx0, y0 + 50, cx0 + 2, y0 + 50);
+  x.lineTo(cx0 + 18, y0 + 50);
+  x.quadraticCurveTo(cx0 + 21, y0 + 51, cx0 + 22, y0 + 64);
+  x.lineTo(cx0 + 30, y0 + 64);
+  x.quadraticCurveTo(cx0 + 32, y0 + 64.5, cx0 + 32, y0 + 67);
+  x.lineTo(cx0 + 32, y0 + 90);
+  x.closePath();
+  x.fillStyle = lin(x, cx0, y0 + 50, cx0 + 32, y0 + 90, ['#ff8a70', '#e0503c', '#a02a1c']);
+  x.fill();
+  x.lineWidth = 0.6;
+  x.strokeStyle = 'rgba(28,20,36,0.85)';
+  x.stroke();
+  x.beginPath();
+  x.moveTo(cx0 + 3, y0 + 65);
+  x.lineTo(cx0 + 3, y0 + 54);
+  x.lineTo(cx0 + 16, y0 + 54);
+  x.quadraticCurveTo(cx0 + 19, y0 + 56, cx0 + 20, y0 + 65);
+  x.closePath();
+  x.fillStyle = lin(x, 0, y0 + 54, 0, y0 + 65, ['#e8f8ff', '#9ad0f0', '#5a90b8']);
+  x.fill();
+  glare(x, cx0 + 3, y0 + 54, 17, 11, 0.45);
+  x.fillStyle = 'rgba(120,20,10,0.6)';
+  x.fillRect(cx0 + 2, y0 + 68, 0.6, 18);
+  sbox(x, cx0 + 12.5, y0 + 70, 3.4, 1.2, '#c8ccd4', { r: 0.5, gloss: 0.6, outline: null });
+  ptext(x, 'RENT', cx0 + 3, y0 + 76, '#ffe8e0', 6, 900);
+  ball(x, cx0 + 30.5, y0 + 72, 1.6, '#fff4c8', 2, 0.9);
+  pool(x, cx0 + 31, y0 + 72, 5, 4, '#fff4c8', 0.4);
+  sbox(x, cx0 + 24, y0 + 84, 9, 4, '#3a3a44', { r: 1, gloss: 0.4 });
+  sbox(x, cx0 + 8, y0 + 49.5, 8, 2.2, '#f2b632', { r: 1, gloss: 0.6 });
   // wheels (don't bounce)
-  for (const wx of [ox + CX + 14, ox + CX + BW + 18]) {
-    disc(x, wx, oy + FLOOR + 10, 6, '#1c1c24');
-    disc(x, wx, oy + FLOOR + 10, 3, '#8a8a98');
-    const a = t * 8;
-    dot(x, wx + Math.round(Math.cos(a) * 2), oy + FLOOR + 10 + Math.round(Math.sin(a) * 2), '#c8c8d4');
-  }
+  for (const wx of [ox + CX + 14, ox + CX + BW + 18]) wheel(x, wx, oy + FLOOR + 10, 6, t * 8);
+}
+
+function wheel(x: Ctx, wx: number, wy: number, r: number, a: number): void {
+  ell(x, wx, wy, r, r);
+  x.fillStyle = rad(x, wx - r * 0.3, wy - r * 0.3, 0, r * 1.2, ['#3a3a44', '#1c1c24', '#0a0a10']);
+  x.fill();
+  ell(x, wx, wy, r * 0.5, r * 0.5);
+  x.fillStyle = rad(x, wx - 1, wy - 1, 0, r * 0.6, ['#e0e0ea', '#8a8a98', '#5a5a68']);
+  x.fill();
+  ball(x, wx + Math.cos(a) * r * 0.32, wy + Math.sin(a) * r * 0.32, r * 0.12, '#c8c8d4', r * 0.12, 0.5);
 }
 
 // ---------- the drive scene ----------
@@ -342,101 +415,146 @@ export const DW = 192;
 export const DH = 128;
 
 export function driveSky(): HTMLCanvasElement {
-  return cached('mv-drive-sky', DW, 80, (x) => {
-    grad(x, 0, 0, DW, 80, ['#7ab8e8', '#a8d4f0', '#f2dcb8']);
-    disc(x, 30, 16, 6, '#fff4c8');
-    for (const [cx, cy, r] of [[70, 14, 5], [80, 12, 6], [90, 15, 4], [140, 26, 4], [148, 24, 5], [156, 27, 3]]) disc(x, cx, cy, r, '#f4f8fc');
+  return layer('mv-drive-sky-hd', DW, 80, (x) => {
+    vfill(x, 0, 0, DW, 80, ['#5aa0e0', '#9acff0', '#f6e0bc']);
+    pool(x, 30, 16, 50, 40, '#fff0c0', 0.45);
+    ell(x, 30, 16, 6, 6);
+    x.fillStyle = rad(x, 30, 16, 0, 6, ['#ffffff', '#fffbe8', '#fff0c0']);
+    x.fill();
+    pool(x, 30, 16, 12, 12, '#ffffff', 0.6);
+    for (const [cx, cy, r] of [[70, 14, 5], [80, 12, 6], [90, 15, 4], [140, 26, 4], [148, 24, 5], [156, 27, 3]]) {
+      ell(x, cx, cy, r, r * 0.8);
+      x.fillStyle = rad(x, cx - r * 0.3, cy - r * 0.4, 0, r * 1.1, ['#ffffff', '#f4f8fc', 'rgba(200,215,235,0.9)']);
+      x.fill();
+    }
   });
 }
 
-// Parallax layer: distant buildings (scroll slowly), drawn with wraparound.
+// Parallax layer: distant buildings (scroll slowly), drawn with wraparound and distance haze.
 export function drawCity(x: Ctx, scroll: number): void {
   for (let i = -1; i < 14; i++) {
     const n = Math.floor(scroll / 18) + i;
     const bx = i * 18 - (scroll % 18);
     const bh = 14 + Math.floor(hash(n * 5) * 24);
-    rect(x, bx, 74 - bh, 16, bh, '#9ab0c8');
-    for (let wy = 76 - bh; wy < 72; wy += 4) for (let wx = 2; wx < 14; wx += 3) dot(x, bx + wx, wy, '#c8d8e8');
+    x.fillStyle = lin(x, bx, 0, bx + 16, 0, ['#aabed4', '#9ab0c8', '#8098b0']);
+    x.fillRect(bx, 74 - bh, 16, bh);
+    x.fillStyle = 'rgba(230,240,255,0.5)';
+    for (let wy = 76 - bh; wy < 72; wy += 4) for (let wx = 2; wx < 14; wx += 3) x.fillRect(bx + wx, wy, 1, 1.4);
   }
+  haze(x, 0, 44, DW, 76, '#eef2f8', 0.1, 0.55);
 }
 
 export function drawStreetside(x: Ctx, scroll: number): void {
-  // houses and trees along the sidewalk
+  // front lawns behind the sidewalk, then houses and trees
+  vfill(x, 0, 72, DW, 16, ['#a8c890', '#7aa868', '#5a8a4a']);
   for (let i = -1; i < 6; i++) {
     const n = Math.floor(scroll / 48) + i;
     const bx = i * 48 - (scroll % 48);
     const k = hash(n * 11);
     if (k < 0.55) {
       const c = ['#e8a87a', '#8ac0a8', '#c8a8d8', '#f2d48a'][Math.floor(hash(n * 3) * 4)];
-      rect(x, bx + 4, 62, 34, 26, c);
-      for (let j = 0; j < 10; j++) rect(x, bx + 4 + j * 1.7, 62 - j, 34 - j * 3.4, 1, '#8a4a3a');
-      rect(x, bx + 10, 68, 7, 7, '#5a8ab0');
-      rect(x, bx + 24, 72, 7, 16, '#6a4a3a');
-    } else {
-      rect(x, bx + 20, 68, 3, 20, '#6a4a2a');
-      disc(x, bx + 21, 62, 9, '#4a9a5a');
-      disc(x, bx + 18, 59, 5, '#6aba6a');
-    }
+      shadow(x, bx + 21, 88, 20, 2, 0.3);
+      hfill(x, bx + 4, 62, 34, 26, [tint(c, 1.15), c, tint(c, 0.75)]);
+      x.beginPath();
+      x.moveTo(bx + 2, 63);
+      x.lineTo(bx + 21, 52);
+      x.lineTo(bx + 40, 63);
+      x.closePath();
+      x.fillStyle = lin(x, bx + 4, 52, bx + 38, 63, ['#b0604a', '#8a4a3a', '#5a2a20']);
+      x.fill();
+      sbox(x, bx + 10, 68, 7, 7, '#5a8ab0', { r: 0.5, gloss: 0.5 });
+      sbox(x, bx + 24, 72, 7, 16, '#6a4a3a', { r: 0.5, gloss: 0.3 });
+    } else tree(x, bx + 20, 62, 9);
   }
-  rect(x, 0, 88, DW, 4, '#d4cfc0');
-  rect(x, 0, 92, DW, 2, '#b8b4a8');
+  vfill(x, 0, 88, DW, 4, ['#e4dfd0', '#c8c2b2']);
+  vfill(x, 0, 92, DW, 2, ['#c8c4b8', '#8a867a']);
 }
 
 export function drawRoad(x: Ctx, scroll: number): void {
-  rect(x, 0, 94, DW, 22, '#4a4a58');
-  dither(x, 0, 94, DW, 1, '#3a3a48', '#4a4a58');
-  for (let i = -1; i < 12; i++) rect(x, i * 20 - (scroll % 20), 108, 10, 1, '#d8c84a');
-  rect(x, 0, 116, DW, 12, '#3a5a3a');
-  stipple(x, 0, 116, DW, 12, '#4a7a4a', 0.4);
+  vfill(x, 0, 94, DW, 22, ['#2e2e3a', '#4a4a58', '#56566a']);
+  x.fillStyle = '#e8d84a';
+  for (let i = -1; i < 12; i++) x.fillRect(i * 20 - (scroll % 20), 108, 10, 0.9);
+  vfill(x, 0, 116, DW, 12, ['#4a7a4a', '#3a5a3a', '#2e4a2e']);
+  x.fillStyle = 'rgba(120,180,110,0.35)';
+  for (let i = 0; i < DW; i += 3) x.fillRect(i - (scroll % 3), 116.5 + ((i * 7) % 5), 0.5, 1.6);
 }
 
 export type BumpKind = 'bump' | 'pothole' | 'tracks';
 export function drawBump(x: Ctx, kind: BumpKind, bx: number): void {
-  bx = Math.round(bx);
   // warning sign on the sidewalk a little before the hazard
   const sx = bx - 22;
-  rect(x, sx, 80, 1, 12, '#8a8a98');
+  cyl(x, sx - 0.5, 80, 1.2, 12, '#8a8a98', { spec: 0.4 });
   if (kind === 'tracks') {
-    line(x, sx - 4, 74, sx + 4, 82, '#ffffff');
-    line(x, sx + 4, 74, sx - 4, 82, '#ffffff');
-    line(x, sx - 4, 75, sx + 3, 82, '#e0503c');
-    line(x, sx + 4, 75, sx - 3, 82, '#e0503c');
+    x.save();
+    x.lineCap = 'round';
+    x.lineWidth = 2;
+    x.strokeStyle = '#ffffff';
+    x.beginPath();
+    x.moveTo(sx - 4, 74);
+    x.lineTo(sx + 4, 82);
+    x.moveTo(sx + 4, 74);
+    x.lineTo(sx - 4, 82);
+    x.stroke();
+    x.lineWidth = 1;
+    x.strokeStyle = '#e0503c';
+    x.stroke();
+    x.restore();
   } else {
-    for (let j = 0; j < 5; j++) rect(x, sx - j, 74 + j, 1 + j * 2, 1, '#f2c84a'), rect(x, sx - j, 82 - j, 1 + j * 2, 1, '#f2c84a');
-    rect(x, sx - 4, 78, 9, 1, '#f2c84a');
-    rect(x, sx, 76, 1, 3, INK);
-    dot(x, sx, 80, INK);
-    rect(x, sx - 5, 78, 1, 1, INK);
-    rect(x, sx + 5, 78, 1, 1, INK);
+    x.beginPath();
+    x.moveTo(sx, 73.5);
+    x.lineTo(sx + 5, 78.5);
+    x.lineTo(sx, 83.5);
+    x.lineTo(sx - 5, 78.5);
+    x.closePath();
+    x.fillStyle = lin(x, sx - 5, 74, sx + 5, 83, ['#ffe070', '#f2c84a', '#c89a20']);
+    x.fill();
+    x.lineWidth = 0.5;
+    x.strokeStyle = INK;
+    x.stroke();
+    x.fillStyle = INK;
+    x.fillRect(sx - 0.4, 76, 0.8, 3);
+    x.fillRect(sx - 0.4, 80, 0.8, 0.8);
   }
   if (kind === 'bump') {
-    rect(x, bx - 8, 101, 16, 3, '#2a2a33');
-    rect(x, bx - 7, 99, 14, 3, '#f2c84a');
-    rect(x, bx - 6, 98, 12, 1, '#f2c84a');
-    for (let i = -6; i < 7; i += 4) rect(x, bx + i, 99, 2, 3, '#2a2a33');
+    shadow(x, bx, 103, 10, 1.6, 0.5);
+    x.beginPath();
+    x.moveTo(bx - 8, 103);
+    x.quadraticCurveTo(bx, 95, bx + 8, 103);
+    x.closePath();
+    x.fillStyle = lin(x, 0, 98, 0, 103, ['#ffe070', '#c89a20']);
+    x.fill();
+    x.save();
+    x.clip();
+    x.fillStyle = '#2a2a33';
+    for (let i = -6; i < 7; i += 4) x.fillRect(bx + i, 96, 2, 7);
+    x.restore();
   } else if (kind === 'pothole') {
-    rect(x, bx - 9, 101, 18, 4, '#2a2a33');
-    rect(x, bx - 7, 100, 14, 1, '#6a6a78');
-    rect(x, bx - 7, 102, 14, 3, '#141418');
-    dot(x, bx - 10, 101, '#6a6a78');
-    dot(x, bx + 9, 102, '#6a6a78');
+    ell(x, bx, 102.5, 9, 2.6);
+    x.fillStyle = '#6a6a78';
+    x.fill();
+    ell(x, bx, 103, 7.5, 2);
+    x.fillStyle = rad(x, bx, 102, 0, 8, ['#0a0a0e', '#1a1a22', '#2a2a33']);
+    x.fill();
   } else {
-    rect(x, bx - 10, 103, 22, 3, '#6a4a34'); // ties
-    for (const off of [-6, 4]) {
-      rect(x, bx + off, 98, 3, 6, '#9a9aa8');
-      rect(x, bx + off, 98, 3, 1, '#d8d8e4');
-    }
+    sbox(x, bx - 10, 103, 22, 3, '#6a4a34', { r: 0.6, gloss: 0.2 });
+    for (const off of [-6, 4]) cyl(x, bx + off, 98, 3, 6, '#9a9aa8', { spec: 0.7, cap: '#e8e8f4' });
   }
 }
 
 export function drawNewPlace(x: Ctx, bx: number): void {
-  bx = Math.round(bx);
-  rect(x, bx, 30, 60, 58, '#6a8ab8');
-  for (let y = 32; y < 88; y += 3) rect(x, bx, y, 60, 1, '#5e7eac');
-  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) rect(x, bx + 5 + c * 14, 36 + r * 14, 9, 9, (r + c) % 3 ? '#f4ead0' : '#f2d48a');
-  rect(x, bx + 24, 72, 12, 16, '#3a2418');
-  rect(x, bx + 20, 70, 20, 2, '#e8dcc0');
-  text(x, 'HOME', bx + 22, 64, '#ffffff');
+  shadow(x, bx + 30, 88, 34, 2.4, 0.35);
+  hfill(x, bx, 30, 60, 58, ['#88a8d8', '#6a8ab8', '#4a6a98']);
+  x.fillStyle = 'rgba(30,50,90,0.3)';
+  for (let y = 32; y < 88; y += 3) x.fillRect(bx, y, 60, 0.5);
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < 4; c++) {
+      const lit = (r + c) % 3 === 0;
+      sbox(x, bx + 5 + c * 14, 36 + r * 14, 9, 9, lit ? '#f2d48a' : '#c8e0f0', { r: 0.6, gloss: 0.5 });
+      if (lit) pool(x, bx + 9.5 + c * 14, 40.5 + r * 14, 7, 7, '#ffe0a0', 0.3);
+    }
+  sbox(x, bx + 24, 72, 12, 16, '#3a2418', { r: 0.6, gloss: 0.3 });
+  sbox(x, bx + 20, 70, 20, 2.4, '#e8dcc0', { r: 0.6, gloss: 0.5 });
+  ptext(x, 'HOME', bx + 21.5, 63.5, '#ffffff', 6, 900);
 }
 
 // Small truck for the drive: half-scale cargo bay so you can watch the load ride.
@@ -446,25 +564,34 @@ export function drawSmallTruck(x: Ctx, ox: number, oy: number, t: number, bounce
   const y0 = Math.round(oy + bounce);
   const bay = { cx: ox + 3, cy: y0 + 3 };
   const BW = SMALL_BAY_W;
+  shadow(x, ox + BW / 2 + 12, oy + 44, BW * 0.7, 2.6, 0.5);
   // body
-  rect(x, ox, y0, BW + 6, 3, '#e8e8ee');
-  rect(x, ox, y0, BW + 6, 1, '#ffffff');
-  rect(x, ox, y0 + 3, 3, 30, '#c8c8d4');
-  rect(x, ox + BW + 3, y0 + 3, 3, 30, '#c8c8d4');
-  grad(x, ox + 3, y0 + 3, BW, 30, ['#5a5068', '#4a4258']);
-  rect(x, ox, y0 + 33, BW + 27, 3, '#8a8a98');
-  rect(x, ox + 2, y0 + 36, BW + 21, 2, '#2a2a33');
+  vfill(x, ox + 3, y0 + 3, BW, 30, ['#3a3248', '#5a5068', '#4a4258']);
+  vfill(x, ox + 3, y0 + 3, BW, 3, ['rgba(0,0,0,0.45)', 'rgba(0,0,0,0)']);
+  sbox(x, ox, y0, BW + 6, 3, '#e8e8ee', { r: 0.8, gloss: 0.6, outline: null });
+  cyl(x, ox, y0 + 3, 3, 30, '#c8c8d4', { spec: 0.5 });
+  cyl(x, ox + BW + 3, y0 + 3, 3, 30, '#b8b8c8', { spec: 0.4 });
+  sbox(x, ox, y0 + 33, BW + 27, 3, '#8a8a98', { r: 0.6, gloss: 0.5, outline: null });
+  vfill(x, ox + 2, y0 + 36, BW + 21, 2, ['#2a2a33', '#16161c']);
   // cab
   const cx0 = ox + BW + 6;
-  rect(x, cx0, y0 + 14, 18, 19, '#e0503c');
-  rect(x, cx0 + 10, y0 + 18, 8, 15, '#e0503c');
-  rect(x, cx0 + 2, y0 + 17, 9, 7, '#9ad0f0');
-  line(x, cx0 + 11, y0 + 14, cx0 + 18, y0 + 21, INK);
-  rect(x, cx0 + 16, y0 + 26, 2, 2, '#fff4c8');
-  for (const wx of [ox + 10, ox + BW + 15]) {
-    disc(x, wx, oy + 40, 4, '#1c1c24');
-    disc(x, wx, oy + 40, 2, '#8a8a98');
-    dot(x, wx + Math.round(Math.cos(t * 12)), oy + 40 + Math.round(Math.sin(t * 12)), '#c8c8d4');
-  }
+  x.beginPath();
+  x.moveTo(cx0, y0 + 33);
+  x.lineTo(cx0, y0 + 15);
+  x.quadraticCurveTo(cx0, y0 + 14, cx0 + 1, y0 + 14);
+  x.lineTo(cx0 + 10, y0 + 14);
+  x.lineTo(cx0 + 18, y0 + 21);
+  x.lineTo(cx0 + 18, y0 + 33);
+  x.closePath();
+  x.fillStyle = lin(x, cx0, y0 + 14, cx0 + 18, y0 + 33, ['#ff8a70', '#e0503c', '#a02a1c']);
+  x.fill();
+  x.lineWidth = 0.5;
+  x.strokeStyle = 'rgba(28,20,36,0.85)';
+  x.stroke();
+  rr(x, cx0 + 2, y0 + 17, 9, 7, 0.8);
+  x.fillStyle = lin(x, 0, y0 + 17, 0, y0 + 24, ['#e8f8ff', '#9ad0f0', '#5a90b8']);
+  x.fill();
+  ball(x, cx0 + 17, y0 + 27, 1.1, '#fff4c8', 1.1, 0.9);
+  for (const wx of [ox + 10, ox + BW + 15]) wheel(x, wx, oy + 40, 4, t * 12);
   return bay;
 }
