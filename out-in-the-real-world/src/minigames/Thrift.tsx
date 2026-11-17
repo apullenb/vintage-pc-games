@@ -6,10 +6,11 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { HAIRS, playerPerson, SKINS, type Person } from '../art/people.ts';
 import { INK, rect, type Ctx } from '../art/px.ts';
-import { ctxOf, MiniHud, PixelCanvas, useInput, useLoop, type MiniProps } from './kit.tsx';
-import { drawForeground, drawGun, drawItem, drawPriceTag, drawProp, drawReticle, drawSky, drawTagShot, drawTooltip, drawWalker, itemBox, itemDim, lightLayer, propBox, propShadow, worldLayer } from './thriftArt.ts';
+import { MiniHud, useInput, useLoop, type MiniProps } from './kit.tsx';
+import { ball, blit, Hd2Canvas, hdCtx, liveSmooth, sbox } from './hd2Kit.tsx';
+import { drawForeground, drawGun, drawItem, drawPriceTag, drawProp, drawReticle, drawSky, drawTagShot, drawTooltip, drawWalker, itemBox, itemDim, lightLayerHd, propBox, propShadow, worldLayerHd } from './thriftArt.ts';
 import { buildGrid, findPath, FLOOR_Y, goalOf, GW, hideSpots, makeMap, priceFor, scoreHunt, WH, WW, type GoalDef, type Haul, type ItemDef, type MapDef, type Need } from './thriftData.ts';
-import { beep, bigText, centered, clamp, COUNT_TIME, countLabel, cue, drawBanner, drawCount, Fx, note, noise, outlined, pick, ptext, ptw, rnd, shuffle, soundInit } from './thriftPhishFx.ts';
+import { beep, bigText, centered, clamp, COUNT_TIME, countLabel, cue, drawBanner, drawCount, Fx, note, noise, outlined, pick, ptext, ptw, rnd, shuffle, soundInit, stext } from './thriftPhishFx.ts';
 import { ThriftStick, type StickState } from './thriftStick.tsx';
 import './thrift.css';
 
@@ -688,13 +689,17 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   drawSky(x, g.map, camX, g.t);
   x.save();
   x.translate(-camX + sx, -camY + sy);
-  x.drawImage(worldLayer(g.map, g.mapKey), 0, 0);
+  blit(x, worldLayerHd(g.map, g.mapKey), 0, 0, WW, WH);
   const outdoor = g.map.theme !== 'thrift';
   for (const p of g.map.props) propShadow(x, p, outdoor);
   // depth-sorted sprites
   type D = { y: number; f: () => void };
   const list: D[] = [];
-  for (const p of g.map.props) list.push({ y: p.y + p.h, f: () => drawProp(x, p, g.t) });
+  g.map.props.forEach((p, i) => {
+    const b = propBox(p);
+    const sway = Math.round(Math.sin(g.t * 1.3 + p.hue * 6));
+    list.push({ y: p.y + p.h, f: () => liveSmooth(x, b.x - 4, b.y - 4, b.w + 8, b.h + 8, (s) => drawProp(s, p, g.t), `th|${g.mapKey}|${i}|${sway}`) });
+  });
   for (const f of g.finds) {
     if (f.gone) continue;
     list.push({
@@ -704,7 +709,10 @@ function draw(x: Ctx, g: G, touch: boolean): void {
           const k = 1 - f.pop / 0.35;
           x.globalAlpha = Math.min(1, k * 1.5);
         }
-        drawItem(x, f.def, f.x, f.y, { moving: f.state === 'dart' || f.state === 'enter' || (f.state === 'idle' && f.path.length > 0), phase: f.phase, face: f.face, alarm: f.alarm, t: g.t, alive: f.def.kind !== 'junk', seed: f.seed });
+        const [iw, ih] = itemDim(f.def.shape);
+        liveSmooth(x, f.x - iw / 2 - 6, f.y - ih - 16, iw + 12, ih + 22, (s) =>
+          drawItem(s, f.def, f.x, f.y, { moving: f.state === 'dart' || f.state === 'enter' || (f.state === 'idle' && f.path.length > 0), phase: f.phase, face: f.face, alarm: f.alarm, t: g.t, alive: f.def.kind !== 'junk', seed: f.seed }),
+        );
         x.globalAlpha = 1;
       },
     });
@@ -716,13 +724,16 @@ function draw(x: Ctx, g: G, touch: boolean): void {
       f: () => {
         drawWalker(x, r.p, r.x - 7, r.y - 30, r.moving && r.stun <= 0, r.phase, r.face, r.stun > 0);
         // tote bag
-        rect(x, r.x - 8 + (r.face > 0 ? 0 : 12), r.y - 15, 5, 6, INK);
-        rect(x, r.x - 7 + (r.face > 0 ? 0 : 12), r.y - 14, 3, 4, '#e8d8b0');
-        if (r.carrying) drawItem(x, r.carrying.def, r.x, r.y - 30, { moving: false, phase: 0, face: r.face, alarm: 0, t: g.t, alive: false, seed: r.carrying.seed });
+        sbox(x, r.x - 8 + (r.face > 0 ? 0 : 12), r.y - 15, 5, 6, '#e8d8b0', { r: 1.2, gloss: 0.3, lw: 0.6 });
+        if (r.carrying) {
+          const cd = r.carrying;
+          const [iw, ih] = itemDim(cd.def.shape);
+          liveSmooth(x, r.x - iw / 2 - 4, r.y - 30 - ih - 6, iw + 8, ih + 10, (s) => drawItem(s, cd.def, r.x, r.y - 30, { moving: false, phase: 0, face: r.face, alarm: 0, t: g.t, alive: false, seed: cd.seed }));
+        }
         if (r.inspect > 0) {
           // how long until they grab it
-          rect(x, r.x - 8, r.y - 38, 16, 4, INK);
-          rect(x, r.x - 7, r.y - 37, Math.round(14 * (r.inspect / 0.9)), 2, '#ff7a5a');
+          sbox(x, r.x - 8, r.y - 38, 16, 4, '#2a1e3a', { r: 2, gloss: 0.1, lw: 0.6 });
+          sbox(x, r.x - 7, r.y - 37, Math.max(2, 14 * (r.inspect / 0.9)), 2, '#ff7a5a', { r: 1, gloss: 0.5, outline: null });
         } else if (r.state === 'hunt' && r.target && !r.target.gone && Math.hypot(r.target.x - r.x, r.target.y - r.y) < 50 && r.target.def.kind === 'need') outlined(x, '!', r.x - 1, r.y - 40, '#ff9a7a');
       },
     });
@@ -737,8 +748,12 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   });
   list.sort((a, b) => a.y - b.y);
   for (const d of list) d.f();
-  // the light pass
-  x.drawImage(lightLayer(g.map, g.mapKey), 0, 0);
+  // the light pass: soft shade over the edges, warm light added on top
+  const L = lightLayerHd(g.map, g.mapKey);
+  blit(x, L.shade, 0, 0, WW, WH);
+  x.globalCompositeOperation = 'lighter';
+  blit(x, L.light, 0, 0, WW, WH);
+  x.globalCompositeOperation = 'source-over';
   // price tags on visible finds (after the lighting, so they stay readable)
   for (const f of g.finds) {
     f.hidden = !f.gone && occluded(g, f);
@@ -750,7 +765,7 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   fx.drawWorld(x);
   x.restore();
   // foreground layer, slides faster than the floor (parallax depth)
-  drawForeground(x, g.map, camX * 1.35 - sx, g.t, g.vw);
+  liveSmooth(x, 0, 0, g.vw, 34, (s) => drawForeground(s, g.map, camX * 1.35 - sx, g.t, g.vw));
 
   // tagged things fly to the corner
   for (const fl of g.flyers) {
@@ -799,8 +814,8 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   if (g.hint && g.hint.t > 0 && g.phase === 'play') {
     const s = g.hint.s;
     const w = Math.min(g.vw - 8, ptw(s) + 8);
-    x.globalAlpha = 0.85;
-    rect(x, g.vw / 2 - w / 2, g.vh - 14, w, 11, '#140c22');
+    x.globalAlpha = 0.88;
+    sbox(x, g.vw / 2 - w / 2, g.vh - 14, w, 11, '#140c22', { r: 3, gloss: 0.12, outline: null });
     x.globalAlpha = 1;
     centered(x, s.length * 4 > g.vw - 12 ? s.slice(0, Math.floor((g.vw - 12) / 4)) : s, g.vw / 2, g.vh - 11, '#fff3c4', null);
   }
@@ -822,24 +837,19 @@ function hudStrip(x: Ctx, g: G): void {
   const sec = Math.ceil(g.time);
   const money = `$${g.money}`;
   const w1 = ptw(money) + 16;
-  rect(x, 2, 2, w1, 11, INK);
-  rect(x, 3, 3, w1 - 2, 9, '#2a6a3a');
-  rect(x, 3, 3, w1 - 2, 1, '#4a9a5a');
-  rect(x, 5, 5, 5, 5, '#f2d27a');
-  rect(x, 6, 6, 3, 3, '#c89a3a');
-  ptext(x, money, 13, 5, '#e8ffe8');
+  sbox(x, 2, 2, w1, 11, '#2a6a3a', { r: 2.5, gloss: 0.4, lw: 0.7 });
+  ball(x, 7.5, 7.5, 2.6, '#f2d27a', 2.6, 0.7);
+  stext(x, money, 13, 5, '#e8ffe8', null);
   const clock = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
   const w2 = ptw(clock) + 8;
   const warn = sec <= 10 && g.phase === 'play';
-  rect(x, g.vw - w2 - 2, 2, w2, 11, INK);
-  rect(x, g.vw - w2 - 1, 3, w2 - 2, 9, warn && Math.floor(g.t * 4) % 2 ? '#a02a1a' : '#3a2e5a');
-  ptext(x, clock, g.vw - w2 + 3, 5, '#fff3c4');
+  sbox(x, g.vw - w2 - 2, 2, w2, 11, warn && Math.floor(g.t * 4) % 2 ? '#a02a1a' : '#3a2e5a', { r: 2.5, gloss: 0.35, lw: 0.7 });
+  stext(x, clock, g.vw - w2 + 3, 5, '#fff3c4', null);
   // weight bar under the budget
   const frac = g.lbs / g.goal.carry;
-  rect(x, 2, 14, 46, 5, INK);
-  rect(x, 3, 15, 44, 3, '#3a2e4a');
+  sbox(x, 2, 14, 46, 5, '#3a2e4a', { r: 2.5, gloss: 0.1, lw: 0.6 });
   const c = frac > 0.85 ? '#ff7a5a' : frac > 0.6 ? '#f2b632' : '#7cf08a';
-  rect(x, 3, 15, Math.round(44 * Math.min(1, frac)), 3, c);
+  if (frac > 0.01) sbox(x, 3, 15, Math.max(3, 44 * Math.min(1, frac)), 3, c, { r: 1.5, gloss: 0.6, outline: null });
 }
 
 function receiptLines(g: G): { l: string; r: string; c: string }[] {
@@ -1081,7 +1091,7 @@ export function Thrift({ s, data, onDone, reducedMotion }: MiniProps) {
         hudKey.current = key;
         setHud({ sec, money: g.money, lbs: g.lbs, got, warn: sec <= 10 });
       }
-      const x = ctxOf(canvas.current);
+      const x = hdCtx(canvas.current);
       if (x) draw(x, g, touch);
     },
     true,
@@ -1122,7 +1132,7 @@ export function Thrift({ s, data, onDone, reducedMotion }: MiniProps) {
         })}
       </ul>
       <div className="th-canvas" style={{ '--ar': String(g0.vw / g0.vh) } as CSSProperties}>
-        <PixelCanvas
+        <Hd2Canvas
           canvasRef={canvas}
           width={g0.vw}
           height={g0.vh}

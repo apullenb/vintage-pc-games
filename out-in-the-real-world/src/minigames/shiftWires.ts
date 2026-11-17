@@ -3,10 +3,11 @@
 // white = NEUTRAL on silver, green/bare = GROUND on the green screw). Some boxes are still LIVE:
 // the wires spark, and you have to flip the breaker off before you touch anything.
 import { playerPerson } from '../art/people.ts';
-import { bevel, cached, dither, grad, INK, line, outlineRect, rect, shade, stipple, text, textWidth, type Ctx } from '../art/px.ts';
+import { text, textWidth, type Ctx } from '../art/px.ts';
 import { sfx } from '../ui/audio.ts';
-import { drawRunner } from './busRunner.ts';
-import { centered, hit, pick, rnd, shiftScore, shuffle, type ModeEnv, type ShiftMode } from './shiftKit.ts';
+import { ball, beam, blit, ctext, cyl, ell, hfill, layer, lin, otext, pool, rad, rgba, rr, sbox, shadow, tint, vfill } from './hd2Kit.tsx';
+import { person } from './hd2Person.ts';
+import { hit, pick, rnd, shiftScore, shuffle, type ModeEnv, type ShiftMode } from './shiftKit.ts';
 
 type Role = 'hot' | 'neu' | 'gnd';
 const WIRE: Record<string, { c: string; role: Role; name: string }> = {
@@ -260,77 +261,111 @@ export function wiresMode({ fx, level, look }: ModeEnv): ShiftMode {
 
   function drawWire(x: Ctx, w: Wire, endX: number, endY: number, sag: number): void {
     const col = WIRE[w.kind].c;
-    const dark = shade(col, 0.6);
-    let lx = w.ox;
-    let ly = 12;
-    const N = 12;
-    for (let k = 1; k <= N; k++) {
-      const u = k / N;
-      // quadratic-ish curve: straight down out of the conduit, then over to the end
-      const cx = w.ox + (endX - w.ox) * (u * u * (3 - 2 * u));
-      const cy = 12 + (endY - 12) * u + Math.sin(u * Math.PI) * sag;
-      line(x, lx - 1, ly, cx - 1, cy, INK);
-      line(x, lx + 1, ly, cx + 1, cy, INK);
-      line(x, lx, ly, cx, cy, col);
-      line(x, lx, ly + 1, cx, cy + 1, dark);
-      lx = cx;
-      ly = cy;
-    }
-    // stripped copper tip
-    rect(x, endX - 1, endY, 2, 4, '#e8a060');
-    rect(x, endX - 1, endY + 3, 2, 1, '#b86a30');
+    const bare = w.kind === 'bare';
+    // one smooth cable: straight down out of the conduit, then over to the end
+    const path = (): void => {
+      x.beginPath();
+      x.moveTo(w.ox, 12);
+      x.bezierCurveTo(w.ox, 12 + (endY - 12) * 0.45 + sag, endX, endY - (endY - 12) * 0.4 + sag * 0.5, endX, endY);
+    };
+    x.save();
+    x.lineCap = 'round';
+    x.lineJoin = 'round';
+    path();
+    x.lineWidth = bare ? 1.6 : 2.7;
+    x.strokeStyle = 'rgba(20,12,28,0.85)';
+    x.stroke();
+    x.lineWidth = bare ? 1 : 2;
+    x.strokeStyle = bare ? '#c87838' : col;
+    x.stroke();
+    x.lineWidth = bare ? 0.9 : 1.1;
+    x.strokeStyle = tint(col, 0.6);
+    x.translate(0.35, 0.35);
+    path();
+    x.stroke();
+    x.translate(-0.7, -0.7);
+    path();
+    x.lineWidth = bare ? 0.35 : 0.45;
+    x.strokeStyle = bare ? 'rgba(255,230,190,0.9)' : rgba(tint(col, 1.7), 0.75);
+    x.stroke();
+    x.restore();
+    // stripped copper tip with a hot specular
+    x.fillStyle = lin(x, endX - 1, 0, endX + 1, 0, ['#9a5420', '#ffd0a0', '#e8a060', '#8a4a1a']);
+    x.fillRect(endX - 1, endY, 2, 4);
+    ell(x, endX, endY + 4, 1, 0.5);
+    x.fillStyle = '#b86a30';
+    x.fill();
   }
 
   function drawScrew(x: Ctx, t: Term, tx: number, ty: number): void {
     const c = SCREW[t.role];
-    rect(x, tx - 4, ty - 3, 8, 7, INK);
-    rect(x, tx - 3, ty - 2, 6, 5, c);
-    rect(x, tx - 3, ty - 2, 6, 1, shade(c, 1.3));
-    rect(x, tx - 2, ty, 4, 1, shade(c, 0.6)); // slot
+    shadow(x, tx + 0.6, ty + 3.6, 5, 1.6, 0.45);
+    ell(x, tx, ty + 0.5, 4.1, 3.6);
+    x.fillStyle = 'rgba(20,12,28,0.9)';
+    x.fill();
+    ball(x, tx, ty + 0.5, 3.4, c, 2.9, 0.85);
+    x.save();
+    x.translate(tx, ty + 0.5);
+    x.rotate(0.5);
+    x.fillStyle = rgba(tint(c, 0.4), 0.95);
+    x.fillRect(-2.2, -0.35, 4.4, 0.7);
+    x.restore();
     const tag = TAG[t.role];
     const tw = textWidth(tag);
-    rect(x, tx - tw / 2 - 1, ty + 6, tw + 2, 7, '#1c1424');
-    text(x, tag, tx - tw / 2, ty + 7, c);
+    sbox(x, tx - tw / 2 - 1.5, ty + 5.6, tw + 3, 7.4, '#1c1424', { r: 1.6, gloss: 0.15, outline: rgba(c, 0.6) });
+    text(x, tag, Math.round(tx - tw / 2), ty + 7, c);
   }
 
   const bg = (): HTMLCanvasElement =>
-    cached('shift-wire-bg', 192, 108, (x) => {
-      grad(x, 0, 0, 192, 108, ['#d8c8a8', '#c8b490', '#b8a07a']);
-      stipple(x, 0, 0, 192, 108, '#c0ac88', 0.25);
-      // studs
+    layer('hd-wire-bg', 192, 108, (x) => {
+      // unfinished wall: drywall with a soft work-light falloff
+      vfill(x, 0, 0, 192, 108, ['#e8dcc0', '#d0bc98', '#a8906a']);
+      x.fillStyle = rad(x, 150, 10, 4, 150, ['rgba(255,240,200,0.35)', 'rgba(255,240,200,0)']);
+      x.fillRect(0, 0, 192, 108);
+      // studs: rounded wood with grain
       for (const sx of [0, 40, 176]) {
-        rect(x, sx, 0, 6, 108, '#c89a5a');
-        rect(x, sx, 0, 1, 108, '#e0b878');
-        rect(x, sx + 5, 0, 1, 108, '#9a6a3a');
+        x.fillStyle = lin(x, sx, 0, sx + 6, 0, ['#8a5a2a', '#e8bc80', '#c89a5a', '#7a4a20']);
+        x.fillRect(sx, 0, 6, 108);
+        x.strokeStyle = 'rgba(120,70,30,0.35)';
+        x.lineWidth = 0.3;
+        for (let g = 0; g < 4; g++) {
+          x.beginPath();
+          x.moveTo(sx + 1.2 + g * 1.2, 0);
+          x.bezierCurveTo(sx + 2 + g, 30, sx + 0.8 + g * 1.3, 70, sx + 1.6 + g, 108);
+          x.stroke();
+        }
       }
-      // breaker panel
-      rect(x, 3, 12, 32, 70, INK);
-      bevel(x, 4, 13, 30, 68, '#8a92a4', false);
-      rect(x, 7, 18, 24, 58, '#5a6274');
+      // breaker panel: brushed steel
+      shadow(x, 20, 82, 20, 3, 0.4);
+      sbox(x, 3, 12, 32, 70, '#9aa2b4', { r: 1.5, gloss: 0.4 });
+      vfill(x, 7, 18, 24, 58, ['#3a4254', '#5a6274', '#4a5264']);
       for (let k = 0; k < 6; k++) {
-        rect(x, 9, 21 + k * 9, 8, 6, '#2a2a34');
-        rect(x, 20, 21 + k * 9, 8, 6, '#2a2a34');
-        rect(x, 11, 23 + k * 9, 4, 2, '#3a3a44');
-        rect(x, 22, 23 + k * 9, 4, 2, '#3a3a44');
+        sbox(x, 9, 21 + k * 9, 8, 6, '#2a2a34', { r: 1, gloss: 0.3 });
+        sbox(x, 20, 21 + k * 9, 8, 6, '#2a2a34', { r: 1, gloss: 0.3 });
       }
-      // the box
-      rect(x, BOX_X - 1, 5, BOX_W + 2, 100, INK);
-      bevel(x, BOX_X, 6, BOX_W, 98, '#9aa2b4', false);
-      rect(x, BOX_X + 4, 10, BOX_W - 8, 90, '#4a4e5c');
-      dither(x, BOX_X + 4, 10, BOX_W - 8, 4, '#3a3e4c', '#4a4e5c');
+      // the box: a deep steel junction box
+      shadow(x, BOX_X + BOX_W / 2, 105, BOX_W * 0.55, 3, 0.45);
+      sbox(x, BOX_X - 1, 5, BOX_W + 2, 100, '#a8b0c2', { r: 2, gloss: 0.45 });
+      vfill(x, BOX_X + 4, 10, BOX_W - 8, 90, ['#202430', '#3a3e4c', '#4e5262']);
+      vfill(x, BOX_X + 4, 10, BOX_W - 8, 8, ['rgba(0,0,0,0.5)', 'rgba(0,0,0,0)']);
+      hfill(x, BOX_X + 4, 10, 6, 90, ['rgba(0,0,0,0.4)', 'rgba(0,0,0,0)']);
+      hfill(x, BOX_X + BOX_W - 10, 10, 6, 90, ['rgba(0,0,0,0)', 'rgba(0,0,0,0.35)']);
       // conduit
-      rect(x, 92, 0, 24, 12, INK);
-      grad(x, 93, 0, 22, 11, ['#c8ccd8', '#9aa2b4']);
-      rect(x, 90, 9, 28, 4, '#7a8294');
-      outlineRect(x, 89, 8, 30, 6, INK);
+      cyl(x, 92, 0, 24, 11, '#b8bccc', { spec: 0.6 });
+      sbox(x, 89, 8, 30, 6, '#8a92a4', { r: 1.5, gloss: 0.5 });
+    });
+  // the clamp work light up top-right: a warm cone across the box
+  const light = (): HTMLCanvasElement =>
+    layer('hd-wire-light', 192, 108, (x) => {
+      beam(x, 160, 176, 0, 60, 170, 108, '#fff0c8', 0.12);
+      pool(x, 112, 70, 70, 40, '#ffe8b0', 0.12);
     });
 
   function drawDevice(x: Ctx, d: Device, oy: number, t: number): void {
     // device body behind the terminals
     const y0 = TERM_Y - 8 + oy;
-    rect(x, BOX_X + 7, y0 - 1, BOX_W - 14, 24, INK);
-    bevel(x, BOX_X + 8, y0, BOX_W - 16, 22, d.spec.body, false);
-    rect(x, BOX_X + 8, y0 + 21, BOX_W - 16, 1, shade(d.spec.body, 0.7));
+    shadow(x, BOX_X + BOX_W / 2, y0 + 23, BOX_W / 2 - 6, 2.5, 0.5);
+    sbox(x, BOX_X + 7, y0 - 1, BOX_W - 14, 24, d.spec.body, { r: 3, gloss: 0.45 });
     d.terms.forEach((tm) => drawScrew(x, tm, tm.x, TERM_Y + oy));
     // wires
     d.wires.forEach((w, i) => {
@@ -338,9 +373,10 @@ export function wiresMode({ fx, level, look }: ModeEnv): ShiftMode {
       if (w.term >= 0) {
         const tm = d.terms[w.term];
         drawWire(x, w, tm.x, TERM_Y - 4 + oy, 6);
-        rect(x, tm.x - 3, TERM_Y - 2 + oy, 6, 2, '#e8a060');
+        x.fillStyle = lin(x, 0, TERM_Y - 2 + oy, 0, TERM_Y + oy, ['#ffd0a0', '#b86a30']);
+        x.fillRect(tm.x - 3, TERM_Y - 2 + oy, 6, 2);
       } else {
-        const sway = Math.round(Math.sin(t * 2 + i) * 0.6);
+        const sway = Math.sin(t * 2 + i) * 0.6;
         drawWire(x, w, w.ex + sway, w.ey + oy, 4);
       }
     });
@@ -350,14 +386,15 @@ export function wiresMode({ fx, level, look }: ModeEnv): ShiftMode {
     }
     // header + timer
     const head = `${di + 1}/${DEVICES} ${d.spec.name}`;
-    rect(x, BOX_X + 4, 14, BOX_W - 8, 9, '#1c1424');
+    sbox(x, BOX_X + 4, 14, BOX_W - 8, 9, '#1c1424', { r: 1.5, gloss: 0.12, outline: null });
     text(x, head, BOX_X + 7, 16, '#f2e6c8');
     const frac = Math.max(0, d.left / d.limit);
     const bw = 40;
     const bx = BOX_X + BOX_W - bw - 7;
-    rect(x, bx, 16, bw, 5, '#3a2a3a');
-    rect(x, bx, 16, Math.round(bw * frac), 5, frac > 0.5 ? '#7cf08a' : frac > 0.25 ? '#f2c230' : '#ff5a4a');
-    outlineRect(x, bx - 1, 15, bw + 2, 7, '#8a7a9a');
+    rr(x, bx - 0.5, 15.5, bw + 1, 6, 3);
+    x.fillStyle = '#3a2a3a';
+    x.fill();
+    if (frac > 0) sbox(x, bx, 16, Math.max(2, bw * frac), 5, frac > 0.5 ? '#7cf08a' : frac > 0.25 ? '#f2c230' : '#ff5a4a', { r: 2.5, gloss: 0.5, outline: null });
   }
 
   return {
@@ -474,68 +511,86 @@ export function wiresMode({ fx, level, look }: ModeEnv): ShiftMode {
       }
     },
     draw(x, t) {
-      x.drawImage(bg(), 0, 0);
+      blit(x, bg(), 0, 0, 192, 108);
       // breaker handle + light
       const on = breakerOn && swap <= 0;
-      rect(x, 10, 74, 18, 5, '#2a2a34');
-      text(x, `CKT${dev.ckt}`, 7, 6, '#4a3a2a');
+      sbox(x, 10, 74, 18, 5, '#2a2a34', { r: 1, gloss: 0.2, outline: null });
+      otext(x, `CKT${dev.ckt}`, 7, 5, '#4a3a2a', 6);
       const hy0 = on ? 29 : 45;
-      rect(x, 13, 28, 12, 26, '#1c1424');
-      bevel(x, 14, hy0, 10, 8, on ? '#e0503c' : '#3caa6a');
+      sbox(x, 13, 28, 12, 26, '#1c1424', { r: 2, gloss: 0.1 });
+      sbox(x, 14, hy0, 10, 8, on ? '#e0503c' : '#3caa6a', { r: 2, gloss: 0.55 });
       const blink = on && Math.floor(t * 5) % 2 === 0;
-      rect(x, 12, 58, 14, 7, '#1c1424');
+      sbox(x, 12, 58, 14, 7, '#1c1424', { r: 1.5, gloss: 0.1, outline: null });
       text(x, on ? 'LIVE' : 'OFF', on ? 12 : 14, 59, on ? (blink ? '#ff5a4a' : '#ffb0a0') : '#7cf08a');
       if (on) {
-        x.globalAlpha = 0.35 + 0.25 * Math.sin(t * 12);
-        outlineRect(x, 2, 11, 34, 72, '#ff5a4a');
-        x.globalAlpha = 1;
-      }
+        const a = 0.35 + 0.25 * Math.sin(t * 12);
+        pool(x, 19, 47, 26, 42, '#ff4a3a', a * 0.6);
+        x.lineWidth = 0.9;
+        x.strokeStyle = rgba('#ff5a4a', a + 0.2);
+        rr(x, 2, 11, 34, 72, 2.5);
+        x.stroke();
+      } else pool(x, 19, 61, 10, 5, '#7cf08a', 0.3);
       // legend
-      rect(x, 2, 86, 37, 21, '#1c1424');
+      sbox(x, 2, 86, 37, 21, '#1c1424', { r: 2, gloss: 0.12 });
       text(x, 'HOT', 4, 88, SCREW.hot);
       text(x, 'NEU', 4, 94, SCREW.neu);
       text(x, 'GND', 4, 100, SCREW.gnd);
-      rect(x, 18, 89, 5, 2, WIRE.black.c);
-      rect(x, 18, 89, 5, 1, '#5a5a64');
-      rect(x, 25, 89, 5, 2, WIRE.red.c);
-      rect(x, 32, 89, 5, 2, WIRE.blue.c);
-      rect(x, 18, 95, 5, 2, WIRE.white.c);
-      rect(x, 18, 101, 5, 2, WIRE.green.c);
-      rect(x, 25, 101, 5, 2, WIRE.bare.c);
+      for (const [lx, ly, c] of [[18, 89, WIRE.black.c], [25, 89, WIRE.red.c], [32, 89, WIRE.blue.c], [18, 95, WIRE.white.c], [18, 101, WIRE.green.c], [25, 101, WIRE.bare.c]] as const) {
+        sbox(x, lx, ly - 0.3, 5, 2.4, c, { r: 1.2, gloss: 0.5, outline: null });
+      }
       // device (slides in on a swap)
       const u = swap > 0 ? 1 - swap / 0.75 : 0;
-      if (!finished) drawDevice(x, dev, Math.round(u * u * 70), t);
-      if (swap > 0 && !finished) centered(x, `NEXT: ${specs[di].name}`, BOX_X + BOX_W / 2, 40, '#fff3c4');
+      if (!finished) drawDevice(x, dev, u * u * 70, t);
+      if (swap > 0 && !finished) ctext(x, `NEXT: ${specs[di].name}`, BOX_X + BOX_W / 2, 40, '#fff3c4');
+      // live sparks glow at the conduit
+      if (on && !finished && dev.live) pool(x, 104, 14, 16, 10, '#9ad8ff', 0.25 + 0.2 * Math.sin(t * 30));
       // selection highlight (keyboard)
-      if (!ptr && swap <= 0 && !finished && Math.floor(t * 4) % 2 === 0) {
+      if (!ptr && swap <= 0 && !finished) {
+        const a = 0.55 + 0.45 * Math.sin(t * 12);
+        x.lineWidth = 0.8;
+        x.strokeStyle = rgba('#ffe27a', a);
         if (held < 0) {
           const w = dev.wires[sel];
-          if (w && w.term < 0) outlineRect(x, w.ex - 4, w.ey - 3, 8, 10, '#ffe27a');
+          if (w && w.term < 0) {
+            rr(x, w.ex - 4, w.ey - 3, 8, 10, 2);
+            x.stroke();
+            pool(x, w.ex, w.ey + 2, 7, 7, '#ffe27a', 0.2 * a);
+          }
         } else {
           const tm = dev.terms[sel];
-          if (tm && !tm.used) outlineRect(x, tm.x - 6, TERM_Y - 5, 12, 11, '#ffe27a');
+          if (tm && !tm.used) {
+            rr(x, tm.x - 6, TERM_Y - 5, 12, 11, 2.5);
+            x.stroke();
+            pool(x, tm.x, TERM_Y, 9, 8, '#ffe27a', 0.2 * a);
+          }
         }
       }
       // gloved hand
-      const gx = Math.round(hx);
-      const gy = Math.round(hy);
       if (!finished) {
-        rect(x, gx - 3, gy + 2, 7, 6, INK);
-        rect(x, gx - 2, gy + 3, 5, 4, '#f2c230');
-        rect(x, gx - 2, gy + 1, 2, 2, '#f2c230');
-        rect(x, gx - 2, gy + 6, 5, 1, '#c8961a');
-        if (stun > 0 && Math.floor(t * 20) % 2) rect(x, gx - 4, gy, 9, 9, '#ffffff');
+        shadow(x, hx + 1.5, hy + 9, 4, 1.2, 0.3);
+        rr(x, hx - 2.5, hy + 2.5, 6, 5, 2);
+        x.fillStyle = rad(x, hx - 1, hy + 3.5, 0, 6, ['#ffe080', '#f2c230', '#a8780a']);
+        x.fill();
+        x.lineWidth = 0.45;
+        x.strokeStyle = 'rgba(28,20,36,0.85)';
+        x.stroke();
+        ball(x, hx - 1, hy + 2, 1.2, '#f2c230', 1.4, 0.5);
+        x.fillStyle = 'rgba(160,110,10,0.8)';
+        x.fillRect(hx - 2.2, hy + 6.2, 5.4, 0.6);
+        if (stun > 0 && Math.floor(t * 20) % 2) pool(x, hx, hy + 4, 9, 9, '#ffffff', 0.9);
       }
       // you, on a step stool at the side
-      drawRunner(x, me, 169, 73, 'stand', 0, -1, stun > 0);
+      person(x, me, 169, 73, Math.floor(t * 1.5) % 2, false, { face: -1, blink: stun > 0 });
+      x.globalCompositeOperation = 'lighter';
+      blit(x, light(), 0, 0, 192, 108);
+      x.globalCompositeOperation = 'source-over';
       if (hintT > 0) {
         const hw = textWidth(hint) + 6;
         const bx = Math.max(2, Math.min(190 - hw, BOX_X + BOX_W / 2 - hw / 2));
-        rect(x, bx, 26, hw, 9, '#1c1424');
-        outlineRect(x, bx - 1, 25, hw + 2, 11, '#ffe27a');
+        sbox(x, bx - 1, 25, hw + 2, 11, '#1c1424', { r: 2, gloss: 0.15, outline: '#ffe27a', lw: 0.7 });
         text(x, hint, bx + 3, 28, '#ffe27a');
       }
-      if (held >= 0 && !ptr) centered(x, 'NOW PICK ITS SCREW', BOX_X + BOX_W / 2, 64, '#fff3c4');
+      if (held >= 0 && !ptr) ctext(x, 'NOW PICK ITS SCREW', BOX_X + BOX_W / 2, 64, '#fff3c4');
     },
     hud: () => [
       { label: 'Device', value: `${Math.min(DEVICES, di + 1)}/${DEVICES}` },

@@ -8,9 +8,10 @@ import { useRef, useState } from 'react';
 import { num } from '../engine/core.ts';
 import type { PathId } from '../engine/types.ts';
 import { sfx } from '../ui/audio.ts';
-import { ctxOf, MiniHud, motes, PixelCanvas, TouchPad, useInput, useLoop, vignette, type MiniProps } from './kit.tsx';
+import { MiniHud, TouchPad, useInput, useLoop, type MiniProps } from './kit.tsx';
+import { hdBanner, hdCount, Hd2Canvas, hdCtx, hdFx, motes2, vignette2 } from './hd2Kit.tsx';
 import { checkoutMode } from './shiftCheckout.ts';
-import { COUNT_TIME, countLabel, drawBanner, drawCount, Fx, type HudItem, type ModeEnv, type ShiftMode } from './shiftKit.ts';
+import { COUNT_STEP, COUNT_TIME, countLabel, Fx, type HudItem, type ModeEnv, type ShiftMode } from './shiftKit.ts';
 import { libraryMode } from './shiftLibrary.ts';
 import { warehouseMode } from './shiftWarehouse.ts';
 import { wiresMode } from './shiftWires.ts';
@@ -94,7 +95,7 @@ export function Shift({ s, onDone, reducedMotion }: MiniProps) {
         setHud(items);
       }
 
-      const x = ctxOf(canvas.current);
+      const x = hdCtx(canvas.current);
       if (!x) return;
       const [ox, oy] = fx.offset();
       x.fillStyle = '#140c22';
@@ -102,14 +103,15 @@ export function Shift({ s, onDone, reducedMotion }: MiniProps) {
       x.save();
       x.translate(ox, oy);
       mode.draw(x, t);
-      fx.draw(x);
+      hdFx(x, fx);
       x.restore();
-      if (!reducedMotion) motes(x, t, { x: 0, y: 0, w: 192, h: 96 }, 10, 'rgba(255,250,220,0.9)', 3, -2);
-      vignette(x, 192, 108, 0.32);
-      drawCount(x, t);
+      if (!reducedMotion) motes2(x, t, { x: 0, y: 0, w: 192, h: 96 }, 14, '#fffbe0', 3, -2);
+      vignette2(x, 192, 108, 0.5);
+      const lab = countLabel(t);
+      hdCount(x, lab, lab === 'GO!' ? t - COUNT_TIME : t % COUNT_STEP);
       if (r.phase === 'end' && r.res) {
         const good = r.res.score >= 0.6;
-        drawBanner(x, r.left <= 0 ? 'SHIFT OVER!' : 'ALL DONE!', r.res.line, good, r.endT);
+        hdBanner(x, r.left <= 0 ? 'SHIFT OVER!' : 'ALL DONE!', r.res.line, good, r.endT);
       }
     },
     true,
@@ -119,7 +121,7 @@ export function Shift({ s, onDone, reducedMotion }: MiniProps) {
   return (
     <div className="mini shift-rush">
       <MiniHud items={hud} />
-      <PixelCanvas canvasRef={canvas} onPointer={(px, py, k) => r.phase === 'play' && r.mode.pointer(px, py, k)} />
+      <Hd2Canvas canvasRef={canvas} onPointer={(px, py, k) => r.phase === 'play' && r.mode.pointer(px, py, k)} />
       <TouchPad input={input} keys={r.mode.keys} />
       <p className="mini-note sr-key-note">{r.mode.note}</p>
       <p className="mini-note sr-touch-note">{r.mode.touchNote}</p>

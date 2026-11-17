@@ -2,11 +2,13 @@
 // Slide between lanes and zap the matching term with your highlighter before it lands.
 // First-try hits build a streak multiplier; later rounds fall faster and shuffle lanes mid-air.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { cached, disc, dither, dot, glow, grad, hash, INK, mix, rect, shade, stipple, type Ctx } from '../art/px.ts';
-import { drawPerson, playerPerson } from '../art/people.ts';
+import { hash, INK, mix, type Ctx } from '../art/px.ts';
+import { playerPerson } from '../art/people.ts';
+import { ball, beam, blit, cyl, ell, glare, haze, Hd2Canvas, hdCtx, layer, lin, motes2, pool, rad, rgba, rr, sbox, shadow, tint, vfill, vignette2 } from './hd2Kit.tsx';
+import { person as drawPerson } from './hd2Person.ts';
 import { buildRounds, type Card, type Round } from './cardsDeck.ts';
 import { bigText, burst, drawFloaters, drawParticles, once, outlined, rng, sound, soundInit, stepFloaters, stepParticles, type Floater, type Particle } from './cardsFx.ts';
-import { clamp01, ctxOf, MiniHud, motes, PixelCanvas, TouchPad, useInput, useLoop, vignette, type MiniProps } from './kit.tsx';
+import { clamp01, MiniHud, TouchPad, useInput, useLoop, type MiniProps } from './kit.tsx';
 import './cards.css';
 
 const W = 192;
@@ -312,43 +314,54 @@ export function Flashcards({ s, onDone, reducedMotion }: MiniProps) {
   }
 
   function draw(st: typeof g.current): void {
-    const x = ctxOf(canvas.current);
+    const x = hdCtx(canvas.current);
     if (!x) return;
     x.save();
-    if (st.shake > 0) x.translate(Math.round((Math.random() - 0.5) * 4), Math.round((Math.random() - 0.5) * 3));
-    x.drawImage(background(), 0, 0);
+    if (st.shake > 0) x.translate((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3);
+    blit(x, background(), 0, 0, W, H);
 
     // deadline
     const danger = st.phase === 'play' ? clamp01((Math.max(...st.cards.filter((c) => c.state === 'fall').map((c) => c.y), START_Y) - 20) / 40) : 0;
     const dl = mix('#7a4a6a', '#ff5a4a', danger * (0.6 + 0.4 * Math.sin(st.time * 14)));
-    for (let i = 0; i < W; i += 6) rect(x, i, DEADLINE, 4, 1, dl);
+    pool(x, W / 2, DEADLINE + 0.5, W * 0.6, 3 + danger * 3, dl, 0.25 + danger * 0.4);
+    x.fillStyle = dl;
+    for (let i = 0; i < W; i += 6) {
+      rr(x, i, DEADLINE - 0.1, 4, 1.2, 0.6);
+      x.fill();
+    }
     outlined(x, 'DEADLINE', 48, DEADLINE + 3, mix('#b08aa8', '#ff8a7a', danger));
 
     // player + highlighter
     const fr = Math.floor(st.walk) % 2;
-    const pX = Math.round(st.px - 7);
-    if (st.streak >= 3) glow(x, st.px, PLAYER_Y + 16, 12 + Math.sin(st.time * 8), 18, st.streak >= 6 ? '#7ff0c0' : '#fff36a', 0.7);
+    const pX = st.px - 7;
+    if (st.streak >= 3) pool(x, st.px, PLAYER_Y + 16, 16 + Math.sin(st.time * 8), 22, st.streak >= 6 ? '#7ff0c0' : '#fff36a', 0.45);
     drawPerson(x, person, pX, PLAYER_Y, fr, false, { face: st.lane === 0 ? -1 : st.lane === 2 ? 1 : 0 });
     // highlighter raised in the right hand
     const hx = pX + 12;
     const hy = PLAYER_Y + 9 + (st.beam.t > 0 ? -2 : 0);
-    rect(x, hx, hy, 3, 8, '#f2e23a');
-    rect(x, hx, hy, 1, 8, '#fff79a');
-    rect(x, hx, hy + 6, 3, 2, '#3a3a52');
-    rect(x, hx + 1, hy - 2, 1, 2, '#c8b81a');
+    rr(x, hx + 0.6, hy - 2, 1.8, 2.4, 0.5);
+    x.fillStyle = '#c8b81a';
+    x.fill();
+    cyl(x, hx, hy, 3, 8, '#f2e23a', { spec: 0.7 });
+    cyl(x, hx, hy + 6, 3, 2, '#3a3a52', { spec: 0.4 });
+    pool(x, hx + 1.5, hy - 2, 4, 4, '#fff36a', 0.35);
 
     // beam
     if (st.beam.t > 0) {
       const a = st.beam.t / 0.18;
       const top = Math.max(-2, st.beam.top);
       const bot = hy - 2;
-      const col = st.beam.ok ? '255,243,106' : '255,255,255';
-      x.fillStyle = `rgba(${col},${(0.25 * a).toFixed(3)})`;
-      x.fillRect(Math.round(st.beam.x - 4), Math.round(top), 9, Math.round(bot - top));
-      x.fillStyle = `rgba(${col},${(0.85 * a).toFixed(3)})`;
-      x.fillRect(Math.round(st.beam.x - 1), Math.round(top), 3, Math.round(bot - top));
-      x.fillStyle = 'rgba(255,255,255,0.8)';
-      x.fillRect(Math.round(st.beam.x), Math.round(top), 1, Math.round(bot - top));
+      const col = st.beam.ok ? '#fff36a' : '#ffffff';
+      x.save();
+      x.globalCompositeOperation = 'lighter';
+      x.fillStyle = lin(x, st.beam.x - 6, 0, st.beam.x + 6, 0, [rgba(col, 0), rgba(col, 0.55 * a), rgba(col, 0)]);
+      x.fillRect(st.beam.x - 6, top, 12, bot - top);
+      x.restore();
+      x.fillStyle = rgba(col, 0.9 * a);
+      x.fillRect(st.beam.x - 0.9, top, 1.8, bot - top);
+      x.fillStyle = `rgba(255,255,255,${(0.9 * a).toFixed(3)})`;
+      x.fillRect(st.beam.x - 0.3, top, 0.6, bot - top);
+      pool(x, st.beam.x, top, 8, 6, col, 0.7 * a);
     }
 
     // cards
@@ -372,13 +385,21 @@ export function Flashcards({ s, onDone, reducedMotion }: MiniProps) {
       const c = st.cards.find((q) => q.state === 'fall' && q.card.id === answerId);
       if (c) {
         const b = cardBox(c);
-        const bob = reducedMotion ? 0 : Math.round(Math.abs(Math.sin(st.time * 6)) * 3);
-        const ax = Math.round(b.x + b.w / 2);
-        const ay = Math.round(b.y + b.h + 3 + bob);
-        for (let k = 0; k < 4; k++) {
-          rect(x, ax - k - 1, ay + k, k * 2 + 3, 1, INK);
-          rect(x, ax - k, ay + k, k * 2 + 1, 1, '#fff36a');
-        }
+        const bob = reducedMotion ? 0 : Math.abs(Math.sin(st.time * 6)) * 3;
+        const ax = b.x + b.w / 2;
+        const ay = b.y + b.h + 3 + bob;
+        pool(x, ax, ay + 2, 6, 5, '#fff36a', 0.4);
+        x.beginPath();
+        x.moveTo(ax, ay);
+        x.lineTo(ax + 3.5, ay + 4);
+        x.lineTo(ax - 3.5, ay + 4);
+        x.closePath();
+        x.lineJoin = 'round';
+        x.lineWidth = 1;
+        x.strokeStyle = INK;
+        x.stroke();
+        x.fillStyle = '#fff36a';
+        x.fill();
         outlined(x, 'THIS ONE!', ax - 17, ay + 6, '#fff36a');
       }
     }
@@ -387,8 +408,8 @@ export function Flashcards({ s, onDone, reducedMotion }: MiniProps) {
     drawFloaters(x, st.fl);
 
     // dust in the lamplight + a soft vignette around the desk
-    if (!reducedMotion) motes(x, st.time, { x: 20, y: 6, w: 150, h: 70 }, 16, '#fff3c4', 2, -2);
-    vignette(x, W, H, 0.3);
+    if (!reducedMotion) motes2(x, st.time, { x: 20, y: 6, w: 150, h: 70 }, 18, '#fff3c4', 2, -2);
+    vignette2(x, W, H, 0.5);
 
     if (st.flash > 0) {
       x.fillStyle = `rgba(255,250,200,${(st.flash * 1.4).toFixed(3)})`;
@@ -425,48 +446,68 @@ export function Flashcards({ s, onDone, reducedMotion }: MiniProps) {
 
   function drawCard(x: Ctx, cx: number, cy: number, w: number, h: number, c: Fall, a: number, reveal: boolean): void {
     x.globalAlpha = a;
-    const px = Math.round(cx);
-    const py = Math.round(cy);
-    const ww = Math.round(w);
-    const hh = Math.round(h);
-    // shadow
-    x.fillStyle = 'rgba(10,6,20,0.35)';
-    x.fillRect(px + 2, py + 2, ww, hh);
+    const px = cx;
+    const py = cy;
+    // soft drop shadow (the card is floating above the desk)
+    shadow(x, px + w / 2 + 2, py + h + 1.5, w * 0.6, 3, 0.45);
     let paper = '#fbf6e6';
     if (c.state === 'hit') paper = c.t < 0.1 ? '#ffffff' : '#fff36a';
     else if (c.state === 'wrong') paper = '#f2a49a';
     else if (c.state === 'missed') paper = '#f6d2c8';
     else if (reveal) paper = '#c8f2d8';
-    rect(x, px, py, ww, hh, paper);
-    if (ww > 20) {
+    if (reveal) pool(x, px + w / 2, py + h / 2, w * 0.7, h, '#7ff0c0', 0.35 * a);
+    rr(x, px, py, w, h, 2);
+    x.fillStyle = lin(x, px, py, px + w * 0.4, py + h, [tint(paper, 1.05), paper, tint(paper, 0.86)]);
+    x.fill();
+    if (w > 20) {
+      x.save();
+      rr(x, px, py, w, h, 2);
+      x.clip();
       // index card rules
-      rect(x, px + 1, py + 4, ww - 2, 1, c.state === 'hit' ? '#e0b030' : '#e0707a');
-      for (let ly = py + 9; ly < py + hh - 2; ly += 5) rect(x, px + 1, ly, ww - 2, 1, c.state === 'hit' ? '#f0d850' : '#cfe0f0');
+      x.fillStyle = c.state === 'hit' ? '#e0b030' : '#e0707a';
+      x.fillRect(px + 1, py + 4, w - 2, 0.6);
+      x.fillStyle = c.state === 'hit' ? '#f0d850' : '#c8d8ec';
+      for (let ly = py + 9; ly < py + h - 2; ly += 5) x.fillRect(px + 1, ly, w - 2, 0.45);
       if (c.state === 'fall' && !reducedMotion) {
         // a glossy highlight sweeps across each card now and then
-        const sw = ((g.current.time * 30 + cx * 0.7) % (ww + 60)) - 10;
-        for (let j = 0; j < hh; j++) {
-          const sx = Math.round(px + sw - j * 0.6);
-          if (sx >= px && sx + 2 <= px + ww) rect(x, sx, py + j, 2, 1, 'rgba(255,255,255,0.6)');
-        }
+        const sw = ((g.current.time * 30 + cx * 0.7) % (w + 60)) - 10;
+        x.fillStyle = lin(x, px + sw - 4, 0, px + sw + 4, 0, ['rgba(255,255,255,0)', 'rgba(255,255,255,0.75)', 'rgba(255,255,255,0)']);
+        x.beginPath();
+        x.moveTo(px + sw - 3, py);
+        x.lineTo(px + sw + 3, py);
+        x.lineTo(px + sw + 3 - h * 0.6, py + h);
+        x.lineTo(px + sw - 3 - h * 0.6, py + h);
+        x.closePath();
+        x.fill();
       }
+      // paper sheen + curl shadow
+      vfill(x, px, py, w, h, ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0)', 'rgba(60,40,80,0.12)']);
       if (c.state === 'hit' && c.t < 0.2) {
         // highlighter swipe across
         const k = clamp01(c.t / 0.12);
-        rect(x, px, py + hh / 2 - 4, Math.round(ww * k), 8, '#ffe600');
+        x.fillStyle = 'rgba(255,230,0,0.85)';
+        rr(x, px, py + h / 2 - 4, w * k, 8, 2);
+        x.fill();
       }
+      x.restore();
     }
     // outline
-    x.fillStyle = c.state === 'missed' ? '#c0392b' : INK;
-    x.fillRect(px - 1, py - 1, ww + 2, 1);
-    x.fillRect(px - 1, py + hh, ww + 2, 1);
-    x.fillRect(px - 1, py, 1, hh);
-    x.fillRect(px + ww, py, 1, hh);
+    rr(x, px + 0.25, py + 0.25, w - 0.5, h - 0.5, 2);
+    x.lineWidth = c.state === 'missed' ? 1 : 0.6;
+    x.strokeStyle = c.state === 'missed' ? '#c0392b' : 'rgba(28,20,36,0.85)';
+    x.stroke();
     if (c.state === 'wrong') {
-      for (let i = 0; i < 10; i++) {
-        rect(x, px + ww / 2 - 5 + i, py + hh / 2 - 5 + i, 2, 1, '#c0392b');
-        rect(x, px + ww / 2 + 4 - i, py + hh / 2 - 5 + i, 2, 1, '#c0392b');
-      }
+      x.save();
+      x.lineCap = 'round';
+      x.lineWidth = 1.6;
+      x.strokeStyle = '#c0392b';
+      x.beginPath();
+      x.moveTo(px + w / 2 - 5, py + h / 2 - 5);
+      x.lineTo(px + w / 2 + 5, py + h / 2 + 5);
+      x.moveTo(px + w / 2 + 5, py + h / 2 - 5);
+      x.lineTo(px + w / 2 - 5, py + h / 2 + 5);
+      x.stroke();
+      x.restore();
     }
     x.globalAlpha = 1;
   }
@@ -490,7 +531,7 @@ export function Flashcards({ s, onDone, reducedMotion }: MiniProps) {
         <span className="cards-clue-text">{clue.text}</span>
       </div>
       <div className="cards-wrap">
-        <PixelCanvas canvasRef={canvas} width={W} height={H} onPointer={onPointer} />
+        <Hd2Canvas canvasRef={canvas} width={W} height={H} onPointer={onPointer} />
         <div className="cards-labels" aria-hidden="true">
           {[0, 1, 2].map((k) => (
             <div key={k} className="cards-label" ref={(el) => void (labels.current[k] = el)} style={{ width: `${(CW / W) * 100}%`, height: `${(CH / H) * 100}%`, opacity: 0 }}>
@@ -512,66 +553,114 @@ export function Flashcards({ s, onDone, reducedMotion }: MiniProps) {
   );
 }
 
-// Late-night study nook: window, shelves, desk lamp. Drawn once.
+// Late-night study nook: window, shelves, string lights, a warm desk lamp. Drawn once at HD.
 function background(): HTMLCanvasElement {
-  return cached('cards-bg', W, H, (x) => {
-    // wall with faint striped wallpaper
-    grad(x, 0, 0, W, 100, ['#15102c', '#1c1638', '#251d46']);
-    for (let i = 4; i < W; i += 8) stipple(x, i, 0, 2, 100, '#2c2452', 0.35);
+  return layer('hd-cards-bg', W, H, (x) => {
+    // wall with soft striped wallpaper, warmer where the lamp reaches
+    vfill(x, 0, 0, W, 100, ['#120d26', '#1c1638', '#2a2050']);
+    for (let i = 4; i < W; i += 8) {
+      x.fillStyle = 'rgba(70,60,120,0.18)';
+      x.fillRect(i, 0, 2, 100);
+    }
     // window: city skyline at night, curtains, rod
-    rect(x, 70, 8, 52, 38, '#3a2a22');
-    grad(x, 72, 10, 48, 34, ['#0b1028', '#16204a', '#2a2a5e', '#4a3a6a']);
-    for (let i = 0; i < 18; i++) dot(x, 73 + ((i * 29) % 46), 11 + ((i * 13) % 18), i % 4 ? '#7f8fc8' : '#f6efdc');
-    disc(x, 110, 17, 3, '#f6efdc');
-    disc(x, 112, 16, 2, '#16204a');
+    shadow(x, 96, 48, 34, 3, 0.4);
+    sbox(x, 70, 8, 52, 38, '#4a3428', { r: 1, gloss: 0.3 });
+    vfill(x, 72, 10, 48, 34, ['#070a20', '#16204a', '#2e2c62', '#5a3e70']);
+    for (let i = 0; i < 18; i++) {
+      const sx = 73 + ((i * 29) % 46);
+      const sy = 11 + ((i * 13) % 18);
+      pool(x, sx, sy, 1.4, 1.4, i % 4 ? '#9fb0e8' : '#fffbe8', 0.9);
+    }
+    pool(x, 110, 17, 9, 9, '#c8d0ff', 0.25);
+    ball(x, 110, 17, 3, '#f6efdc', 3, 0.2);
+    ell(x, 112, 16, 2.2, 2.2);
+    x.fillStyle = '#16204a';
+    x.fill();
     const sky = [[72, 30, 7], [79, 26, 6], [85, 33, 8], [93, 24, 5], [98, 29, 9], [107, 27, 6], [113, 32, 7]];
     for (const [bx, by, bw] of sky) {
-      rect(x, bx, by, bw, 44 - by, '#0e0b1e');
-      for (let wy = by + 2; wy < 42; wy += 3) for (let wx = bx + 1; wx < bx + bw - 1; wx += 2) if (hash(wx * 31 + wy * 7) < 0.35) dot(x, wx, wy, '#f2c84a');
+      vfill(x, bx, by, bw, 44 - by, ['#1a1530', '#0a0818']);
+      for (let wy = by + 2; wy < 42; wy += 3)
+        for (let wx = bx + 1; wx < bx + bw - 1; wx += 2)
+          if (hash(wx * 31 + wy * 7) < 0.35) {
+            x.fillStyle = '#f2c84a';
+            x.fillRect(wx, wy, 0.9, 1);
+          }
     }
-    rect(x, 95, 10, 2, 34, '#3a2a22');
-    rect(x, 72, 26, 48, 1, '#3a2a22');
-    rect(x, 68, 45, 56, 3, '#5a3e2c');
-    rect(x, 68, 45, 56, 1, '#7a563c');
-    rect(x, 62, 6, 68, 2, '#8a8a9a');
+    haze(x, 72, 30, 48, 44, '#6a4a8a', 0, 0.35);
+    glare(x, 72, 10, 48, 34, 0.14);
+    x.fillStyle = '#3a2a22';
+    x.fillRect(95.3, 10, 1.4, 34);
+    x.fillRect(72, 26.3, 48, 1);
+    sbox(x, 67, 45, 58, 3.4, '#7a563c', { r: 1, gloss: 0.5 });
+    cyl(x, 62, 5.6, 68, 1.6, '#a8a8b8', { spec: 0.6 });
+    // velvet curtains with soft folds
     for (const [cx0, dir] of [[62, 1], [120, -1]] as const) {
-      for (let i = 0; i < 10; i++) {
-        const c = i % 3 === 0 ? '#2a5a5e' : i % 3 === 1 ? '#3a7a7a' : '#32686a';
-        rect(x, cx0 + i, 8, 1, 46 + (dir > 0 ? i : 9 - i) % 3, c);
-      }
+      x.beginPath();
+      x.moveTo(cx0, 7);
+      x.lineTo(cx0 + 10 * dir, 7);
+      x.quadraticCurveTo(cx0 + 7 * dir, 30, cx0 + 9 * dir, 56);
+      x.lineTo(cx0 - 0.5 * dir, 56);
+      x.closePath();
+      x.fillStyle = lin(x, cx0, 0, cx0 + 10 * dir, 0, ['#1e4a4e', '#3a8a88', '#2a6466', '#4a9a96', '#1e4a4e']);
+      x.fill();
     }
     // string lights
     const bulbs = ['#ff8a8a', '#ffd27a', '#8affc8', '#8ac8ff', '#e0a0ff'];
-    for (let bx = 22; bx < 172; bx += 2) {
+    x.strokeStyle = '#3a3450';
+    x.lineWidth = 0.5;
+    x.beginPath();
+    for (let bx = 22; bx <= 172; bx += 1) {
       const seg = (bx - 22) % 50;
-      const by = 2 + Math.round(Math.sin((seg / 50) * Math.PI) * 5);
-      dot(x, bx, by, '#3a3450');
-      if (bx % 10 === 6) {
-        const c = bulbs[(bx / 10) % bulbs.length | 0];
-        glow(x, bx, by + 2, 4, 3, c, 0.5);
-        rect(x, bx, by + 1, 1, 2, c);
-      }
+      const by = 2 + Math.sin((seg / 50) * Math.PI) * 5;
+      if (bx === 22) x.moveTo(bx, by);
+      else x.lineTo(bx, by);
+    }
+    x.stroke();
+    for (let bx = 26; bx < 172; bx += 10) {
+      const seg = (bx - 22) % 50;
+      const by = 2 + Math.sin((seg / 50) * Math.PI) * 5;
+      const c = bulbs[(bx / 10) % bulbs.length | 0];
+      pool(x, bx, by + 2, 7, 6, c, 0.4);
+      ball(x, bx, by + 2, 1, c, 1.4, 0.8);
     }
     // poster: sunset mountains
-    rect(x, 27, 52, 26, 30, '#e8dcc0');
-    grad(x, 29, 54, 22, 26, ['#f2b65a', '#e0705a', '#8a4a7a']);
-    for (let i = 0; i < 11; i++) rect(x, 29 + i, 80 - i * 2, 1, i * 2, '#3a2a5a'), rect(x, 50 - i, 80 - i, 1, i, '#4a3a6a');
-    disc(x, 40, 62, 3, '#fff3a0');
+    shadow(x, 41, 83, 15, 2, 0.4);
+    sbox(x, 27, 52, 26, 30, '#e8dcc0', { r: 0.6, gloss: 0.15 });
+    vfill(x, 29, 54, 22, 26, ['#ffc870', '#f08060', '#8a4a7a']);
+    ball(x, 40, 62, 3, '#fff3a0', 3, 0);
+    pool(x, 40, 62, 8, 8, '#fff0a0', 0.3);
+    x.fillStyle = '#4a3a6a';
+    x.beginPath();
+    x.moveTo(29, 80);
+    x.lineTo(36, 66);
+    x.lineTo(42, 74);
+    x.lineTo(46, 69);
+    x.lineTo(51, 76);
+    x.lineTo(51, 80);
+    x.closePath();
+    x.fill();
+    glare(x, 29, 54, 22, 26, 0.2);
     // corkboard with notes and a photo
-    rect(x, 138, 52, 28, 22, '#6a4a30');
-    dither(x, 139, 53, 26, 20, '#a8804e', '#98703e');
-    for (const [nx, ny, c] of [[141, 55, '#f2e46a'], [151, 54, '#8ad0f0'], [156, 63, '#f2a0c0'], [143, 64, '#a0e8a0']] as const) {
-      rect(x, nx, ny, 7, 7, c);
-      rect(x, nx + 1, ny + 2, 5, 1, shade(c, 0.7));
-      rect(x, nx + 1, ny + 4, 4, 1, shade(c, 0.7));
-      dot(x, nx + 3, ny, '#c0392b');
+    shadow(x, 152, 75, 16, 2, 0.4);
+    sbox(x, 138, 52, 28, 22, '#6a4a30', { r: 1, gloss: 0.2 });
+    vfill(x, 139.5, 53.5, 25, 19, ['#b88a56', '#986e3e']);
+    for (const [nx, ny, c, r] of [[141, 55, '#f2e46a', -0.08], [151, 54, '#8ad0f0', 0.06], [156, 63, '#f2a0c0', 0.1], [143, 64, '#a0e8a0', -0.05]] as const) {
+      x.save();
+      x.translate(nx + 3.5, ny + 3.5);
+      x.rotate(r);
+      shadow(x, 0.6, 3.8, 3.5, 0.8, 0.35);
+      sbox(x, -3.5, -3.5, 7, 7, c, { r: 0.4, gloss: 0.3, outline: null });
+      x.fillStyle = rgba(tint(c, 0.6), 0.8);
+      x.fillRect(-2.5, -1.5, 5, 0.5);
+      x.fillRect(-2.5, 0.5, 4, 0.5);
+      x.restore();
+      ball(x, nx + 3.5, ny + 0.2, 0.8, '#d0402b', 0.8, 0.7);
     }
     // bookshelves on both edges
     for (const sx of [0, W - 18]) {
-      rect(x, sx, 10, 18, 92, '#3a2820');
-      rect(x, sx + (sx ? 0 : 17), 10, 1, 92, '#2a1c16');
+      vfill(x, sx, 10, 18, 92, ['#2a1a14', '#3a2820']);
       for (let sy = 12; sy < 100; sy += 18) {
-        rect(x, sx, sy + 14, 18, 2, '#5a3e2c');
+        vfill(x, sx, sy, 18, 14, ['#160c08', '#2e1e16']);
         let bx = sx + 1;
         for (let b = 0; bx < sx + 16; b++) {
           const k = hash(sx * 13 + sy * 7 + b);
@@ -579,34 +668,75 @@ function background(): HTMLCanvasElement {
           const bw = k > 0.7 ? 3 : 2;
           const bh = 8 + Math.floor(k * 5);
           if (bx + bw > sx + 17) break;
-          rect(x, bx, sy + 14 - bh, bw, bh, shade(c, 0.72));
-          rect(x, bx, sy + 14 - bh, 1, bh, shade(c, 0.85));
+          cyl(x, bx, sy + 14 - bh, bw, bh, tint(c, 0.75), { spec: 0.2 });
           bx += bw + (k < 0.15 ? 1 : 0);
         }
+        sbox(x, sx, sy + 14, 18, 2, '#6a4a32', { r: 0.4, gloss: 0.4, outline: null });
       }
     }
     // plant on the left shelf top
-    rect(x, 5, 5, 6, 5, '#b0603a');
-    for (const [lx, ly] of [[3, 2], [6, 0], [9, 2], [11, 4], [2, 4]]) rect(x, lx, ly, 2, 4, '#4aa060');
-    // baseboard + floor
-    rect(x, 0, 100, W, 4, '#3a2c3a');
-    rect(x, 0, 100, W, 1, '#4e3e50');
-    rect(x, 0, 104, W, 16, '#5a3a28');
-    for (let y = 104; y < H; y += 4) {
-      rect(x, 0, y, W, 1, '#4a2e20');
-      for (let i = 0; i < 5; i++) rect(x, ((y * 13 + i * 47) % W) | 0, y + 1, 1, 3, '#4a2e20');
+    sbox(x, 4.5, 5, 7, 5.4, '#c0703a', { r: 1, gloss: 0.4 });
+    for (const [lx, ly, r] of [[4, 4, -0.6], [7, 2, 0], [10, 3.6, 0.5], [12, 5, 0.9], [2.4, 5.5, -1]] as const) {
+      x.save();
+      x.translate(lx + 1, ly + 2);
+      x.rotate(r);
+      ell(x, 0, 0, 1.2, 2.6);
+      x.fillStyle = lin(x, -1, 0, 1, 0, ['#2e7a40', '#6ac080', '#3a8a4c']);
+      x.fill();
+      x.restore();
     }
-    stipple(x, 0, 104, W, 3, '#1a1022', 0.5);
+    // baseboard + floor
+    vfill(x, 0, 100, W, 4, ['#5a4a60', '#3a2c3a']);
+    vfill(x, 0, 104, W, 16, ['#4a2e1e', '#6a4430', '#5a3a28']);
+    x.strokeStyle = 'rgba(30,16,10,0.5)';
+    x.lineWidth = 0.35;
+    for (let i = -200; i <= 400; i += 14) {
+      x.beginPath();
+      x.moveTo(96 + (i - 96) * 0.7, 104);
+      x.lineTo(i, 120);
+      x.stroke();
+    }
+    vfill(x, 0, 104, W, 3, ['rgba(10,4,20,0.6)', 'rgba(10,4,20,0)']);
     // rug
-    dither(x, 52, 109, 88, 9, '#6a3050', '#5e2a48');
-    rect(x, 52, 109, 88, 1, '#8a4a68');
-    for (let i = 54; i < 140; i += 4) dot(x, i, 113, '#d0a84a');
+    rr(x, 52, 109, 88, 9, 2);
+    x.fillStyle = rad(x, 96, 113, 4, 50, ['#8a4068', '#6a3050', '#4e2240']);
+    x.fill();
+    x.fillStyle = '#d0a84a';
+    for (let i = 55; i < 140; i += 4) x.fillRect(i, 112.8, 1, 0.6);
     // floor clutter: beanbag left, book stack + mug right
-    disc(x, 32, 103, 6, '#3a6a9a');
-    rect(x, 24, 103, 17, 4, '#3a6a9a');
-    rect(x, 27, 98, 4, 2, '#5a8aba');
-    for (const [i, c] of [[0, '#b04a4a'], [1, '#4a9a6a'], [2, '#d0a84a']] as const) rect(x, 154 - i, 100 - i * 3, 14, 3, c);
-    rect(x, 170, 96, 4, 5, '#e8e0d0');
-    rect(x, 174, 97, 1, 2, '#e8e0d0');
+    shadow(x, 32, 107, 10, 2, 0.45);
+    x.beginPath();
+    x.moveTo(23, 107);
+    x.quadraticCurveTo(22, 97, 31, 96.5);
+    x.quadraticCurveTo(41, 97, 41, 107);
+    x.closePath();
+    x.fillStyle = rad(x, 29, 99, 1, 12, ['#7ab0e0', '#3a6a9a', '#1e3a5a']);
+    x.fill();
+    shadow(x, 161, 101, 10, 1.6, 0.45);
+    for (const [i, c] of [[0, '#b04a4a'], [1, '#4a9a6a'], [2, '#d0a84a']] as const) sbox(x, 154 - i, 100 - i * 3, 14, 3, c, { r: 0.6, gloss: 0.45 });
+    cyl(x, 170, 96, 4, 5, '#e8e0d0', { spec: 0.6 });
+    x.lineWidth = 0.6;
+    x.strokeStyle = '#d8d0c0';
+    x.beginPath();
+    x.arc(174, 98.4, 1, -Math.PI / 2, Math.PI / 2);
+    x.stroke();
+    // a clamp lamp on the right shelf, and its warm pool over the study corner
+    x.globalCompositeOperation = 'lighter';
+    x.fillStyle = rad(x, 120, 100, 4, 100, ['rgba(255,200,120,0.3)', 'rgba(255,170,90,0.1)', 'rgba(255,170,90,0)']);
+    x.fillRect(0, 0, W, H);
+    beam(x, 176, 186, 10, 96, 196, 104, '#ffd8a0', 0.16);
+    x.globalCompositeOperation = 'source-over';
+    cyl(x, 182.5, 2, 1, 6, '#5a5a6a', { spec: 0.4 });
+    x.beginPath();
+    x.moveTo(176, 11);
+    x.quadraticCurveTo(177, 5, 181.5, 5);
+    x.quadraticCurveTo(186, 5, 187, 11);
+    x.closePath();
+    x.fillStyle = lin(x, 176, 5, 187, 11, ['#ff9a6a', '#c0503a', '#6a2418']);
+    x.fill();
+    ell(x, 181.5, 11, 5.5, 1);
+    x.fillStyle = '#fff4d0';
+    x.fill();
+    pool(x, 181.5, 12, 10, 6, '#ffd890', 0.6);
   });
 }

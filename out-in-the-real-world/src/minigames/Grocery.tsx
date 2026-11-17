@@ -1,8 +1,10 @@
 // Grocery Run: push a cart around a top-down store, grab what's on your list, compare prices,
 // dodge the impulse-buy displays and the Sunday crowd, then check out.
 import { useRef, useState, type CSSProperties } from 'react';
-import { HAIRS, playerPerson, SHIRTS, SKINS, drawPerson, type Person } from '../art/people.ts';
-import { dither, disc, glow, INK, mix, rect, shade, stipple, type Ctx } from '../art/px.ts';
+import { HAIRS, playerPerson, SHIRTS, SKINS, type Person } from '../art/people.ts';
+import { INK, rect, shade, type Ctx } from '../art/px.ts';
+import { ball, blend, blit, cyl, ell, glare, HD, Hd2Canvas, hdCtx, lin, pool, rad, rgba, rr, sbox, shadow, tint, vfill, vignette2 } from './hd2Kit.tsx';
+import { person } from './hd2Person.ts';
 import { sfx } from '../ui/audio.ts';
 import {
   AISLE_SECTIONS,
@@ -23,7 +25,7 @@ import {
 } from './groceryData.ts';
 import { dollars, Fx, say } from './groceryHaggleFx.ts';
 import { GhPad } from './groceryHagglePad.tsx';
-import { ctxOf, MiniHud, PixelCanvas, useInput, useLoop, vignette, type Input, type MiniProps } from './kit.tsx';
+import { MiniHud, useInput, useLoop, type Input, type MiniProps } from './kit.tsx';
 import './groceryHaggle.css';
 
 const W = 240;
@@ -246,10 +248,13 @@ function setup(look: Person, reduced: boolean): G {
     doneSent: false,
   };
   g.shoppers.push(newShopper([2, 1], r), newShopper([0, 0], r));
-  g.bg.width = W;
-  g.bg.height = H;
+  g.bg.width = W * HD;
+  g.bg.height = H * HD;
   const bx = g.bg.getContext('2d');
-  if (bx) paintStatic(bx, g);
+  if (bx) {
+    bx.setTransform(HD, 0, 0, HD, 0, 0);
+    paintStatic(bx, g);
+  }
   // Walkable grid (2px cells) for tap-to-go.
   // "safe" also keeps clear of the impulse displays, so tapping around the store doesn't drag you into them.
   g.pass = new Uint8Array(GW * GH);
@@ -824,64 +829,90 @@ function tap(g: G, x: number, y: number): void {
 
 // ---------- drawing ----------
 function productIcon(x: Ctx, shape: Shape, c: string, px: number, by: number): void {
-  // (px, by) = left, bottom of a ~9px-wide item
-  const hi = shade(c, 1.2);
-  const lo = shade(c, 0.72);
+  // (px, by) = left, bottom of a ~9px-wide item: smooth-shaded, with a specular glint
   switch (shape) {
     case 'box':
-      rect(x, px + 1, by - 9, 7, 9, lo);
-      rect(x, px + 1, by - 9, 6, 9, c);
-      rect(x, px + 1, by - 9, 6, 1, hi);
-      rect(x, px + 2, by - 6, 4, 2, '#f8f4ec');
+      sbox(x, px + 1, by - 9, 7, 9, c, { r: 0.8, gloss: 0.4, lw: 0.4 });
+      sbox(x, px + 2, by - 6, 4.6, 2.2, '#f8f4ec', { r: 0.5, gloss: 0, outline: null });
       break;
     case 'jar':
-      rect(x, px + 2, by - 9, 5, 2, '#3a3a44');
-      rect(x, px + 1, by - 7, 7, 7, c);
-      rect(x, px + 1, by - 7, 1, 7, hi);
-      rect(x, px + 2, by - 5, 5, 2, '#f8f4ec');
+      cyl(x, px + 1, by - 7, 7, 7, c, { spec: 0.6 });
+      sbox(x, px + 1.6, by - 9.2, 5.8, 2.4, '#3a3a44', { r: 0.8, gloss: 0.5, lw: 0.35 });
+      x.fillStyle = 'rgba(248,244,236,0.92)';
+      x.fillRect(px + 1, by - 5, 7, 2);
       break;
     case 'bag':
-      rect(x, px, by - 8, 9, 8, c);
-      rect(x, px + 1, by - 9, 7, 1, shade(c, 0.9));
-      rect(x, px, by - 8, 1, 8, hi);
-      rect(x, px + 2, by - 5, 5, 2, mix(c, '#ffffff', 0.6));
-      rect(x, px + 8, by - 8, 1, 8, lo);
+      x.beginPath();
+      x.moveTo(px + 0.6, by - 8.6);
+      x.quadraticCurveTo(px + 4.5, by - 7.8, px + 8.4, by - 8.6);
+      x.quadraticCurveTo(px + 9.4, by - 4, px + 8.4, by);
+      x.lineTo(px + 0.6, by);
+      x.quadraticCurveTo(px - 0.4, by - 4, px + 0.6, by - 8.6);
+      x.closePath();
+      x.fillStyle = rad(x, px + 3, by - 6, 0, 8, [tint(c, 1.35), c, tint(c, 0.55)]);
+      x.fill();
+      x.lineWidth = 0.4;
+      x.strokeStyle = 'rgba(28,20,36,0.75)';
+      x.stroke();
+      rr(x, px + 2, by - 5, 5, 2, 0.6);
+      x.fillStyle = rgba(blend(c, '#ffffff', 0.65), 0.95);
+      x.fill();
       break;
     case 'can':
       for (let k = 0; k < 2; k++) {
-        rect(x, px + k * 4 + 1, by - 6, 3, 6, c);
-        rect(x, px + k * 4 + 1, by - 6, 3, 1, '#c8ccd4');
-        rect(x, px + k * 4 + 1, by - 4, 3, 2, '#f2efe6');
+        cyl(x, px + k * 4 + 1, by - 6, 3.4, 6, c, { spec: 0.5, cap: '#d8dce4' });
+        x.fillStyle = 'rgba(242,239,230,0.9)';
+        x.fillRect(px + k * 4 + 1, by - 4, 3.4, 1.8);
       }
       break;
     case 'carton':
-      rect(x, px, by - 5, 9, 5, '#d8c8a0');
-      for (let k = 0; k < 4; k++) rect(x, px + 1 + k * 2, by - 6, 1, 1, c);
-      rect(x, px, by - 5, 9, 1, '#efe2c0');
+      sbox(x, px, by - 5, 9, 5, '#d8c8a0', { r: 0.8, gloss: 0.25, lw: 0.4 });
+      for (let k = 0; k < 4; k++) ball(x, px + 1.5 + k * 2, by - 5.4, 0.95, k % 2 ? c : tint(c, 1.15), 0.95, 0.6);
       break;
     case 'tray':
-      rect(x, px, by - 4, 10, 4, '#f4f6f8');
-      rect(x, px + 1, by - 6, 8, 3, c);
-      rect(x, px + 2, by - 6, 3, 1, shade(c, 1.15));
-      rect(x, px, by - 1, 10, 1, '#c8ccd4');
+      sbox(x, px, by - 4, 10, 4, '#f4f6f8', { r: 1, gloss: 0.3, lw: 0.4 });
+      ell(x, px + 5, by - 4.2, 4, 1.8);
+      x.fillStyle = rad(x, px + 3.5, by - 5, 0, 5, [tint(c, 1.3), c, tint(c, 0.7)]);
+      x.fill();
+      x.fillStyle = 'rgba(255,255,255,0.35)';
+      x.fillRect(px + 0.6, by - 6.2, 8.8, 0.5);
       break;
     case 'jug':
-      rect(x, px + 1, by - 8, 6, 8, '#f4f6f8');
-      rect(x, px + 3, by - 10, 2, 2, '#3f7fd8');
-      rect(x, px + 6, by - 7, 2, 3, '#d8dce4');
-      rect(x, px + 1, by - 4, 6, 2, '#3f7fd8');
+      rr(x, px + 1, by - 8, 6.2, 8, 1.6);
+      x.fillStyle = lin(x, px + 1, 0, px + 7, 0, ['#c8ccd8', '#ffffff', '#e8ecf2', '#a8acb8']);
+      x.fill();
+      x.lineWidth = 0.4;
+      x.strokeStyle = 'rgba(28,20,36,0.7)';
+      x.stroke();
+      sbox(x, px + 3, by - 10, 2, 2.2, '#3f7fd8', { r: 0.5, gloss: 0.5, outline: null });
+      x.lineWidth = 0.7;
+      x.strokeStyle = '#c8ccd8';
+      x.beginPath();
+      x.arc(px + 7, by - 5.6, 1.3, -Math.PI / 2, Math.PI / 2);
+      x.stroke();
+      x.fillStyle = '#3f7fd8';
+      x.fillRect(px + 1, by - 4, 6.2, 1.8);
       break;
     case 'loaf':
-      rect(x, px, by - 5, 9, 5, c);
-      rect(x, px + 1, by - 6, 7, 1, c);
-      rect(x, px + 1, by - 6, 6, 1, hi);
-      rect(x, px + 2, by - 4, 1, 2, lo);
-      rect(x, px + 5, by - 4, 1, 2, lo);
+      rr(x, px, by - 6, 9, 6, 2.6);
+      x.fillStyle = rad(x, px + 3, by - 6, 0, 8, [tint(c, 1.35), c, tint(c, 0.55)]);
+      x.fill();
+      x.lineWidth = 0.4;
+      x.strokeStyle = 'rgba(28,20,36,0.7)';
+      x.stroke();
+      x.strokeStyle = rgba(tint(c, 1.5), 0.7);
+      x.lineWidth = 0.45;
+      for (const sx of [2.5, 5.5]) {
+        x.beginPath();
+        x.moveTo(px + sx, by - 5);
+        x.quadraticCurveTo(px + sx + 0.8, by - 5.6, px + sx + 1.4, by - 4.6);
+        x.stroke();
+      }
       break;
     case 'fruit':
-      disc(x, px + 2, by - 2, 2, c);
-      disc(x, px + 6, by - 2, 2, shade(c, 0.9));
-      disc(x, px + 4, by - 5, 2, hi);
+      ball(x, px + 2.3, by - 2.2, 2.2, c);
+      ball(x, px + 6.6, by - 2.2, 2.2, tint(c, 0.9));
+      ball(x, px + 4.4, by - 5, 2.2, tint(c, 1.15));
       break;
   }
 }
@@ -889,141 +920,191 @@ function productIcon(x: Ctx, shape: Shape, c: string, px: number, by: number): v
 const FILLER = ['#e0503c', '#f2b632', '#3caa6a', '#3f7fd8', '#ef7fae', '#9a5ad0', '#ff8a1e', '#2fb5b0', '#f2efe6'];
 
 function paintStatic(x: Ctx, g: G): void {
-  // floor tiles
+  // polished floor tiles: soft checker, each tile slightly domed by the light
+  vfill(x, 0, 0, W, H, ['#efe8d8', '#e6dfcd', '#ddd4c0']);
   for (let j = 0; j < H; j += 10)
     for (let i = 0; i < W; i += 10) {
-      const odd = ((i + j) / 10) & 1;
-      rect(x, i, j, 10, 10, odd ? '#e6dfcd' : '#efe9da');
+      if (((i + j) / 10) & 1) {
+        x.fillStyle = 'rgba(150,130,100,0.10)';
+        x.fillRect(i, j, 10, 10);
+      }
+      x.fillStyle = 'rgba(255,255,255,0.25)';
+      x.fillRect(i, j, 10, 0.3);
+      x.fillStyle = 'rgba(120,100,80,0.12)';
+      x.fillRect(i, j + 9.7, 10, 0.3);
     }
-  stipple(x, 0, 0, W, H, '#d8d0bc', 0.08);
-  for (let i = 0; i < W; i += 40) stipple(x, i + 8, 0, 20, H, '#fbf8f0', 0.25); // ceiling-light shine
-  // entrance mat + doors (bottom left)
-  rect(x, 4, 156, 44, 4, '#5a6a7a');
-  dither(x, 4, 157, 44, 3, '#4a5868', '#6a7a8a');
+  // ceiling tubes mirrored in the wax
+  for (let i = 0; i < W; i += 40) {
+    x.fillStyle = lin(x, i + 8, 0, i + 28, 0, ['rgba(255,255,255,0)', 'rgba(255,255,255,0.22)', 'rgba(255,255,255,0)']);
+    x.fillRect(i + 8, 22, 20, H - 22);
+  }
+  // entrance mat
+  sbox(x, 4, 156, 44, 4, '#4a5868', { r: 1, gloss: 0.2, outline: null });
+  x.fillStyle = 'rgba(255,255,255,0.08)';
+  for (let k = 6; k < 46; k += 2) x.fillRect(k, 156.5, 0.6, 3);
   // back wall
-  rect(x, 0, 0, W, 22, '#d8d4c8');
+  vfill(x, 0, 0, W, 22, ['#c8c4b8', '#e4e0d4']);
   g.faces
     .filter((f) => f.kind === 'back')
     .forEach((f) => {
       const sx = f.x0 - 4;
       const col = SECTION_COLOR[f.sec];
-      rect(x, sx, 0, 80, 7, shade(col, 0.85));
-      rect(x, sx, 6, 80, 1, shade(col, 0.6));
-      say(x, SECTION_SIGN[f.sec], sx + 40, 1, '#ffffff', { align: 'center' });
       if (f.sec === 'produce') {
-        // slanted bins
-        rect(x, sx + 1, 7, 78, 13, '#7a5232');
+        // slanted wooden bins piled with fruit
+        sbox(x, sx + 1, 7, 78, 13, '#7a5232', { r: 0.6, gloss: 0.2, outline: null });
         for (let b = 0; b < 6; b++) {
           const bx = sx + 2 + b * 13;
-          rect(x, bx, 8, 12, 11, '#5a3a22');
+          vfill(x, bx, 8, 12, 11, ['#3a2414', '#6a4428']);
           const pc = ['#3caa6a', '#f2d048', '#e0503c', '#ff8a1e', '#9a5ad0', '#3c8a3a'][(b + f.x0) % 6];
-          for (let k = 0; k < 8; k++) disc(x, bx + 2 + (k % 4) * 3, 11 + Math.floor(k / 4) * 4, 1, k % 3 ? pc : shade(pc, 1.2));
+          for (let k = 0; k < 8; k++) ball(x, bx + 2.5 + (k % 4) * 2.6, 11 + Math.floor(k / 4) * 4, 1.5, k % 3 ? pc : tint(pc, 1.15), 1.5, 0.6);
         }
       } else {
-        // glass-door coolers
-        rect(x, sx + 1, 7, 78, 13, '#9fc8e0');
+        // glass-door coolers, lit from inside
+        vfill(x, sx + 1, 7, 78, 13, ['#d8f0ff', '#8ab8d8', '#6aa0c8']);
         for (let k = 0; k < 4; k++) {
           const dx = sx + 1 + k * 20;
-          rect(x, dx, 7, 1, 13, '#e8ecf0');
           for (let r = 0; r < 2; r++)
             for (let p = 0; p < 4; p++) {
               const c = FILLER[(k * 3 + r * 5 + p + f.x0) % FILLER.length];
-              rect(x, dx + 2 + p * 4, 9 + r * 6, 3, 4, f.sec === 'dairy' && p % 2 ? '#f4f6f8' : c);
+              sbox(x, dx + 2 + p * 4, 9 + r * 6, 3, 4, f.sec === 'dairy' && p % 2 ? '#f4f6f8' : c, { r: 0.6, gloss: 0.45, outline: null });
             }
-          rect(x, dx + 1, 13, 19, 1, '#c8d0d8');
+          x.fillStyle = 'rgba(200,215,230,0.9)';
+          x.fillRect(dx + 1, 13, 19, 0.6);
+          x.fillStyle = lin(x, dx, 0, dx + 1, 0, ['#ffffff', '#a8b0bc']);
+          x.fillRect(dx, 7, 0.8, 13);
         }
-        stipple(x, sx + 1, 7, 78, 13, '#e8f6ff', 0.2);
+        x.fillStyle = 'rgba(200,235,255,0.18)';
+        x.fillRect(sx + 1, 7, 78, 13);
+        glare(x, sx + 1, 7, 78, 13, 0.3);
       }
-      rect(x, sx, 20, 80, 2, '#8a8a96');
+      // section header: a backlit sign
+      sbox(x, sx, 0, 80, 7, col, { r: 0.8, gloss: 0.5, outline: rgba(tint(col, 0.5), 0.9) });
+      say(x, SECTION_SIGN[f.sec], sx + 40, 1, '#ffffff', { align: 'center', outline: rgba(tint(col, 0.45), 1) });
+      vfill(x, sx, 20, 80, 2, ['#c8ccd4', '#6a6a76']);
     });
+  vfill(x, 0, 22, W, 4, ['rgba(40,30,20,0.35)', 'rgba(40,30,20,0)']);
   // islands
   ISLANDS.forEach((isl, i) => {
     const sec = g.faces[3 + i * 2].sec;
-    rect(x, isl.x - 1, isl.y - 1, isl.w + 2, isl.h + 2, INK);
+    // soft contact shadow, longer toward the camera
+    shadow(x, isl.x + isl.w / 2, isl.y + isl.h + 1, isl.w * 0.62, 4, 0.35);
     // shelf top, seen from above: a row of product tops along the back edge
-    rect(x, isl.x, isl.y, isl.w, 12, '#b8a890');
-    rect(x, isl.x, isl.y + 6, isl.w, 1, '#a08e74');
+    sbox(x, isl.x - 0.5, isl.y - 0.5, isl.w + 1, 12.5, '#c0b098', { r: 1.5, gloss: 0.3 });
+    x.fillStyle = 'rgba(80,60,40,0.35)';
+    x.fillRect(isl.x + 1, isl.y + 6, isl.w - 2, 0.5);
     for (let k = 8; k < isl.w - 8; k += 4) {
       const c = FILLER[(k + i * 7) % FILLER.length];
-      rect(x, isl.x + k, isl.y + 1, 3, 4, c);
-      rect(x, isl.x + k, isl.y + 1, 3, 1, shade(c, 1.2));
-      rect(x, isl.x + k, isl.y + 8, 3, 3, FILLER[(k * 3 + i) % FILLER.length]);
+      ball(x, isl.x + k + 1.5, isl.y + 3, 1.5, c, 1.7, 0.6);
+      sbox(x, isl.x + k, isl.y + 8, 3, 3, FILLER[(k * 3 + i) % FILLER.length], { r: 0.6, gloss: 0.5, outline: null });
     }
-    // front face
-    rect(x, isl.x, isl.y + 12, isl.w, 8, '#d8ccb8');
-    rect(x, isl.x, isl.y + 12, isl.w, 1, '#efe6d4');
+    // front face: shelves of facings
+    vfill(x, isl.x, isl.y + 12, isl.w, 8, ['#e8dcc8', '#c8bca8']);
     for (let k = 9; k < isl.w - 9; k += 5) {
       const c = FILLER[(k * 5 + i * 3) % FILLER.length];
-      rect(x, isl.x + k, isl.y + 13, 4, 6, c);
-      rect(x, isl.x + k, isl.y + 13, 4, 1, shade(c, 1.2));
-      rect(x, isl.x + k + 1, isl.y + 15, 2, 2, mix(c, '#ffffff', 0.55));
+      sbox(x, isl.x + k, isl.y + 13, 4, 6, c, { r: 0.6, gloss: 0.45, lw: 0.3 });
+      x.fillStyle = rgba(blend(c, '#ffffff', 0.6), 0.9);
+      x.fillRect(isl.x + k + 1, isl.y + 15, 2, 1.6);
     }
-    rect(x, isl.x, isl.y + 19, isl.w, 1, '#8a7a66');
-    for (let k = 10; k < isl.w - 10; k += 8) rect(x, isl.x + k, isl.y + 19, 3, 1, '#f2d048');
+    vfill(x, isl.x, isl.y + 19, isl.w, 1.2, ['#a8988a', '#6a5a4a']);
+    for (let k = 10; k < isl.w - 10; k += 8) {
+      x.fillStyle = '#f2d048';
+      x.fillRect(isl.x + k, isl.y + 19, 3, 0.9);
+    }
+    rr(x, isl.x - 0.5, isl.y - 0.5, isl.w + 1, isl.h + 1, 1.5);
+    x.lineWidth = 0.6;
+    x.strokeStyle = 'rgba(28,20,36,0.8)';
+    x.stroke();
     // aisle sign across the middle of the shelf top
     const label = SECTION_SIGN[sec];
     const w = label.length * 4 + 3;
     const cx = isl.x + isl.w / 2;
-    rect(x, cx - w / 2 - 1, isl.y + 3, w + 2, 9, INK);
-    rect(x, cx - w / 2, isl.y + 4, w, 7, SECTION_COLOR[sec]);
-    rect(x, cx - w / 2, isl.y + 4, w, 1, shade(SECTION_COLOR[sec], 1.25));
-    say(x, label, cx, isl.y + 5, '#ffffff', { align: 'center' });
+    shadow(x, cx, isl.y + 12, w * 0.6, 1.4, 0.4);
+    sbox(x, cx - w / 2 - 1, isl.y + 3, w + 2, 9, SECTION_COLOR[sec], { r: 2, gloss: 0.5 });
+    say(x, label, cx, isl.y + 5, '#ffffff', { align: 'center', outline: rgba(tint(SECTION_COLOR[sec], 0.45), 1) });
   });
   // checkout: register + belt, candy rack, closed lane
-  rect(x, REGISTER.x - 1, REGISTER.y - 1, REGISTER.w + 2, REGISTER.h + 1, INK);
-  rect(x, REGISTER.x, REGISTER.y, REGISTER.w, REGISTER.h, '#c8ccd4');
-  rect(x, REGISTER.x + 14, REGISTER.y, 10, REGISTER.h, '#3a3a44');
-  for (let k = REGISTER.y + 1; k < REGISTER.y + REGISTER.h; k += 3) rect(x, REGISTER.x + 15, k, 8, 1, '#4a4a56');
-  rect(x, REGISTER.x + 2, REGISTER.y + 2, 9, 6, '#2a2a33');
-  rect(x, REGISTER.x + 3, REGISTER.y + 3, 7, 3, '#7ad89a');
-  rect(x, CLOSED.x - 1, CLOSED.y - 1, CLOSED.w + 2, CLOSED.h + 1, INK);
-  rect(x, CLOSED.x, CLOSED.y, CLOSED.w, CLOSED.h, '#b8bcc4');
-  rect(x, CLOSED.x + 2, CLOSED.y + 3, 10, 7, '#c0392b');
+  shadow(x, REGISTER.x + REGISTER.w / 2, REGISTER.y + REGISTER.h, 16, 3, 0.35);
+  sbox(x, REGISTER.x - 0.5, REGISTER.y - 0.5, REGISTER.w + 1, REGISTER.h + 1, '#c8ccd4', { r: 1.5, gloss: 0.4 });
+  vfill(x, REGISTER.x + 14, REGISTER.y, 10, REGISTER.h, ['#4a4a56', '#2a2a33']);
+  for (let k = REGISTER.y + 1; k < REGISTER.y + REGISTER.h; k += 3) {
+    x.fillStyle = 'rgba(120,120,140,0.5)';
+    x.fillRect(REGISTER.x + 15, k, 8, 0.5);
+  }
+  sbox(x, REGISTER.x + 2, REGISTER.y + 2, 9, 6, '#2a2a33', { r: 1, gloss: 0.2 });
+  vfill(x, REGISTER.x + 3, REGISTER.y + 3, 7, 3, ['#a8ffc0', '#4ab878']);
+  pool(x, REGISTER.x + 6.5, REGISTER.y + 4.5, 7, 4, '#7ad89a', 0.4);
+  sbox(x, CLOSED.x - 0.5, CLOSED.y - 0.5, CLOSED.w + 1, CLOSED.h + 1, '#b8bcc4', { r: 1.5, gloss: 0.35 });
+  sbox(x, CLOSED.x + 2, CLOSED.y + 3, 10, 7, '#c0392b', { r: 1, gloss: 0.5 });
   say(x, 'NO', CLOSED.x + 7, CLOSED.y + 4, '#ffffff', { align: 'center' });
-  rect(x, CANDY.x - 1, CANDY.y - 1, CANDY.w + 2, CANDY.h + 2, INK);
-  rect(x, CANDY.x, CANDY.y, CANDY.w, CANDY.h, '#7a4a8a');
-  for (let k = 0; k < 6; k++) rect(x, CANDY.x + 1 + (k % 2) * 3, CANDY.y + 1 + Math.floor(k / 2) * 4, 3, 3, FILLER[k + 1]);
+  sbox(x, CANDY.x - 0.5, CANDY.y - 0.5, CANDY.w + 1, CANDY.h + 1, '#7a4a8a', { r: 1, gloss: 0.35 });
+  for (let k = 0; k < 6; k++) sbox(x, CANDY.x + 1 + (k % 2) * 3, CANDY.y + 1 + Math.floor(k / 2) * 4, 3, 3, FILLER[k + 1], { r: 0.6, gloss: 0.5, outline: null });
   // floor arrows into the checkout lane
-  for (let k = 0; k < 3; k++) rect(x, 120, 140 + k * 6, 2, 3, '#c8c0aa');
+  for (let k = 0; k < 3; k++) {
+    x.fillStyle = 'rgba(160,150,120,0.7)';
+    x.beginPath();
+    x.moveTo(119.5, 140 + k * 6);
+    x.lineTo(122.5, 140 + k * 6);
+    x.lineTo(121, 143 + k * 6);
+    x.closePath();
+    x.fill();
+  }
 }
 
 function drawCart(x: Ctx, cx: number, feet: number, face: -1 | 1, items: string[], t: number, moving: boolean): void {
   const bx = face > 0 ? cx + 1 : cx - 12;
   const by = feet - 11;
-  const wob = moving && Math.floor(t * 10) % 2 ? 1 : 0;
-  x.fillStyle = 'rgba(16,8,28,0.25)';
-  x.fillRect(bx, feet - 1, 12, 2);
+  const wob = moving ? Math.sin(t * 30) * 0.4 : 0;
+  shadow(x, bx + 6, feet, 8, 1.8, 0.35);
   // items poking out of the basket
-  items.slice(-6).forEach((c, i) => rect(x, bx + 2 + (i % 3) * 3, by - 1 - Math.floor(i / 3) * 2, 3, 3, c));
-  rect(x, bx, by, 12, 7, INK);
-  rect(x, bx + 1, by + 1, 10, 5, '#a8b4c0');
-  for (let k = 2; k < 11; k += 2) rect(x, bx + k, by + 1, 1, 5, '#d8e0e8');
-  rect(x, bx + 1, by + 3, 10, 1, '#d8e0e8');
+  items.slice(-6).forEach((c, i) => ball(x, bx + 3.5 + (i % 3) * 3, by + 0.5 - Math.floor(i / 3) * 2, 1.6, c, 1.6, 0.55));
+  // chrome wire basket
+  rr(x, bx, by, 12, 7, 1.2);
+  x.fillStyle = 'rgba(160,176,192,0.45)';
+  x.fill();
+  x.lineWidth = 0.7;
+  x.strokeStyle = 'rgba(28,20,36,0.85)';
+  x.stroke();
+  x.lineWidth = 0.35;
+  x.strokeStyle = 'rgba(240,248,255,0.85)';
+  for (let k = 2; k < 11; k += 2) {
+    x.beginPath();
+    x.moveTo(bx + k, by + 0.8);
+    x.lineTo(bx + k, by + 6.2);
+    x.stroke();
+  }
+  x.beginPath();
+  x.moveTo(bx + 0.8, by + 3.3);
+  x.lineTo(bx + 11.2, by + 3.3);
+  x.stroke();
+  x.fillStyle = lin(x, 0, by, 0, by + 1, ['#ffffff', '#a8b4c0']);
+  x.fillRect(bx + 0.5, by + 0.2, 11, 0.6);
   // handle toward the shopper
-  rect(x, face > 0 ? bx - 2 : bx + 12, by + 1, 2, 1, '#e0503c');
-  rect(x, bx + 1, by + 7, 10, 1, '#6a7a88');
-  rect(x, bx + 1, by + 8 + wob, 2, 2, INK);
-  rect(x, bx + 9, by + 8 + (1 - wob), 2, 2, INK);
+  sbox(x, face > 0 ? bx - 2.4 : bx + 12, by + 0.6, 2.4, 1.4, '#e0503c', { r: 0.6, gloss: 0.5, outline: null });
+  x.fillStyle = '#6a7a88';
+  x.fillRect(bx + 1, by + 7, 10, 0.8);
+  ball(x, bx + 2, by + 9 + wob, 1.1, '#2a2a33', 1.1, 0.5);
+  ball(x, bx + 10, by + 9 - wob, 1.1, '#2a2a33', 1.1, 0.5);
 }
 
 function drawShopper(x: Ctx, sh: Shopper, t: number): void {
   const moving = sh.wait <= 0;
-  drawCart(x, Math.round(sh.x), Math.round(sh.y), sh.face, [], t, moving);
-  drawPerson(x, sh.p, Math.round(sh.x) - 7, Math.round(sh.y) - 30, moving ? Math.floor(sh.walk / 5) % 2 : 0, false, { face: sh.face });
+  drawCart(x, sh.x, sh.y, sh.face, [], t, moving);
+  person(x, sh.p, sh.x - 7, sh.y - 30, 0, false, { face: sh.face, walk: moving ? Math.floor(sh.walk / 5) % 4 : undefined });
 }
 
 function bubble(x: Ctx, s: string, cx: number, by: number, bg: string, fg: string): void {
   const w = s.length * 4 + 5;
-  const lx = Math.max(1, Math.min(W - w - 1, Math.round(cx - w / 2)));
-  rect(x, lx - 1, by - 9, w + 2, 9, INK);
-  rect(x, lx, by - 8, w, 7, bg);
-  rect(x, Math.round(cx) - 1, by - 1, 3, 1, INK);
-  dotTail(x, Math.round(cx), by - 1, bg);
+  const lx = Math.max(1, Math.min(W - w - 1, cx - w / 2));
+  shadow(x, lx + w / 2 + 1, by, w * 0.5, 1.5, 0.25);
+  x.beginPath();
+  x.moveTo(cx - 1.6, by - 1.5);
+  x.lineTo(cx, by + 0.6);
+  x.lineTo(cx + 1.6, by - 1.5);
+  x.closePath();
+  x.fillStyle = bg;
+  x.fill();
+  sbox(x, lx - 1, by - 9, w + 2, 8, bg, { r: 3, gloss: 0.35, lw: 0.6 });
   say(x, s, lx + w / 2, by - 7, fg, { align: 'center' });
-}
-function dotTail(x: Ctx, cx: number, y: number, c: string): void {
-  rect(x, cx, y - 1, 1, 1, c);
-  rect(x, cx, y, 1, 1, INK);
 }
 
 function draw(x: Ctx, g: G, touch: boolean): void {
@@ -1031,7 +1112,7 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   const [ox, oy] = g.fx.offset();
   x.save();
   x.translate(ox, oy);
-  x.drawImage(g.bg, 0, 0);
+  blit(x, g.bg, 0, 0, W, H);
   // Fluorescent light pools on the floor (one tube flickers, like every real store).
   for (const [lx, ly, k] of [
     [64, 78, 0],
@@ -1039,37 +1120,43 @@ function draw(x: Ctx, g: G, touch: boolean): void {
     [64, 128, 2],
     [176, 128, 3],
   ]) {
-    const flick = k === 2 && !g.fx.reduced && Math.sin(t * 23) > 0.93 ? 0.08 : 0.28;
-    glow(x, lx, ly, 34, 9, '#fffbe0', flick);
+    const flick = k === 2 && !g.fx.reduced && Math.sin(t * 23) > 0.93 ? 0.05 : 0.2;
+    pool(x, lx, ly, 46, 16, '#fffbe0', flick);
   }
 
   // Time bar along the top of the back wall.
   const tf = g.time / TIME;
-  rect(x, 0, 0, W, 1, '#3a3a44');
-  rect(x, 0, 0, Math.round(W * tf), 1, tf > 0.33 ? '#3caa6a' : Math.floor(t * 4) % 2 ? '#e0503c' : '#f2d048');
+  x.fillStyle = '#3a3a44';
+  x.fillRect(0, 0, W, 1.2);
+  const tc = tf > 0.33 ? '#3caa6a' : Math.floor(t * 4) % 2 ? '#e0503c' : '#f2d048';
+  x.fillStyle = lin(x, 0, 0, 0, 1.2, [tint(tc, 1.4), tc]);
+  x.fillRect(0, 0, W * tf, 1.2);
 
   // Floor things: coupons.
   for (const c of g.coupons) {
     if (c.taken) continue;
-    const bob = g.fx.reduced ? 0 : Math.round(Math.sin(t * 5 + c.x) * 1);
-    x.fillStyle = 'rgba(16,8,28,0.2)';
-    x.fillRect(c.x - 5, c.y + 1, 10, 1);
-    rect(x, c.x - 6, c.y - 6 + bob, 12, 7, INK);
-    rect(x, c.x - 5, c.y - 5 + bob, 10, 5, '#fff3c4');
-    for (let k = 0; k < 10; k += 2) rect(x, c.x - 5 + k, c.y - 5 + bob, 1, 1, '#e0a030');
-    say(x, '$', c.x - 3, c.y - 5 + bob, '#3caa6a');
-    rect(x, c.x + 1, c.y - 3 + bob, 3, 1, '#c0392b');
-    if (Math.floor(t * 3 + c.x) % 3 === 0) rect(x, c.x + 4, c.y - 8 + bob, 1, 1, '#ffffff');
+    const bob = g.fx.reduced ? 0 : Math.sin(t * 5 + c.x) * 1;
+    shadow(x, c.x, c.y + 1.5, 6, 1.4, 0.35 - bob * 0.05);
+    pool(x, c.x, c.y - 3 + bob, 9, 6, '#ffe890', 0.22);
+    sbox(x, c.x - 6, c.y - 6 + bob, 12, 7, '#fff3c4', { r: 1, gloss: 0.4 });
+    x.fillStyle = '#e0a030';
+    for (let k = 0; k < 10; k += 2) x.fillRect(c.x - 5 + k, c.y - 5.6 + bob, 1, 0.6);
+    say(x, '$', c.x - 3.5, c.y - 5 + bob, '#3caa6a');
+    x.fillStyle = '#c0392b';
+    x.fillRect(c.x + 1, c.y - 3 + bob, 3, 0.8);
+    const tw = (Math.sin(t * 4 + c.x) + 1) / 2;
+    pool(x, c.x + 4, c.y - 6 + bob, 2.5, 2.5, '#ffffff', tw * 0.8);
   }
 
   // Path preview for tap-to-go.
   if (g.path && g.path.length) {
     const [lx, ly] = g.path[g.path.length - 1];
-    const p = Math.floor(t * 6) % 2;
-    rect(x, lx - 2 - p, ly - 1, 1, 1, '#3f7fd8');
-    rect(x, lx + 2 + p, ly - 1, 1, 1, '#3f7fd8');
-    rect(x, lx, ly - 3 - p, 1, 1, '#3f7fd8');
-    rect(x, lx, ly + 1 + p, 1, 1, '#3f7fd8');
+    const p = (t * 2) % 1;
+    x.lineWidth = 0.7;
+    x.strokeStyle = rgba('#3f7fd8', 1 - p);
+    ell(x, lx, ly, 2 + p * 4, (2 + p * 4) * 0.5);
+    x.stroke();
+    pool(x, lx, ly, 4, 2, '#3f7fd8', 0.5);
   }
 
   // y-sorted: shelf dressing (list items, endcaps) and people.
@@ -1086,16 +1173,16 @@ function draw(x: Ctx, g: G, touch: boolean): void {
           const px = sp.x + k * 12 + 1;
           const tagC = it.opts[k].sale ? '#e0503c' : '#f2d048';
           if (f.kind === 'north') {
-            rect(x, px, f.y, 10, 6, '#b8a890');
+            vfill(x, px, f.y, 10, 6, ['#a89880', '#c8b8a0']);
             productIcon(x, it.def.shape, k ? it.def.color : shade(it.def.color, 0.85), px, f.y + 6);
-            rect(x, px + 2, f.y + 6, 6, 1, tagC);
+            sbox(x, px + 2, f.y + 5.6, 6, 1.4, tagC, { r: 0.4, gloss: 0.5, outline: null });
           } else if (f.kind === 'south') {
-            rect(x, px, f.y - 8, 10, 7, '#d8ccb8');
+            vfill(x, px, f.y - 8, 10, 7, ['#c8bca8', '#e8dcc8']);
             productIcon(x, it.def.shape, k ? it.def.color : shade(it.def.color, 0.85), px, f.y - 1);
-            rect(x, px + 2, f.y - 1, 6, 1, tagC);
+            sbox(x, px + 2, f.y - 1.4, 6, 1.4, tagC, { r: 0.4, gloss: 0.5, outline: null });
           } else {
             productIcon(x, it.def.shape, k ? it.def.color : shade(it.def.color, 0.85), px, 19);
-            rect(x, px + 2, 20, 6, 1, tagC);
+            sbox(x, px + 2, 19.6, 6, 1.4, tagC, { r: 0.4, gloss: 0.5, outline: null });
           }
         }
       },
@@ -1107,18 +1194,16 @@ function draw(x: Ctx, g: G, touch: boolean): void {
       y: e.r.y,
       f: () => {
         const r = e.r;
+        shadow(x, r.x + r.w / 2, r.y + r.h, r.w * 0.8, 1.6, 0.35);
         if (!e.imp) {
-          rect(x, r.x, r.y, r.w, r.h, '#c8ccd4');
-          for (let k = 0; k < 4; k++) rect(x, r.x + 1, r.y + 2 + k * 5, 6, 4, '#f4f6f8');
+          sbox(x, r.x, r.y, r.w, r.h, '#c8ccd4', { r: 1, gloss: 0.35 });
+          for (let k = 0; k < 4; k++) sbox(x, r.x + 1, r.y + 2 + k * 5, 6, 4, '#f4f6f8', { r: 0.6, gloss: 0.4, outline: null });
           return;
         }
         const c = e.imp.color;
-        rect(x, r.x, r.y, r.w, r.h, '#c0392b');
-        rect(x, r.x, r.y + r.h - 3, r.w, 3, '#8a2a20');
-        for (let k = 0; k < 5; k++) {
-          rect(x, r.x + 1, r.y + 1 + k * 3, 6, 2, k % 2 ? c : shade(c, 1.15));
-          rect(x, r.x + 2, r.y + 1 + k * 3, 2, 1, '#ffffff');
-        }
+        sbox(x, r.x, r.y, r.w, r.h, '#c0392b', { r: 1, gloss: 0.45 });
+        vfill(x, r.x, r.y + r.h - 3, r.w, 3, ['#8a2a20', '#5a1a14']);
+        for (let k = 0; k < 5; k++) sbox(x, r.x + 1, r.y + 1 + k * 3, 6, 2, k % 2 ? c : shade(c, 1.15), { r: 0.6, gloss: 0.6, outline: null });
       },
     });
   }
@@ -1129,20 +1214,20 @@ function draw(x: Ctx, g: G, touch: boolean): void {
       const items = g.list.filter((l) => l.got >= 0).map((l) => l.def.color);
       for (const im of g.impulses) items.push(IMPULSES.find((i) => i.name === im.name)?.color ?? CHECKOUT_CANDY.color);
       const blink = g.stun > 0 && !g.fx.reduced && Math.floor(t * 20) % 2 === 0;
-      const ring = Math.floor(t * 3) % 2 ? '#f2d048' : '#ffffff';
-      rect(x, g.px - 7, g.py + 2, 14, 1, ring);
-      rect(x, g.px - 9, g.py, 2, 2, ring);
-      rect(x, g.px + 7, g.py, 2, 2, ring);
-      rect(x, g.px - 7, g.py - 2, 2, 1, ring);
-      rect(x, g.px + 5, g.py - 2, 2, 1, ring);
+      const pulse = 0.6 + 0.4 * Math.sin(t * 6);
+      pool(x, g.px, g.py, 12, 4, '#f2d048', 0.35 * pulse);
+      x.lineWidth = 0.7;
+      x.strokeStyle = rgba('#fff3a0', 0.5 + 0.4 * pulse);
+      ell(x, g.px, g.py, 9, 3);
+      x.stroke();
       if (!blink) {
-        drawPerson(x, g.look, Math.round(g.px) - 7, Math.round(g.py) - 30, g.moving ? Math.floor(g.walk / 5) % 2 : 0, false, { face: g.face });
-        drawCart(x, Math.round(g.px), Math.round(g.py), g.face, items, t, g.moving);
+        person(x, g.look, g.px - 7, g.py - 30, 0, false, { face: g.face, walk: g.moving ? Math.floor(g.walk / 5) % 4 : undefined });
+        drawCart(x, g.px, g.py, g.face, items, t, g.moving);
       }
     },
   });
   // cashier
-  ds.push({ y: 150, f: () => drawPerson(x, CASHIER, REGISTER.x + 1, REGISTER.y - 18, Math.floor(t * 1.5) % 2, false, { face: 1, shadow: false }) });
+  ds.push({ y: 150, f: () => person(x, CASHIER, REGISTER.x + 1, REGISTER.y - 18, Math.floor(t * 1.5) % 2, false, { face: 1, shadow: false }) });
   ds.sort((a, b) => a.y - b.y);
   for (const d of ds) d.f();
 
@@ -1158,9 +1243,9 @@ function draw(x: Ctx, g: G, touch: boolean): void {
     }
     const sign = e === g.candy ? 'CANDY' : 'SALE!';
     const sw = sign.length * 4 + 3;
-    const shakeX = e.near > 0.2 && !g.fx.reduced ? Math.round(Math.sin(t * 40) * e.near * 1.5) : 0;
-    rect(x, cx - sw / 2 - 1 + shakeX, r.y - 9, sw + 2, 9, INK);
-    rect(x, cx - sw / 2 + shakeX, r.y - 8, sw, 7, on ? '#f2d048' : '#e0503c');
+    const shakeX = e.near > 0.2 && !g.fx.reduced ? Math.sin(t * 40) * e.near * 1.5 : 0;
+    pool(x, cx + shakeX, r.y - 5, sw * 0.8, 7, on ? '#f2d048' : '#e0503c', 0.3);
+    sbox(x, cx - sw / 2 - 1 + shakeX, r.y - 9, sw + 2, 9, on ? '#f2d048' : '#e0503c', { r: 2, gloss: 0.55 });
     say(x, sign, cx + shakeX, r.y - 7, on ? '#c0392b' : '#ffffff', { align: 'center' });
     if (e.near > 0) {
       bubble(x, `${e.imp.name} ${e.imp.pitch}`, cx, r.y - 11, '#ffffff', '#c0392b');
@@ -1169,7 +1254,7 @@ function draw(x: Ctx, g: G, touch: boolean): void {
         const ph = (t * 3) % 1;
         const mx = g.px + (cx - g.px) * ph;
         const my = g.py - 4 + (r.y + r.h / 2 - g.py + 4) * ph;
-        rect(x, mx, my, 1, 1, '#e0503c');
+        pool(x, mx, my, 2.5, 2.5, '#ff5a3a', 0.9);
       }
     }
   }
@@ -1178,30 +1263,37 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   for (const sp of g.spots) {
     const f = sp.face;
     const cx = sp.x + 12;
-    const bob = g.fx.reduced ? 0 : Math.round(Math.sin(t * 6 + sp.x * 0.3) * 1.5);
+    const bob = g.fx.reduced ? 0 : Math.sin(t * 6 + sp.x * 0.3) * 1.5;
     const near = g.near === sp;
     const c = near ? '#ffffff' : '#f2d048';
-    if (f.kind === 'south') {
-      // up arrow under the shelf
-      const ty = f.y + 2 - bob;
-      rect(x, cx - 1, ty - 1, 3, 2, INK);
-      rect(x, cx - 3, ty + 1, 7, 4, INK);
-      rect(x, cx, ty, 1, 1, c);
-      rect(x, cx - 1, ty + 1, 3, 1, c);
-      rect(x, cx - 2, ty + 2, 5, 2, c);
+    const up = f.kind === 'south';
+    const ty = up ? f.y + 2 - bob : (f.kind === 'back' ? 8 : f.y - 9) + bob;
+    pool(x, cx + 0.5, ty + 2, 6, 5, c, 0.35);
+    x.beginPath();
+    if (up) {
+      x.moveTo(cx + 0.5, ty - 1);
+      x.lineTo(cx + 4, ty + 3);
+      x.lineTo(cx - 3, ty + 3);
     } else {
-      const ty = (f.kind === 'back' ? 8 : f.y - 9) + bob;
-      rect(x, cx - 3, ty - 1, 7, 4, INK);
-      rect(x, cx - 2, ty, 5, 2, c);
-      rect(x, cx - 1, ty + 2, 3, 2, INK);
-      rect(x, cx - 1, ty + 2, 3, 1, c);
-      rect(x, cx, ty + 3, 1, 1, c);
+      x.moveTo(cx - 3, ty - 1);
+      x.lineTo(cx + 4, ty - 1);
+      x.lineTo(cx + 0.5, ty + 3.5);
     }
+    x.closePath();
+    x.lineJoin = 'round';
+    x.lineWidth = 1.2;
+    x.strokeStyle = 'rgba(28,20,36,0.9)';
+    x.stroke();
+    x.fillStyle = lin(x, 0, ty - 1, 0, ty + 3.5, [tint(c, 1.2), c, tint(c, 0.7)]);
+    x.fill();
     if (near) {
-      x.strokeStyle = Math.floor(t * 6) % 2 ? '#ffffff' : '#f2d048';
-      x.lineWidth = 1;
+      const a = 0.6 + 0.4 * Math.sin(t * 12);
+      x.strokeStyle = rgba('#fff3c4', a);
+      x.lineWidth = 0.8;
       const fy = f.kind === 'north' ? f.y - 4 : f.kind === 'back' ? 8 : f.y - 10;
-      x.strokeRect(sp.x - 0.5, fy - 0.5, 26, f.kind === 'back' ? 14 : 11);
+      rr(x, sp.x - 0.5, fy - 0.5, 26, f.kind === 'back' ? 14 : 11, 2);
+      x.stroke();
+      pool(x, sp.x + 12.5, fy + 5, 16, 8, '#fff3c4', 0.2 * a);
     }
   }
 
@@ -1211,16 +1303,22 @@ function draw(x: Ctx, g: G, touch: boolean): void {
 
   // Checkout beacon once the list is done.
   if (g.phase === 'play' && g.list.every((l) => l.got >= 0)) {
-    const b = g.fx.reduced ? 0 : Math.round(Math.sin(t * 8) * 2);
+    const b = g.fx.reduced ? 0 : Math.sin(t * 8) * 2;
+    pool(x, 121, 150, 12, 6, '#f2d048', 0.4);
     say(x, 'PAY HERE', 121, 128 + b, '#f2d048', { align: 'center', outline: INK });
-    rect(x, 120, 136 + b, 3, 3, '#f2d048');
-    rect(x, 119, 138 + b, 5, 1, '#f2d048');
+    x.fillStyle = '#f2d048';
+    x.beginPath();
+    x.moveTo(118.5, 136 + b);
+    x.lineTo(123.5, 136 + b);
+    x.lineTo(121, 139.5 + b);
+    x.closePath();
+    x.fill();
   }
 
   g.fx.drawParts(x);
   g.fx.drawFloats(x, W);
   x.restore();
-  vignette(x, W, H, 0.22);
+  vignette2(x, W, H, 0.35);
   g.fx.drawFlash(x, W, H);
 
   if (g.phase === 'pick' && g.pick) drawPicker(x, g, touch);
@@ -1233,18 +1331,21 @@ const CASHIER: Person = { skin: SKINS[3], hair: HAIRS[1], style: 5, shirt: '#f2e
 function drawPicker(x: Ctx, g: G, touch: boolean): void {
   const it = g.pick!.item;
   const { panel, cards } = pickCards(g);
-  rect(x, panel.x - 1, panel.y - 1, panel.w + 2, panel.h + 2, INK);
-  rect(x, panel.x, panel.y, panel.w, panel.h, '#fff8e6');
-  rect(x, panel.x, panel.y, panel.w, 10, '#3caa6a');
+  shadow(x, panel.x + panel.w / 2 + 2, panel.y + panel.h + 2, panel.w * 0.55, 5, 0.45);
+  sbox(x, panel.x - 1, panel.y - 1, panel.w + 2, panel.h + 2, '#fff8e6', { r: 3, gloss: 0.2, lw: 0.8 });
+  x.save();
+  rr(x, panel.x - 1, panel.y - 1, panel.w + 2, panel.h + 2, 3);
+  x.clip();
+  vfill(x, panel.x - 1, panel.y - 1, panel.w + 2, 11, ['#5ad08a', '#3caa6a', '#2a8a52']);
+  x.restore();
   say(x, it.def.name.toUpperCase(), panel.x + panel.w / 2, panel.y + 2, '#ffffff', { align: 'center' });
   for (let k = 0; k < 2; k++) {
     const o = it.opts[k];
     const c = cards[k];
     const sel = g.sel === k;
     const other = it.opts[1 - k];
-    rect(x, c.x - 1, c.y - 1, c.w + 2, c.h + 2, sel ? '#f2b632' : INK);
-    if (sel) rect(x, c.x - 2, c.y - 2, c.w + 4, c.h + 4, '#f2b632');
-    rect(x, c.x, c.y, c.w, c.h, sel ? '#fff3c4' : '#ffffff');
+    if (sel) pool(x, c.x + c.w / 2, c.y + c.h / 2, c.w * 0.75, c.h * 0.75, '#f2b632', 0.45);
+    sbox(x, c.x - 1, c.y - 1, c.w + 2, c.h + 2, sel ? '#fff3c4' : '#ffffff', { r: 2.5, gloss: 0.25, outline: sel ? '#f2b632' : 'rgba(28,20,36,0.8)', lw: sel ? 1.4 : 0.6 });
     // product, big
     x.save();
     x.translate(c.x + 4, c.y + 4);
@@ -1254,17 +1355,15 @@ function drawPicker(x: Ctx, g: G, touch: boolean): void {
     say(x, o.tag, c.x + c.w / 2 + 8, c.y + 3, '#5a4a6a', { align: 'center' });
     // price tag
     const tagC = o.sale ? '#e0503c' : '#f2d048';
-    rect(x, c.x + 24, c.y + 11, 44, 16, INK);
-    rect(x, c.x + 25, c.y + 12, 42, 14, tagC);
+    sbox(x, c.x + 24, c.y + 11, 44, 16, tagC, { r: 2, gloss: 0.45 });
     say(x, dollars(o.price), c.x + 46, c.y + 14, o.sale ? '#ffffff' : INK, { align: 'center', scale: 2 });
     say(x, unitPrice(o, it.def), c.x + c.w / 2, c.y + 30, '#5a4a6a', { align: 'center' });
     if (o.sale) {
-      rect(x, c.x - 3, c.y - 4, 23, 9, INK);
-      rect(x, c.x - 2, c.y - 3, 21, 7, '#e0503c');
+      sbox(x, c.x - 3, c.y - 4, 23, 9, '#e0503c', { r: 2, gloss: 0.5 });
       say(x, 'SALE', c.x + 8, c.y - 2, '#ffffff', { align: 'center' });
     }
     if (o.price < other.price) {
-      rect(x, c.x + 2, c.y + 37, c.w - 4, 7, '#3caa6a');
+      sbox(x, c.x + 2, c.y + 37, c.w - 4, 7, '#3caa6a', { r: 1.5, gloss: 0.45, outline: null });
       say(x, `SAVE ${dollars(other.price - o.price)}`, c.x + c.w / 2, c.y + 38, '#ffffff', { align: 'center' });
     }
   }
@@ -1304,9 +1403,21 @@ function drawReceipt(x: Ctx, g: G, touch: boolean): void {
   const slide = g.fx.reduced ? 1 : Math.min(1, g.pt / 0.6);
   const top = Math.round((H - ph) / 2 + (1 - slide) * (H - (H - ph) / 2));
   const lx = (W - pw) / 2;
-  rect(x, lx - 1, top - 1, pw + 2, ph + 2, INK);
-  rect(x, lx, top, pw, ph, '#fbfaf4');
-  for (let k = 0; k < pw; k += 4) rect(x, lx + k, top + ph, 2, 1, '#fbfaf4');
+  shadow(x, lx + pw / 2 + 3, top + ph + 2, pw * 0.6, 6, 0.5);
+  x.beginPath();
+  x.moveTo(lx, top);
+  x.lineTo(lx + pw, top);
+  x.lineTo(lx + pw, top + ph);
+  for (let k = pw; k > 0; k -= 4) {
+    x.lineTo(lx + k - 2, top + ph + 1.6);
+    x.lineTo(lx + k - 4, top + ph);
+  }
+  x.closePath();
+  x.fillStyle = lin(x, lx, 0, lx + pw, 0, ['#e8e4d8', '#fffef8', '#f4f0e4']);
+  x.fill();
+  x.lineWidth = 0.5;
+  x.strokeStyle = 'rgba(28,20,36,0.6)';
+  x.stroke();
   say(x, g.endWhy, lx + pw / 2, top + 3, '#c0392b', { align: 'center' });
   say(x, 'FRESH FIELDS MKT', lx + pw / 2, top + 11, '#5a4a6a', { align: 'center' });
   for (let k = 0; k < pw - 8; k += 2) rect(x, lx + 4 + k, top + 18, 1, 1, '#a8a0b0');
@@ -1348,7 +1459,7 @@ export function Grocery({ s, onDone, reducedMotion }: MiniProps) {
       const g = game.current!;
       step(g, dt, input);
       if (g.phase === 'receipt' && ((receiptReady(g) && input.pressed.has('action')) || g.pt > receiptTime(g) + 4.5)) sendDone(g);
-      const x = ctxOf(canvas.current);
+      const x = hdCtx(canvas.current);
       if (x) draw(x, g, touch.current);
       const key = `${Math.ceil(g.time)}|${g.list.map((l) => l.got).join('')}|${g.impulses.length}|${g.couponsGot.length}|${g.phase === 'receipt'}|${!!g.near}`;
       if (key !== hud) setHud(key);
@@ -1385,7 +1496,7 @@ export function Grocery({ s, onDone, reducedMotion }: MiniProps) {
         {allGot && g.phase !== 'receipt' && <li className="go">→ Checkout!</li>}
       </ul>
       <div className="gh-canvas" style={{ '--ar': String(W / H) } as CSSProperties}>
-        <PixelCanvas
+        <Hd2Canvas
           canvasRef={canvas}
           width={W}
           height={H}

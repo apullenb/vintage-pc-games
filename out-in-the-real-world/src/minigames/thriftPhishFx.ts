@@ -1,7 +1,8 @@
 // Shared juice for Thrift Hunt and Phishing Invaders: a tiny chiptune synth (respects mute),
 // particles with shards, pop-up text, shake/flash, pixel text with a few extra glyphs (@ _ ( ) = * < >),
 // big outlined lettering, the "3, 2, 1, GO" count-in and the end ribbon. Plain functions, no React.
-import { cached, INK, rect, text, type Ctx } from '../art/px.ts';
+import { INK, text, type Ctx } from '../art/px.ts';
+import { bigWord, blend, FONT, lin, rad, rgba, tint } from './hd2Kit.tsx';
 import { loadMeta } from '../ui/save.ts';
 
 // ---------- sound ----------
@@ -146,43 +147,51 @@ export function ptext(x: Ctx, s: string, px: number, py: number, c: string): voi
 }
 export const ptw = (s: string): number => Math.max(0, s.length * 4 - 1);
 
-// Text with a 1px outline all round (cached as a little sprite).
+// Smooth outlined lettering in the pixel font's footprint (top at py, ptw(s) * scale wide at most),
+// so screen-space text reads crisp and rounded on the HD canvas without moving any layout.
+export function stext(x: Ctx, s: string, px: number, py: number, c: string, o: string | null = INK, align: CanvasTextAlign = 'left', scale = 1): number {
+  const t = s.replace(/[’‘]/g, "'");
+  const size = 6.6 * scale;
+  x.save();
+  x.font = `900 ${size}px ${FONT}`;
+  const mw = x.measureText(t).width;
+  const box = Math.max(3, ptw(t)) * scale * 1.04;
+  const sx = mw > box ? box / mw : 1;
+  const w = mw * sx;
+  const left = align === 'center' ? px - w / 2 : align === 'right' ? px - w : px;
+  x.translate(left, py + 2.6 * scale);
+  x.scale(sx, 1);
+  x.textBaseline = 'middle';
+  x.lineJoin = 'round';
+  if (o) {
+    x.lineWidth = Math.max(1, 1.7 * Math.sqrt(scale));
+    x.strokeStyle = o;
+    x.strokeText(t, 0, 0);
+  }
+  x.fillStyle = c;
+  x.fillText(t, 0, 0);
+  x.restore();
+  return w;
+}
+
+// Text with an outline all round.
 export function outlined(x: Ctx, s: string, px: number, py: number, c: string, o: string = INK): void {
-  const w = ptw(s);
-  const spr = cached(`tpo|${s}|${c}|${o}`, w + 2, 7, (g) => {
-    for (const [dx, dy] of [[0, 1], [2, 1], [1, 0], [1, 2], [0, 0], [2, 0], [0, 2], [2, 2]]) ptext(g, s, dx, dy, o);
-    ptext(g, s, 1, 1, c);
-  });
-  x.drawImage(spr, Math.round(px) - 1, Math.round(py) - 1);
+  stext(x, s, px, py, c, o);
 }
 export function centered(x: Ctx, s: string, cx: number, py: number, c: string, o: string | null = INK): void {
-  const px = Math.round(cx - ptw(s) / 2);
-  if (o) outlined(x, s, px, py, c, o);
-  else ptext(x, s, px, py, c);
+  stext(x, s, cx, py, c, o, 'center');
 }
 
-// Big lettering: the 3x5 font scaled by whole pixels, with a chunky outline and a drop shadow.
+// Big rounded gradient lettering centered on (cx, cy), sized like the old scaled pixel font.
 export function bigText(x: Ctx, s: string, cx: number, cy: number, scale: number, c: string, o: string = INK, hi?: string): void {
-  const w = ptw(s);
-  const src = (col: string) => cached(`tpb|${s}|${col}`, w + 1, 6, (g) => ptext(g, s, 0, 0, col));
-  const dw = w * scale;
-  const dh = 5 * scale;
-  const px = Math.round(cx - dw / 2);
-  const py = Math.round(cy - dh / 2);
-  const ink = src(o);
-  for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1], [1, 2], [0, 2], [-1, 2], [1, 3], [0, 3]]) x.drawImage(ink, 0, 0, w, 5, px + dx, py + dy, dw, dh);
-  x.drawImage(src(c), 0, 0, w, 5, px, py, dw, dh);
-  // a highlight band across the top of the letters
-  if (hi && scale >= 3) {
-    x.save();
-    x.beginPath();
-    x.rect(px, py, dw, Math.max(1, Math.floor(scale * 0.7)));
-    x.clip();
-    x.drawImage(src(hi), 0, 0, w, 5, px, py, dw, dh);
-    x.restore();
-  }
+  let size = 7.6 * scale;
+  x.save();
+  x.font = `900 ${size}px ${FONT}`;
+  const fit = (ptw(s) * scale * 1.08) / Math.max(1, x.measureText(s).width);
+  x.restore();
+  if (fit < 1) size *= fit;
+  bigWord(x, s, cx, cy, size, hi ? blend(c, hi, 0.25) : c, tint(c, 0.62), o);
 }
-
 // ---------- particles, shards, pops ----------
 interface Part {
   x: number;
@@ -330,49 +339,67 @@ export class Fx {
   drawWorld(x: Ctx): void {
     for (const r of this.rings) {
       const k = 1 - r.life / r.max;
-      const rad = r.r * (0.3 + k * 0.9);
-      x.globalAlpha = Math.max(0, r.life / r.max);
-      x.strokeStyle = r.c;
-      x.lineWidth = 1;
+      const rr2 = r.r * (0.3 + k * 0.9);
+      const a = Math.max(0, r.life / r.max);
+      x.save();
+      x.globalCompositeOperation = 'lighter';
+      x.strokeStyle = rgba(r.c, 0.35 * a);
+      x.lineWidth = 2.4;
       x.beginPath();
-      // stepped octagon reads more "pixel" than a smooth arc
-      for (let i = 0; i <= 8; i++) {
-        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-        const px = Math.round(r.x + Math.cos(a) * rad) + 0.5;
-        const py = Math.round(r.y + Math.sin(a) * rad) + 0.5;
-        if (i === 0) x.moveTo(px, py);
-        else x.lineTo(px, py);
-      }
+      x.arc(r.x, r.y, rr2, 0, Math.PI * 2);
+      x.stroke();
+      x.restore();
+      x.globalAlpha = a;
+      x.strokeStyle = r.c;
+      x.lineWidth = 0.8;
+      x.beginPath();
+      x.arc(r.x, r.y, rr2, 0, Math.PI * 2);
       x.stroke();
       x.globalAlpha = 1;
     }
     for (const s of this.shards) {
-      if (s.life < s.max * 0.3 && Math.floor(s.life * 30) % 2) continue;
-      const jit = s.life > s.max * 0.6 && !this.rm ? (Math.random() < 0.3 ? Math.round(rnd(-2, 2)) : 0) : 0;
-      x.drawImage(s.img, s.sx, s.sy, s.w, s.h, Math.round(s.x + jit), Math.round(s.y), s.w, s.h);
+      const jit = s.life > s.max * 0.6 && !this.rm ? (Math.random() < 0.3 ? rnd(-2, 2) : 0) : 0;
+      x.globalAlpha = Math.min(1, (s.life / s.max) * 2.5);
+      x.drawImage(s.img, s.sx, s.sy, s.w, s.h, s.x + jit, s.y, s.w, s.h);
+      x.globalAlpha = 1;
     }
+    x.save();
+    x.globalCompositeOperation = 'lighter';
     for (const p of this.parts) {
-      if (p.life < p.max * 0.25 && Math.floor(p.life * 30) % 2) continue;
-      rect(x, p.x, p.y, p.s, p.s, p.c);
+      const a = Math.min(1, (p.life / p.max) * 1.6);
+      const r = p.s * 2.2;
+      x.fillStyle = rad(x, p.x, p.y, 0, r, [rgba(p.c, 0.45 * a), rgba(p.c, 0)]);
+      x.fillRect(p.x - r, p.y - r, r * 2, r * 2);
     }
+    x.restore();
+    for (const p of this.parts) {
+      x.globalAlpha = Math.min(1, (p.life / p.max) * 2);
+      x.fillStyle = p.c;
+      x.beginPath();
+      x.arc(p.x, p.y, p.s * 0.65, 0, Math.PI * 2);
+      x.fill();
+    }
+    x.globalAlpha = 1;
   }
   // Screen-space bits (pop-up words, flash).
   drawTop(x: Ctx): void {
     for (const p of this.pops) {
-      if (p.life < 0.2 && Math.floor(p.life * 30) % 2) continue;
+      x.globalAlpha = Math.min(1, p.life / 0.25);
       if (p.big) {
         const age = p.max - p.life;
         const sc = age < 0.06 ? 3 : 2;
-        bigText(x, p.s, clamp(p.x, (ptw(p.s) * sc) / 2 + 3, this.w - (ptw(p.s) * sc) / 2 - 3), Math.round(p.y), sc, p.c);
+        bigText(x, p.s, clamp(p.x, (ptw(p.s) * sc) / 2 + 3, this.w - (ptw(p.s) * sc) / 2 - 3), p.y, sc, p.c);
       } else {
         const tw = ptw(p.s);
-        const px = clamp(Math.round(p.x - tw / 2), 2, this.w - tw - 2);
-        outlined(x, p.s, px, Math.round(p.y), p.c);
+        const px = clamp(p.x - tw / 2, 2, this.w - tw - 2);
+        stext(x, p.s, px, p.y, p.c, INK, 'left', 1.1);
       }
+      x.globalAlpha = 1;
     }
     if (this.flash > 0) {
       x.globalAlpha = Math.min(0.6, this.flash);
-      rect(x, 0, 0, this.w, this.h, this.flashC);
+      x.fillStyle = rad(x, this.w / 2, this.h / 2, this.w * 0.1, this.w * 0.7, [rgba(this.flashC, 0.25), rgba(this.flashC, 1)]);
+      x.fillRect(0, 0, this.w, this.h);
       x.globalAlpha = 1;
     }
   }
@@ -392,33 +419,30 @@ export function drawCount(x: Ctx, t: number, w: number, h: number, sub?: string)
   const go = lab === 'GO!';
   const local = go ? t - COUNT_TIME : t % COUNT_STEP;
   if (!go) {
-    x.globalAlpha = 0.45;
-    rect(x, 0, 0, w, h, '#0c0816');
-    x.globalAlpha = 1;
+    x.fillStyle = 'rgba(12,8,22,0.4)';
+    x.fillRect(0, 0, w, h);
   }
-  const base = Math.round(Math.min(w, h * 1.4) / 26);
-  const sc = local < 0.06 ? base + 3 : local < 0.12 ? base + 1 : base;
-  bigText(x, lab, w / 2, h / 2 - 6, go ? sc - 1 : sc, go ? '#7cf08a' : '#ffe27a', INK, go ? '#d8ffd8' : '#fff8d0');
+  const base = Math.min(w, h * 1.4) / 26;
+  const k = Math.min(1, local / 0.12);
+  bigWord(x, lab, w / 2, h / 2 - 6, base * 7.6 * (go ? 0.85 : 1) * (1.25 - 0.25 * k), go ? '#9cff8a' : '#ffe27a', go ? '#2ea84a' : '#ff9a2a');
   if (sub && !go) centered(x, sub, w / 2, h / 2 + base * 4, '#f4eedd');
 }
 
 // The end ribbon: a band across the middle with a headline and a detail line.
 export function drawBanner(x: Ctx, head: string, sub: string, good: boolean, t: number, w: number, h: number): void {
   const k = Math.min(1, t / 0.18);
-  const bh = Math.round(40 * k);
-  const y0 = Math.round(h / 2 - bh / 2) - 6;
-  x.globalAlpha = 0.88;
-  rect(x, 0, y0, w, bh, '#140c22');
-  x.globalAlpha = 1;
+  const bh = 40 * k;
+  const y0 = h / 2 - bh / 2 - 6;
+  x.fillStyle = lin(x, 0, y0, 0, y0 + bh, ['rgba(30,18,52,0.92)', 'rgba(14,8,26,0.92)']);
+  x.fillRect(0, y0, w, bh);
   const edge = good ? '#7cf08a' : '#ff7a5a';
-  rect(x, 0, y0, w, 1, edge);
-  rect(x, 0, y0 + 2, w, 1, edge);
-  rect(x, 0, y0 + bh - 1, w, 1, edge);
-  rect(x, 0, y0 + bh - 3, w, 1, edge);
+  x.fillStyle = lin(x, 0, 0, w, 0, [rgba(edge, 0), rgba(edge, 1), rgba(edge, 0)]);
+  x.fillRect(0, y0, w, 0.8);
+  x.fillRect(0, y0 + bh - 0.8, w, 0.8);
   if (k < 1) return;
   const sc = ptw(head) * 3 > w - 10 ? 2 : 3;
-  bigText(x, head, w / 2, y0 + 15, sc, good ? '#ffe27a' : '#ff9a7a', INK, good ? '#fff8d0' : '#ffd0c0');
-  centered(x, sub, w / 2, y0 + 28, '#f4eedd', null);
+  bigText(x, head, w / 2, y0 + 15, sc, good ? '#ffe27a' : '#ff9a7a', INK);
+  stext(x, sub, w / 2, y0 + 28, '#f4eedd', null, 'center');
 }
 
 // Calls fn exactly once, even under StrictMode double effects or a double tap.

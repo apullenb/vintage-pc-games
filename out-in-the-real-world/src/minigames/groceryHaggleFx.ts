@@ -1,37 +1,6 @@
-// Shared juice for the Grocery Run and Haggle mini-games: scaled pixel text, particles, floating labels.
-import { INK, text, textWidth, type Ctx } from '../art/px.ts';
-
-// ---------- pixel text at any integer scale, with an optional 1px outline ----------
-const LABELS = new Map<string, HTMLCanvasElement>();
-function label(raw: string, color: string, outline?: string): HTMLCanvasElement {
-  const s = raw.replace(/[’‘]/g, "'").replace(/[“”]/g, '');
-  const key = `${s}|${color}|${outline ?? ''}`;
-  let c = LABELS.get(key);
-  if (!c) {
-    c = document.createElement('canvas');
-    c.width = textWidth(s) + 2;
-    c.height = 7;
-    const x = c.getContext('2d');
-    if (x) {
-      if (outline)
-        for (const [dx, dy] of [
-          [0, 1],
-          [2, 1],
-          [1, 0],
-          [1, 2],
-          [0, 0],
-          [2, 2],
-          [0, 2],
-          [2, 0],
-        ])
-          text(x, s, dx, dy, outline);
-      text(x, s, 1, 1, color);
-    }
-    if (LABELS.size > 400) LABELS.clear();
-    LABELS.set(key, c);
-  }
-  return c;
-}
+// Shared juice for the Grocery Run and Haggle mini-games: smooth outlined text, particles, floating labels.
+import { INK, textWidth, type Ctx } from '../art/px.ts';
+import { FONT, rad, rgba } from './hd2Kit.tsx';
 
 export interface TextOpts {
   scale?: number;
@@ -41,20 +10,40 @@ export interface TextOpts {
   shadow?: string; // drop shadow one (scaled) pixel down-right
 }
 
-// Draws s with its top-left (or top-center / top-right) at (px, py). Returns the drawn width.
-export function say(x: Ctx, s: string, px: number, py: number, color: string, o: TextOpts = {}): number {
+// Draws s with its top-left (or top-center / top-right) at (px, py), in a smooth rounded face that
+// keeps the old pixel font's footprint (5 * scale tall, the same width), so every layout still fits.
+// Returns the drawn width.
+export function say(x: Ctx, raw: string, px: number, py: number, color: string, o: TextOpts = {}): number {
+  const s = raw.replace(/[’‘]/g, "'").replace(/[“”]/g, '');
   const k = o.scale ?? 1;
-  const c = label(s, color, o.outline);
-  const w = c.width * k;
+  const box = Math.max(1, textWidth(s)) * k;
+  const size = 6.6 * k;
+  x.save();
+  x.font = `900 ${size}px ${FONT}`;
+  const mw = x.measureText(s).width;
+  const sx = mw > box * 1.04 ? (box * 1.04) / mw : 1;
+  const w = mw * sx;
   const left = o.align === 'center' ? px - w / 2 : o.align === 'right' ? px - w : px;
+  x.translate(left, py + 2.6 * k);
+  x.scale(sx, 1);
+  x.textBaseline = 'middle';
+  x.lineJoin = 'round';
   if (o.alpha !== undefined) x.globalAlpha = Math.max(0, Math.min(1, o.alpha));
-  if (o.shadow) x.drawImage(label(s, o.shadow), Math.round(left), Math.round(py), w, c.height * k);
-  x.drawImage(c, Math.round(left) - k, Math.round(py) - k, w, c.height * k);
-  x.globalAlpha = 1;
-  return w - 2 * k;
+  if (o.shadow) {
+    x.fillStyle = o.shadow;
+    x.fillText(s, k * 0.8, k * 0.8);
+  }
+  if (o.outline) {
+    x.lineWidth = Math.max(1, 1.8 * Math.sqrt(k));
+    x.strokeStyle = o.outline;
+    x.strokeText(s, 0, 0);
+  }
+  x.fillStyle = color;
+  x.fillText(s, 0, 0);
+  x.restore();
+  return w;
 }
 export const sayWidth = (s: string, scale = 1): number => textWidth(s.replace(/[“”]/g, '')) * scale;
-
 // ---------- particles + floating labels ----------
 interface Particle {
   x: number;
@@ -133,10 +122,21 @@ export class Fx {
     return [Math.round((Math.random() * 2 - 1) * a), Math.round((Math.random() * 2 - 1) * a)];
   }
   drawParts(x: Ctx): void {
+    x.save();
+    x.globalCompositeOperation = 'lighter';
+    for (const p of this.parts) {
+      const a = Math.min(1, (p.life / p.max) * 1.6);
+      const r = p.size * 2.2;
+      x.fillStyle = rad(x, p.x, p.y, 0, r, [rgba(p.c, 0.45 * a), rgba(p.c, 0)]);
+      x.fillRect(p.x - r, p.y - r, r * 2, r * 2);
+    }
+    x.restore();
     for (const p of this.parts) {
       x.globalAlpha = Math.min(1, (p.life / p.max) * 1.6);
       x.fillStyle = p.c;
-      x.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+      x.beginPath();
+      x.arc(p.x, p.y, p.size * 0.65, 0, Math.PI * 2);
+      x.fill();
     }
     x.globalAlpha = 1;
   }
@@ -150,7 +150,7 @@ export class Fx {
   drawFlash(x: Ctx, W: number, H: number): void {
     if (this.flashT <= 0) return;
     x.globalAlpha = Math.min(0.45, this.flashT * 3);
-    x.fillStyle = this.flashC;
+    x.fillStyle = rad(x, W / 2, H / 2, W * 0.1, W * 0.7, [rgba(this.flashC, 0.25), rgba(this.flashC, 1)]);
     x.fillRect(0, 0, W, H);
     x.globalAlpha = 1;
   }
