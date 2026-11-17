@@ -1,5 +1,5 @@
 // The next phase: the time skip, the new job, a bigger budget, a nicer car, and maybe a house.
-import { achieve, chance, creditLabel, creditScore, energy, log, minigame, money, num, openCredit, rep, round2, schedule, setFlag, unlock, xp } from '../../engine/core.ts';
+import { achieve, chance, creditLabel, creditScore, depositNote, energy, insuranceFactor, log, minigame, money, num, openCredit, rentDeposit, rep, round2, schedule, setFlag, unlock, xp } from '../../engine/core.ts';
 import type { GameState, Housing } from '../../engine/types.ts';
 import { gpa, gpaText, majorName } from '../college.ts';
 import {
@@ -112,10 +112,10 @@ const PLACES: Place[] = [
 
 function placeChoice(p: Place): Choice {
   const moving = (s: GameState): boolean => p.id !== 'stay' && !(p.id === 'home' && s.housing.kind === 'parents');
-  const deposit = (s: GameState): number => (p.kind === 'parents' || !moving(s) ? 0 : creditScore(s) === null ? p.rent(s) * 2 : p.rent(s));
+  const deposit = (s: GameState): number => (p.kind === 'parents' || !moving(s) ? 0 : rentDeposit(s, p.rent(s)));
   return {
     label: (s) => p.label(s),
-    hint: (s) => (deposit(s) ? `${p.hint} · Deposit ${money(deposit(s))}` : p.hint),
+    hint: (s) => (deposit(s) ? `${p.hint} · Deposit ${money(deposit(s))}${depositNote(s) ? ` (${depositNote(s)})` : ''}` : p.hint),
     hide: p.hide ? (s) => p.hide!(s) : undefined,
     pay: (s) => deposit(s),
     req: (s) => (p.kind !== 'parents' && p.rent(s) * 3 > grossMonthly(s) ? `Landlord wants ${money(p.rent(s) * 3)}/mo income` : true),
@@ -177,7 +177,10 @@ const ADDONS = 4189; // warranty $2,495 + paint/fabric $899 + dealer GAP $795
 const TAX = 0.06;
 const FEES = 350;
 
-const tradeIn = (s: GameState): number => (s.car ? Math.round(s.car.value * 0.85) : 0);
+// Dealers knock a car with a check-engine light and worn parts way down on trade-in.
+export const tradeIn = (s: GameState): number => (s.car ? Math.round(s.car.value * 0.85 * (s.car.condition < 35 ? 0.6 : s.car.condition < 60 ? 0.85 : 1)) : 0);
+// Full-coverage quote for you: your driving record and a credit-based insurance score.
+const quote = (s: GameState, c: CarPick): number => Math.round(c.insurance * insuranceFactor(s)) + (s.flags.ticketPoints ? 25 : 0);
 const oldCarLoan = (s: GameState): number => s.loans.filter((l) => l.kind === 'car').reduce((a, l) => a + l.balance, 0);
 function outTheDoor(s: GameState, d: Data): number {
   return Math.round(Number(d.price) * (1 + TAX) + FEES + Number(d.addons ?? 0) - tradeIn(s) + oldCarLoan(s));
@@ -221,7 +224,7 @@ function buyCar(s: GameState, d: Data, downPct: number, months: number): void {
     openCredit(s);
     unlock(s, 'car-loan');
   }
-  s.car = { name: car.short, condition: car.isNew ? 100 : 92, value: Math.round(Number(d.price) * car.drive), insurance: car.insurance + (s.flags.ticketPoints ? 25 : 0) };
+  s.car = { name: car.short, condition: car.isNew ? 100 : 92, value: Math.round(Number(d.price) * car.drive), insurance: quote(s, car) };
   s.transport = 'car';
   s.subs = s.subs.filter((x) => x.id !== 'buspass' && x.id !== 'rides');
   s.flags.tireBad = 0;
@@ -783,14 +786,14 @@ export const PHASE2_SCENES: Scene[] = [
           const sc = creditScore(s);
           const mine = carTier(sc);
           const table = CAR_TIERS.map((t) => `${t.label}: new ${pct(t.newApr)} · used ${pct(t.usedApr)}${t === mine ? '  ◀ you' : ''}`).join('\n');
-          const trade = s.car ? `\n\nTrade-in offer for your ${s.car.name}: ${money(tradeIn(s))}${oldCarLoan(s) > 0 ? ` (you still owe ${money(oldCarLoan(s))} on it)` : ''}.` : '';
+          const trade = s.car ? `\n\nTrade-in offer for your ${s.car.name}: ${money(tradeIn(s))}${s.car.condition < 60 ? ` (knocked down: it’s in ${s.car.condition < 35 ? 'rough' : 'worn'} shape)` : ''}${oldCarLoan(s) > 0 ? ` (you still owe ${money(oldCarLoan(s))} on it)` : ''}.` : '';
           return `Your credit: ${SC(s)}. Today’s car loan rates:\n${table}${trade}`;
         },
         choices: [
           ...CARS.map(
             (c, i): Choice => ({
               label: `${c.name}: ${money(c.price)}`,
-              hint: `${c.hint} · Insurance ~${money(c.insurance)}/mo`,
+              hint: (s) => `${c.hint} · Insurance ~${money(quote(s, c))}/mo`,
               req: (s) => (carLoanOk(s, c) || cashOnHand(s) >= c.price * 1.07 ? true : 'Lender says no: too much debt for your income'),
               // Sensible: a certified used car if it fits the budget (but someone at home saving for a house rides the bus).
               bot: (s) => (c.id === 'suv' ? -3 : carFits(s, c) ? (c.id === 'cpo' ? (s.housing.kind === 'parents' && !s.car ? 1 : 2) : 1) : -2),
@@ -818,7 +821,7 @@ export const PHASE2_SCENES: Scene[] = [
       deal: {
         text: (s, d) => {
           const c = CARS[Number(d.car)];
-          return `“Great choice!” The ${c.short}: ${money(c.price)}, plus ${pct(TAX, 0)} sales tax and ${money(FEES)} in title and doc fees. Insurance quote: ${money(c.insurance)}/mo${s.car ? ` (you pay ${money(s.car.insurance)} now)` : ''}.\n\nDealers expect you to negotiate.`;
+          return `“Great choice!” The ${c.short}: ${money(c.price)}, plus ${pct(TAX, 0)} sales tax and ${money(FEES)} in title and doc fees. Insurance quote: ${money(quote(s, c))}/mo${insuranceFactor(s) < 1 ? ' (good-credit discount)' : insuranceFactor(s) > 1 ? ' (higher: your credit score)' : ''}${s.car ? ` (you pay ${money(s.car.insurance)} now)` : ''}.\n\nDealers expect you to negotiate.`;
         },
         choices: [
           {

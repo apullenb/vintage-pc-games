@@ -1,5 +1,5 @@
 // Courses, the job hunt, and changing jobs: the rules. Scenes live in scenes/jobs.ts, listings in jobs.ts.
-import { achieve, charge, earn, energy, inc, log, minigame, money, num, rand, rep, round2, scene, setFlag, unlock, xp } from '../engine/core.ts';
+import { achieve, charge, drives, earn, energy, inc, log, minigame, money, num, rand, rep, round2, scene, setFlag, unlock, xp } from '../engine/core.ts';
 import type { GameState, MiniResult, SlotId, Step } from '../engine/types.ts';
 import { COURSE_BY_ID, type Course } from './courses.ts';
 import { LISTING_BY_ID, SCHEDULE_DRAIN, boardFor, fitFor, hasCar, jobFrom, jobValue, listingValue, tenure, tuitionAfter, type Listing } from './jobs.ts';
@@ -130,6 +130,8 @@ function leaveJob(s: GameState): void {
   s.flags.clawback = 0;
   s.flags.clawbackUntil = 0;
   s.flags.extraShifts = 0;
+  // A new boss only knows how reliable you've been since you started there.
+  s.flags.skippedAtHire = num(s, 'skippedWork');
   for (const k of ['promo1', 'promo2', 'seen:ev-promo1', 'seen:ev-promo2']) delete s.flags[k];
 }
 
@@ -235,7 +237,7 @@ export function careerWeek(s: GameState): void {
     if (drain) energy(s, -drain);
     if ((s.job.commute ?? 0) >= 30) {
       energy(s, -2);
-      if (s.transport === 'car' || s.transport === 'borrow') {
+      if (drives(s)) {
         charge(s, 10, 'Extra gas');
         log(s, 'Longer commute: $10 more in gas.');
       }

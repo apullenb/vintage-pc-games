@@ -1,7 +1,7 @@
 // The next phase of life: what year one turns into (the time skip and the new job), the money math
 // for the big purchases (car loans, mortgages, debt-to-income), and the three chapters that follow.
 // Scenes live in scenes/phase2.ts. Nothing here imports the engine loop, so there are no import cycles.
-import { achieve, charge, creditScore, energy, inc, log, minigame, money, netWorth, num, round2, scene, setFlag, unlock } from '../engine/core.ts';
+import { LICENSE_REINSTATE, achieve, drives, charge, creditScore, energy, inc, log, minigame, money, netWorth, num, round2, scene, setFlag, unlock } from '../engine/core.ts';
 import type { ArtId, GameState, Step, Tier, YearOne } from '../engine/types.ts';
 import { MAJORS, gpa, gpaText, major, onTime, onTrackToGraduate, startingPay } from './college.ts';
 import type { Activity, Chapter, GameEvent, Task } from './types.ts';
@@ -410,8 +410,19 @@ export function beginPhase2(s: GameState, y1: YearOne): void {
   s.loans = s.loans.filter((l) => l.balance > 0.5);
 
   // The rest of college, on loans.
-  const more = moreStudentDebt(s, years);
+  let more = moreStudentDebt(s, years);
   if (s.path === 'college') {
+    // Where you lived after the dorms (the lease you signed in the fall of year one).
+    const lease = s.flags.nextYear;
+    const dep = num(s, 'leaseDeposit');
+    if (s.flags.badLease) {
+      more += 2400;
+      recap.push('Housing: you waited too long to sign a lease and got the last place left, $200 a month over market. +$2,400 in loans that year.');
+    } else if (lease === 'far') {
+      more = Math.max(0, more - 1300);
+      recap.push(`Housing: the cheap apartment 40 minutes out meant $1,300 less in loans, and a lot of podcasts.${dep ? ` Your ${money(dep)} deposit came back.` : ''}`);
+    } else if (lease === 'house') recap.push(`Housing: two good years in the house with friends.${dep ? ` Your ${money(dep)} deposit came back when you moved out.` : ''}`);
+    if (dep && !s.flags.badLease && (lease === 'far' || lease === 'house')) s.stats.cash = round2(s.stats.cash + dep);
     const owed = s.loans.filter((l) => l.kind === 'student').reduce((a, l) => a + l.balance, 0) + more;
     s.loans = s.loans.filter((l) => l.kind !== 'student');
     if (owed > 0) {
@@ -465,6 +476,12 @@ export function beginPhase2(s: GameState, y1: YearOne): void {
   }
   if (!s.subs.some((x) => x.id === 'phone')) s.subs.push({ id: 'phone', label: 'Phone plan', cost: 45 });
   s.flags.familyPhone = false;
+  // A suspended license doesn't fix itself: getting it back meant paying the old ticket and a fee.
+  if (s.flags.licenseSuspended) {
+    s.stats.savings = round2(s.stats.savings - LICENSE_REINSTATE);
+    s.flags.licenseSuspended = 0;
+    recap.push(`License: getting your suspended license back cost ${money(LICENSE_REINSTATE)} (the old ticket, late fees, and a reinstatement fee).`);
+  }
   // Year-one errands are long behind you (three years is a while).
   for (const k of ['license', 'docs', 'transportSet', 'budget', 'taxesFiled']) s.flags[k] = true;
   if (s.path === 'college') s.flags.fafsa = true;
@@ -810,7 +827,7 @@ export function phase2Week(s: GameState): Step[] {
     energy(s, 2);
     log(s, 'Brunch, rideshares, a “treat yourself” or two: $60 this week.', 'info');
   }
-  if (s.flags.longCommute && s.transport === 'car') {
+  if (s.flags.longCommute && s.transport === 'car' && drives(s)) {
     charge(s, 25, 'Long commute gas');
     energy(s, -3);
     log(s, '45 minutes each way: $25 more gas, and a little less of you.', 'info');

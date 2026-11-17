@@ -93,6 +93,14 @@ export function appointmentAt(s: GameState, week: number, slot: SlotId): Appoint
 // ---------- money ----------
 export const OVERDRAFT_FEE = 35;
 
+// ---------- driving ----------
+// Ignoring a ticket long enough gets your license suspended. Getting it back: the ticket with late
+// fees ($350) plus the DMV's reinstatement fee.
+export const LICENSE_REINSTATE = 425;
+export const licenseSuspended = (s: GameState): boolean => !!s.flags.licenseSuspended;
+// Can you legally drive yourself to work (your own car, or the family one)?
+export const drives = (s: GameState): boolean => (s.transport === 'car' || s.transport === 'borrow') && !licenseSuspended(s);
+
 export function cardRoom(s: GameState): number {
   return s.card ? Math.max(0, s.card.limit - s.card.balance) : 0;
 }
@@ -224,6 +232,34 @@ export function openCredit(s: GameState): void {
   if (s.credit.firstWeek === null) s.credit.firstWeek = s.week;
   s.credit.inquiries.push(s.week);
   unlock(s, 'credit-score');
+}
+
+// Security deposit, in months of rent. Landlords run your credit: no history doubles it, a poor
+// score adds half a month, an excellent one cuts it in half. A record of late rent costs a month more.
+export function depositMonths(s: GameState): number {
+  const sc = creditScore(s);
+  let m = sc === null ? 2 : sc < 580 ? 1.5 : sc >= 740 ? 0.5 : 1;
+  if (s.flags.latePayer) m += 1;
+  return m;
+}
+export function rentDeposit(s: GameState, rent: number): number {
+  return Math.round(rent * depositMonths(s));
+}
+export function depositNote(s: GameState): string {
+  const sc = creditScore(s);
+  const parts: string[] = [];
+  if (sc === null) parts.push('no credit history: double deposit');
+  else if (sc < 580) parts.push(`credit ${sc}: +50% deposit`);
+  else if (sc >= 740) parts.push(`credit ${sc}: half deposit`);
+  if (s.flags.latePayer) parts.push('late-rent record: +1 month');
+  return parts.join(', ');
+}
+
+// Most car insurers price in a credit-based insurance score.
+export function insuranceFactor(s: GameState): number {
+  const sc = creditScore(s);
+  if (sc === null) return 1;
+  return sc >= 740 ? 0.9 : sc < 580 ? 1.25 : 1;
 }
 
 export function creditLabel(sc: number | null): string {

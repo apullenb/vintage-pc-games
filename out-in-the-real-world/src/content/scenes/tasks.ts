@@ -3,6 +3,9 @@ import {
   achieve,
   minigame,
   chance,
+  depositNote,
+  insuranceFactor,
+  rentDeposit,
   charge,
   creditScore,
   energy,
@@ -580,7 +583,7 @@ export const TASK_SCENES: Scene[] = [
             methods: ['checking', 'savings'],
             bot: 2,
             do: (s) => buyCar(s, 'Old Hatchback', 60, 2000, 160),
-            result: 'It’s yours. Insurance is about $160/month (liability only). Teen drivers pay a lot.',
+            result: (s) => `It’s yours. Insurance is ${money(s.car?.insurance ?? 160)}/month (liability only). Teen drivers pay a lot.`,
           },
           {
             label: 'Haggle on the price',
@@ -601,7 +604,7 @@ export const TASK_SCENES: Scene[] = [
             methods: ['checking', 'savings'],
             bot: 2,
             do: (s) => buyCar(s, 'Old Hatchback', 60, 2000, 160),
-            result: 'It’s yours, for less than the sticker price. Insurance is about $160/month (liability only).',
+            result: (s) => `It’s yours, for less than the sticker price. Insurance is ${money(s.car?.insurance ?? 160)}/month (liability only).`,
           },
           { label: 'Walk away', next: 'start' },
         ],
@@ -768,7 +771,7 @@ export const TASK_SCENES: Scene[] = [
         text: (s) => {
           const g = monthlyGross(s);
           const extra = g - baseMonthlyGross(s);
-          return `Most landlords require your monthly income to be at least 3× the rent, and they check your credit.\n\nYour recent pay stubs show ~${money(g)}/month${extra > 50 ? ` (that includes ${money(extra)} from extra shifts and side gigs)` : ''} → max rent ~${money(g / 3)}.\nYour credit: ${creditScore(s) ?? 'no score yet'}.${creditScore(s) === null ? ' (No credit = double deposit.)' : ''}`;
+          return `Most landlords require your monthly income to be at least 3× the rent, and they check your credit.\n\nYour recent pay stubs show ~${money(g)}/month${extra > 50 ? ` (that includes ${money(extra)} from extra shifts and side gigs)` : ''} → max rent ~${money(g / 3)}.\nYour credit: ${creditScore(s) ?? 'no score yet'}.${depositNote(s) ? ` (Deposit: ${depositNote(s)}.)` : ''}`;
         },
         speaker: 'landlord',
         choices: [
@@ -793,11 +796,12 @@ export const TASK_SCENES: Scene[] = [
             label: 'House near campus with 3 friends: $550/mo',
             pay: (s) => depositFor(s, 550),
             methods: ['checking', 'savings', 'card'],
-            hint: (s) => `✓ Cheaper than dorms · ✓ Friends · ✗ ${money(depositFor(s, 550))} deposit now`,
+            hint: (s) => `✓ Cheaper than dorms · ✓ Friends · ✗ ${money(depositFor(s, 550))} deposit now${depositWhy(s)}`,
             bot: 2,
             do: (s) => {
               setFlag(s, 'housingDone');
               setFlag(s, 'nextYear', 'house');
+              setFlag(s, 'leaseDeposit', depositFor(s, 550));
               unlock(s, 'security-deposit');
               unlock(s, 'lease');
             },
@@ -819,11 +823,12 @@ export const TASK_SCENES: Scene[] = [
             label: 'Cheap apartment 40 min away by bus: $420/mo',
             pay: (s) => depositFor(s, 420),
             methods: ['checking', 'savings', 'card'],
-            hint: '✓ Cheapest rent · ✗ 80 minutes of bus every day',
+            hint: (s) => `✓ Cheapest rent (about $1,300 less borrowed next year) · ✗ 80 minutes of bus every day · ✗ ${money(depositFor(s, 420))} deposit now`,
             bot: 1,
             do: (s) => {
               setFlag(s, 'housingDone');
               setFlag(s, 'nextYear', 'far');
+              setFlag(s, 'leaseDeposit', depositFor(s, 420));
               unlock(s, 'security-deposit');
               unlock(s, 'lease');
             },
@@ -1229,13 +1234,17 @@ export const TASK_SCENES: Scene[] = [
     kind: 'task',
     steps: {
       start: {
-        text: 'You send out applications and refresh your email way too often.',
+        text: (s) =>
+          s.flags.phoneCut
+            ? 'You send out applications and refresh your email way too often. One problem: your phone service is cut off for an unpaid bill, so employers can’t call you back.'
+            : 'You send out applications and refresh your email way too often.',
         choices: [
           {
             label: 'Follow up with a phone call',
+            hint: (s) => (s.flags.phoneCut ? '✗ From the library phone: callbacks go nowhere' : ''),
             bot: 2,
             do: (s, d) => {
-              d.hired = chance(s, 0.55) ? 1 : 0;
+              d.hired = chance(s, s.flags.phoneCut ? 0.25 : 0.55) ? 1 : 0;
               if (d.hired) {
                 s.job = {
                   title: 'Stock Associate',
@@ -1283,7 +1292,8 @@ function personalCost(s: GameState): number {
 
 
 function buyCar(s: GameState, name: string, condition: number, value: number, insurance: number): void {
-  s.car = { name, condition, value, insurance: insurance + (s.flags.ticketPoints ? 25 : 0) };
+  // Insurers price in your driving record and a credit-based insurance score.
+  s.car = { name, condition, value, insurance: Math.round(insurance * insuranceFactor(s)) + (s.flags.ticketPoints ? 25 : 0) };
   s.transport = 'car';
   s.subs = s.subs.filter((x) => x.id !== 'buspass' && x.id !== 'rides');
   setFlag(s, 'transportSet');
@@ -1315,8 +1325,9 @@ export function carLoanTerms(s: GameState): { apr: number; down: number; payment
 }
 
 function depositFor(s: GameState, rent: number): number {
-  return creditScore(s) === null ? rent * 2 : rent;
+  return rentDeposit(s, rent);
 }
+const depositWhy = (s: GameState): string => (depositNote(s) ? ` (${depositNote(s)})` : '');
 
 function housingOption(
   label: string,
@@ -1331,7 +1342,7 @@ function housingOption(
 ): Choice {
   return {
     label,
-    hint: (s) => (rentForDeposit > 0 ? `${hint} · Deposit ${money(depositFor(s, rentForDeposit))}` : hint),
+    hint: (s) => (rentForDeposit > 0 ? `${hint} · Deposit ${money(depositFor(s, rentForDeposit))}${depositWhy(s)}` : hint),
     pay: rentForDeposit > 0 ? (s) => depositFor(s, rentForDeposit) : undefined,
     methods: ['checking', 'savings', 'card'],
     bot: (s) => (rent * 3 > monthlyGross(s) ? -5 : bot),

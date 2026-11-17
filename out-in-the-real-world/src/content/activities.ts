@@ -9,7 +9,9 @@ import { CAREER_ACTIVITIES, currentCourse } from './careers.ts';
 const ANY: SlotId[] = ['weekday', 'evening', 'saturday', 'sunday'];
 const FREE: SlotId[] = ['evening', 'saturday', 'sunday'];
 
-const hasLicense = (s: GameState): boolean => !!s.flags.license;
+// A suspended license isn't fixed at the DMV counter: you pay what you owe first (see ev-reinstate).
+const hasLicense = (s: GameState): boolean => !!s.flags.license || !!s.flags.licenseSuspended;
+const canDriveCar = (s: GameState): boolean => !!s.car && !s.flags.licenseSuspended;
 const taskOpen = (s: GameState, id: string, ch: number): boolean => s.chapter === ch && !s.tasksDone[id];
 
 export function studyName(s: GameState): string {
@@ -108,12 +110,16 @@ const LIST: Activity[] = [
     icon: 'phone',
     slots: ['evening', 'sunday'],
     desc: 'Catch up, vent, get advice you pretend not to need.',
-    hint: () => '+6 energy · Free · Sometimes useful advice',
+    hint: (s) => (num(s, 'calls') % 3 === 2 ? '+6 energy · Free · Mom’s been asking about you (care package?)' : '+6 energy · Free · Every few calls, a care package'),
     hide: (s) => s.housing.kind === 'parents',
     run: (s) => {
       energy(s, 6);
-      inc(s, 'calls');
-      log(s, 'Called home. Grandma says hi and to wear a jacket.');
+      const n = inc(s, 'calls');
+      // Staying in touch pays off: every third call, a care package shows up (about $25 off groceries).
+      if (n % 3 === 0) {
+        s.flags.carePackage = true;
+        log(s, 'Called home. Mom is mailing a care package: soup, snacks, and a jar of her sauce.', 'good');
+      } else log(s, 'Called home. Grandma says hi and to wear a jacket.');
     },
   },
   {
@@ -150,13 +156,13 @@ const LIST: Activity[] = [
   },
   {
     id: 'gig',
-    name: (s) => (s.car ? 'Food delivery gig' : 'Bike delivery gig'),
+    name: (s) => (canDriveCar(s) ? 'Food delivery gig' : 'Bike delivery gig'),
     icon: 'money',
     slots: ['saturday', 'sunday'],
-    desc: (s) => (s.car ? 'Deliver burritos in your own car. Tips vary. Gas doesn\u2019t.' : 'Deliver food on your bike. Great for your legs, less great in the rain.'),
-    hint: (s) => (s.car ? '+$35\u2013120 in tips (mini-game) \u00b7 \u2212$12 gas \u00b7 \u221212 energy' : '+$20\u201375 in tips (mini-game) \u00b7 \u221214 energy'),
+    desc: (s) => (canDriveCar(s) ? 'Deliver burritos in your own car. Tips vary. Gas doesn\u2019t.' : 'Deliver food on your bike. Great for your legs, less great in the rain.'),
+    hint: (s) => (canDriveCar(s) ? '+$35\u2013120 in tips (mini-game) \u00b7 \u2212$12 gas \u00b7 \u221212 energy \u00b7 No taxes withheld' : '+$20\u201375 in tips (mini-game) \u00b7 \u221214 energy \u00b7 No taxes withheld'),
     run: (s) => {
-      minigame(s, 'delivery', { vehicle: s.car ? 'car' : 'bike' });
+      minigame(s, 'delivery', { vehicle: canDriveCar(s) ? 'car' : 'bike' });
     },
   },
   {

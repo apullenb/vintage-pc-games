@@ -290,10 +290,8 @@ export const TASKS: Task[] = [
     how: 'Apply for a credit card (evening), then pay on bills day',
     done: (s) => !!s.card && num(s, 'cardOnTime') >= 1 && s.credit.late === 0,
     progress: (s) => (!s.card ? 'No card yet' : s.credit.onTime ? `${s.credit.onTime} on-time payment${s.credit.onTime > 1 ? 's' : ''}` : 'Waiting for first statement'),
-    failText: 'Without credit history, your next apartment or car will cost more (bigger deposits, higher interest).',
-    onFail: (s) => {
-      s.flags.thinCredit = true;
-    },
+    // No score (or a poor one) is priced in everywhere: rentDeposit, insuranceFactor, carApr, mortgageTier.
+    failText: 'Without a solid credit history, your next apartment, car loan, and car insurance will cost more (bigger deposits, higher interest).',
   },
   {
     id: 't-taxes',
@@ -327,7 +325,10 @@ export const TASKS: Task[] = [
     desc: 'Whatever life throws at you, don’t miss a housing payment this chapter.',
     how: 'Pay housing on bills day',
     done: (s) => num(s, 'rentMissed') === num(s, 'rentMissedCh5') && !!s.flags.curveballDone,
-    failText: 'Your landlord marks you as a late payer. Next lease will be harder.',
+    failText: 'Your landlord marks you as a late payer. Your next lease will need an extra month’s deposit.',
+    onFail: (s) => {
+      if (s.housing.kind !== 'parents' && num(s, 'rentMissed') > num(s, 'rentMissedCh5')) s.flags.latePayer = true;
+    },
   },
   {
     id: 't-debt',

@@ -1,5 +1,6 @@
 // Food delivery gig: drive (or bike) around town dropping off orders before they go cold.
 import { charge, earn, energy, inc, money } from '../../engine/core.ts';
+import { addPoints } from '../scenes/events.ts';
 import type { MiniGameDef } from './types.ts';
 
 // What a speed-trap ticket costs (a real one is often $100–$250; a bike citation is smaller).
@@ -27,13 +28,17 @@ export const delivery: MiniGameDef = {
     }
     const ticket = r.played && !!r.stats?.ticket;
     const fine = bike ? TICKET.bike : TICKET.car;
-    if (ticket) charge(s, fine, 'Speeding ticket');
+    if (ticket) {
+      charge(s, fine, 'Speeding ticket');
+      // A moving violation in a car puts points on your license (and your insurer notices).
+      if (!bike) addPoints(s);
+    }
     const delivered = r.stats?.delivered;
     const mood = r.score >= 0.7 ? 'Hot food, happy customers.' : r.score >= 0.4 ? 'A few cold fries, but not bad.' : 'Rough shift. Lots of “where is my order??” texts.';
     const rating = r.played && r.stats?.rating ? ` Customers rated you ${r.stats.rating.toFixed(1)}★.` : '';
     const count = r.played && delivered !== undefined ? ` ${delivered} deliver${delivered === 1 ? 'y' : 'ies'}.${rating}` : '';
     const ticketText = ticket
-      ? `\n\nAnd the flashing lights in your mirror: a ${money(fine)} ticket for speeding through the slow zone${bike ? ' (yes, bikes get tickets too)' : ''}. That ate ${fine >= tips ? 'the whole shift' : 'a big chunk of the shift'}.`
+      ? `\n\nAnd the flashing lights in your mirror: a ${money(fine)} ticket for speeding through the slow zone${bike ? ' (yes, bikes get tickets too)' : ', plus points on your license: car insurance +$25/month'}. That ate ${fine >= tips ? 'the whole shift' : 'a big chunk of the shift'}.`
       : '';
     return {
       text: `${mood}${count} You made ${money(tips)} in pay and tips${bike ? '' : ', minus $12 for gas'}.${ticketText}`,

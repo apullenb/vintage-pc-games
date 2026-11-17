@@ -801,8 +801,9 @@ export function fitFor(s: GameState, l: Listing): Fit {
   return { hard, soft, ok: hard.length === 0 && (soft.length === 0 || referred) };
 }
 
+// A car you can legally drive (a suspended license parks it).
 export function hasCar(s: GameState): boolean {
-  return !!s.car || s.transport === 'borrow';
+  return (!!s.car || s.transport === 'borrow') && !s.flags.licenseSuspended;
 }
 
 // What they'd pay you (bilingual bonus included).

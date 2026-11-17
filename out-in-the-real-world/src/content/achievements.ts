@@ -44,6 +44,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'certified', name: 'Certified', desc: 'Finished an online course and earned a job skill.', icon: 'study' },
   { id: 'newjob', name: 'Better Offer', desc: 'Interviewed for a new job and took it.', icon: 'work' },
   { id: 'redflag', name: 'Red Flag Spotter', desc: 'Reported a job scam instead of paying it.', icon: 'shield' },
+  { id: 'civic', name: 'Civic Duty', desc: 'Showed up for jury duty.', icon: 'docs' },
+  { id: 'covered', name: 'Glad I Had It', desc: 'Renters insurance covered a disaster.', icon: 'shield' },
 ];
 
 export function checkAchievements(s: GameState): void {

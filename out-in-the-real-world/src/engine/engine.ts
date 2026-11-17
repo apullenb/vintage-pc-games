@@ -20,6 +20,7 @@ import {
   diff,
   energy,
   inc,
+  licenseSuspended,
   log,
   missWork,
   money,
@@ -99,11 +100,18 @@ export function foodOptions(s: GameState): Plan['food'][] {
 // (~$80–85/week buying for one); a week of mostly takeout and delivery apps runs ~$25/day.
 export const FOOD: Record<Plan['food'], { name: string; cost: number; energy: number; desc: string }> = {
   ramen: { name: 'Ramen & cereal', cost: 45, energy: -5, desc: 'Cheap. You feel it by Thursday.' },
-  cook: { name: 'Groceries & cooking', cost: 85, energy: 4, desc: 'Needs a Sunday meal-prep slot.' },
-  takeout: { name: 'Takeout & delivery', cost: 185, energy: 4, desc: 'Fast and tasty. Delivery fees and tips add up fast.' },
+  cook: { name: 'Groceries & cooking', cost: 85, energy: 6, desc: 'Needs a Sunday meal-prep slot. Real food: the most energy per dollar.' },
+  takeout: { name: 'Takeout & delivery', cost: 185, energy: 2, desc: 'Fast and tasty, but greasy. Delivery fees and tips add up fast.' },
   parents: { name: 'Family dinners', cost: 25, energy: 4, desc: 'Dinner is free. Lunches at work and snacks are on you.' },
   mealplan: { name: 'Dining hall', cost: 0, energy: 2, desc: 'Prepaid meal plan. Mystery casserole.' },
 };
+
+// Jobs that feed you on shift (Burger Barn, the line-cook job) cut what you spend on food.
+export function mealPerk(s: GameState): number {
+  const id = s.job?.id;
+  if (!id || s.plan.food === 'parents' || s.plan.food === 'mealplan') return 0;
+  return id === 'crew' || id === 'cook' ? 20 : 0;
+}
 
 // Toiletries, laundry, cleaning supplies, toilet paper: the stuff nobody budgets for.
 export function personalCost(s: GameState): number {
@@ -195,7 +203,11 @@ function runSlot(s: GameState, slot: SlotId): void {
       xp(s, -3);
       inc(s, 'skips');
       log(s, `You skipped class for ${txt(a.name, s).toLowerCase()}. Your notes have a gap.`, 'bad');
-    } else if (s.job) missWork(s, txt(a.name, s));
+    } else if (s.job) {
+      // Blowing off a scheduled shift (not a sick day or an appointment): bosses remember.
+      missWork(s, txt(a.name, s));
+      inc(s, 'skippedWork');
+    }
   }
   a.run(s, slot);
 }
@@ -214,8 +226,19 @@ export function spend(s: GameState, amount: number, label: string, kind: 'small'
 function runFood(s: GameState): void {
   const f = FOOD[s.plan.food];
   // The grocery run mini-game sets this week's actual grocery bill.
-  const bill = s.plan.food === 'cook' && num(s, 'groceryBill') > 0 ? num(s, 'groceryBill') : f.cost;
+  let bill = s.plan.food === 'cook' && num(s, 'groceryBill') > 0 ? num(s, 'groceryBill') : f.cost;
   s.flags.groceryBill = 0;
+  // Perks that feed you: a free meal every shift, or a care package from home.
+  const meals = mealPerk(s);
+  if (meals && bill > 0) {
+    bill = Math.max(0, bill - meals);
+    log(s, `Free meals at ${s.job?.place}: about ${money(meals)} less on food this week.`, 'good');
+  }
+  if (s.flags.carePackage && bill > 0) {
+    bill = Math.max(0, bill - 25);
+    s.flags.carePackage = false;
+    log(s, 'Mom’s care package (soup, snacks, a jar of sauce) saved you about $25 on food.', 'good');
+  }
   if (bill > 0) spend(s, bill, 'Food', 'all');
   const misc = personalCost(s);
   spend(s, misc, 'Personal stuff', 'small');
@@ -240,8 +263,14 @@ function runUpkeep(s: GameState): void {
     energy(s, -drain);
   }
   if (s.path === 'college' && s.flags.enrolled !== false) energy(s, -6);
-  // Commute.
-  switch (s.transport) {
+  // Commute. A suspended license parks the car: buses and favors until you get it back.
+  const parked = (s.transport === 'car' || s.transport === 'borrow') && licenseSuspended(s);
+  if (parked) {
+    energy(s, -3);
+    spend(s, 30, 'Bus fares and rides', 'small');
+    log(s, `License suspended: you can’t drive, so it’s bus fares and rides (${money(30)}). Your car insurance is still due.`, 'bad');
+  }
+  switch (parked ? 'parked' : s.transport) {
     case 'bus':
       energy(s, -3);
       // No monthly pass (or ride arrangement) means paying per trip, which costs more.
@@ -316,7 +345,7 @@ export const LIFE_COSTS: LifeCost[] = [
   { id: 'codebook', weeks: [4], amount: 135, label: 'Code book', text: 'Night class requires the current electrical code book: $135, even used.', when: (s) => s.path === 'trade' },
   { id: 'clothes', weeks: [9], amount: 60, label: 'Clothes', text: 'Your jeans ripped and your shoes gave out. Discount-store replacements: $60.' },
   { id: 'bday', weeks: [7, 13, 27, 33], amount: 35, label: 'Birthday', text: 'Another birthday (family or a friend): dinner out and a small gift, $35.' },
-  { id: 'coat', weeks: [16], amount: 95, label: 'Winter coat', text: 'It got cold fast. A winter coat and gloves: $95.' },
+  { id: 'coat', weeks: [16], amount: 95, label: 'Winter coat', text: 'It got cold fast. A winter coat and gloves: $95.', when: (s) => !s.flags.coatBought && !s.flags.noCoat },
   { id: 'workshoes', weeks: [24], amount: 70, label: 'Work shoes', text: 'On your feet all day, your work shoes wore through: $70.', when: (s) => (s.path === 'trade' || s.path === 'work') && !!s.job },
   { id: 'holidays', weeks: [20], amount: 140, label: 'Holiday gifts', text: 'Holiday gifts for family and friends: $140, even shopping carefully.' },
   { id: 'books2', weeks: [21], amount: 210, label: 'Spring textbooks', text: 'New semester, new syllabus. Used and rental textbooks: $210.', when: (s) => s.path === 'college' && s.flags.enrolled !== false },
@@ -333,6 +362,12 @@ function lifeCost(s: GameState, amount: number, label: string, text: string): vo
 function runLifeCosts(s: GameState): void {
   for (const c of LIFE_COSTS) {
     if (!c.weeks.includes(s.week) || (c.when && !c.when(s))) continue;
+    // Threadline Outfitters' 30% employee discount is good for exactly this.
+    if (s.job?.id === 'retail' && (c.id === 'clothes' || c.id === 'coat')) {
+      const off = Math.round(c.amount * 0.7);
+      lifeCost(s, off, c.label, `${c.label}: ${money(off)} with your 30% Threadline employee discount.`);
+      continue;
+    }
     lifeCost(s, c.amount, c.label, c.text);
   }
   // First place of your own: sheets, towels, pots, a shower curtain, a trash can… and, in an
@@ -614,8 +649,12 @@ export function payBills(s0: GameState, choices: Record<string, { amount: number
         break;
       }
       case 'insurance':
+        // A gap in coverage follows you: insurers charge more to restart a lapsed policy.
+        if (!s.flags.uninsuredCar && s.car) {
+          s.car.insurance += 20;
+          log(s, 'Your car insurance lapsed. Driving uninsured is illegal (a $300 ticket if you’re stopped), and restarting the policy costs $20/month more.', 'bad');
+        } else log(s, 'Your car insurance is still lapsed. Driving uninsured is illegal and risky.', 'bad');
         s.flags.uninsuredCar = true;
-        log(s, 'Your car insurance lapsed. Driving uninsured is illegal and risky.', 'bad');
         unlock(s, 'car-insurance');
         break;
       case 'phone':

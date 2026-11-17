@@ -3,7 +3,7 @@ import { achieve, charge, creditScore, energy, inc, log, money, num, rep, round2
 import { missWork } from '../../engine/core.ts';
 import type { GameState } from '../../engine/types.ts';
 import type { Choice, Scene } from '../types.ts';
-import { medCost } from './events.ts';
+import { hospitalPlan, medCost } from './events.ts';
 import { monthlyGross } from './tasks.ts';
 import { currentCourse, enroll } from '../careers.ts';
 import { COURSE_BY_ID } from '../courses.ts';
@@ -109,7 +109,7 @@ export const OFFER_SCENES: Scene[] = [
         choices: [
           {
             label: 'Sign up: $30/month',
-            hint: '✓ +3 energy every week · ✗ Recurring bill',
+            hint: '✓ +3 energy every week · ✓ Fewer winter colds · ✗ Recurring bill',
             bot: (s) => (s.stats.energy < 60 && s.stats.savings > 400 ? 1 : -1),
             do: (s) => {
               setFlag(s, 'gym');
@@ -119,7 +119,7 @@ export const OFFER_SCENES: Scene[] = [
           },
           {
             label: 'Run in the park for free',
-            hint: '✓ Free · ✗ Only when it’s nice out',
+            hint: '✓ Free · ✓ +3 energy today · ✗ Only when it’s nice out (no winter protection)',
             bot: 2,
             do: (s) => energy(s, 3),
             result: 'You go for a run. Cheap and it feels great.',
@@ -461,6 +461,7 @@ export const OFFER_SCENES: Scene[] = [
             do: (s) => {
               energy(s, -8);
               unlock(s, 'deductible');
+              if (s.flags.rentersIns) achieve(s, 'covered');
             },
             result: (s) => (s.flags.rentersIns ? 'Your claim is approved. That $15/month just paid for itself.' : 'You replace the laptop. The TV will have to wait.'),
           },
@@ -653,7 +654,7 @@ export const OFFER_SCENES: Scene[] = [
         choices: [
           {
             label: 'Keep it at $40/month',
-            hint: '✓ Still +3 energy a week · ✗ $120 more per year',
+            hint: '✓ Still +3 energy a week and fewer colds · ✗ $120 more per year',
             bot: (s) => (s.stats.energy < 50 ? 2 : 0),
             do: (s) => {
               const g = s.subs.find((x) => x.id === 'gym');
@@ -823,10 +824,9 @@ export const OFFER_SCENES: Scene[] = [
             do: (s) => {
               setFlag(s, 'curveballDone');
               missWork(s, 'ER visit');
-              s.subs.push({ id: 'medplan', label: 'Hospital payment plan', cost: 150 });
-              unlock(s, 'payment-plan');
+              hospitalPlan(s, medCost(s, 'er'));
             },
-            result: '$150/month until it’s paid. No interest, at least.',
+            result: (s) => `$150/month until the ${money(medCost(s, 'er'))} is paid off: about ${Math.ceil(medCost(s, 'er') / 150)} months. No interest, at least.`,
           },
         ],
       },
@@ -881,7 +881,8 @@ export const OFFER_SCENES: Scene[] = [
 
 const OFFER_LIST = [
   { id: 'off-save', weight: 0.8 },
-  { id: 'off-clothes', weight: (s: GameState) => (s.week >= 15 && s.week <= 24 ? 2.5 : 0), once: true },
+  // Before the cold hits (the week-16 coat bill): buy smart now, or skip the coat and shiver.
+  { id: 'off-clothes', weight: (s: GameState) => (s.week >= 12 && s.week <= 15 ? 3 : 0), once: true },
   { id: 'off-oil', weight: (s: GameState) => (s.car && s.car.condition < 85 ? 3 : 0), cooldown: 6 },
   { id: 'off-gym', weight: 0.8, once: true, minWeek: 4 },
   { id: 'off-renters', weight: (s: GameState) => (ownPlace(s) && !s.flags.rentersIns ? 2 : 0), cooldown: 10 },
