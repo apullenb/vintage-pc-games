@@ -1,7 +1,7 @@
 // Shared juice for Laser Tag and Roach Patrol: chiptune sound (own tiny WebAudio graph that respects
 // the player's mute setting), particles, pop-up text, screen shake, the announcer, big pixel
-// lettering, the "3, 2, 1, GO" count-in, and a dithered light map for the night-time scenes.
-import { bayer, cached, INK, rect, text, textWidth, type Ctx, type RGB } from '../art/px.ts';
+// lettering, the "3, 2, 1, GO" count-in, and a GPU light map (multiply + soft lamps) for the night scenes.
+import { cached, INK, rect, text, textWidth, type Ctx, type RGB } from '../art/px.ts';
 import { loadMeta } from '../ui/save.ts';
 
 export const VW = 256;
@@ -484,69 +484,103 @@ export interface Lamp {
   r: number;
   ry?: number;
   c: RGB; // brightness multiplier, e.g. [1.3, 0.6, 1.5] for magenta neon
+  cone?: { ang: number; spread: number }; // a beam (flashlight) instead of a round pool
 }
 
-// A per-pixel light multiplier quantized with ordered dithering, so pools of light read as
-// hand-shaded steps. Static lamps are baked once; moving lamps (bolts, flashes) are added per frame.
+// Light as a multiplier on the scene, done on the GPU: a small light canvas (ambient + soft radial
+// lamps, stored at half value so it can go above 1) is bilinear-scaled over the frame with 'multiply',
+// then the frame is added to itself to restore the x2. Static lamps are baked once; moving lamps
+// (bolts, flashes, the flashlight) are added per frame. No pixel reads, smooth falloff.
+const LM_RES = 0.5;
 export class LightMap {
-  private base: Float32Array;
-  private flick: Float32Array | null = null;
-  private cur: Float32Array;
+  private base: HTMLCanvasElement;
+  private flick: HTMLCanvasElement | null = null;
+  private cur: HTMLCanvasElement;
   private ambient: RGB;
-  private steps: number;
   constructor(ambient: RGB, lamps: Lamp[], flickLamps: Lamp[] = [], steps = 5) {
+    void steps;
     this.ambient = ambient;
-    this.steps = steps;
-    const n = VW * VH * 3;
-    this.base = new Float32Array(n);
-    this.cur = new Float32Array(n);
-    for (let i = 0; i < n; i += 3) {
-      this.base[i] = ambient[0];
-      this.base[i + 1] = ambient[1];
-      this.base[i + 2] = ambient[2];
-    }
-    for (const L of lamps) this.add(this.base, L, 1);
+    const mk = (): HTMLCanvasElement => {
+      const c = document.createElement('canvas');
+      c.width = Math.round(VW * LM_RES);
+      c.height = Math.round(VH * LM_RES);
+      return c;
+    };
+    this.base = mk();
+    this.cur = mk();
+    const b = this.base.getContext('2d')!;
+    b.fillStyle = rgbCss(ambient, 0.5);
+    b.fillRect(0, 0, this.base.width, this.base.height);
+    for (const L of lamps) this.add(b, L, 1);
     if (flickLamps.length) {
-      this.flick = new Float32Array(n);
-      for (const L of flickLamps) this.add(this.flick, L, 1);
+      this.flick = mk();
+      const f = this.flick.getContext('2d')!;
+      for (const L of flickLamps) this.add(f, L, 1);
     }
   }
-  private add(buf: Float32Array, L: Lamp, k: number): void {
-    const ry = L.ry ?? L.r;
-    const x0 = Math.max(0, Math.floor(L.x - L.r));
-    const x1 = Math.min(VW - 1, Math.ceil(L.x + L.r));
-    const y0 = Math.max(0, Math.floor(L.y - ry));
-    const y1 = Math.min(VH - 1, Math.ceil(L.y + ry));
+  // lamp falloff (1-d)(1-0.35d), as gradient stops, of the light it adds over the ambient
+  private add(x: CanvasRenderingContext2D, L: Lamp, k: number): void {
     const a = this.ambient;
-    for (let j = y0; j <= y1; j++)
-      for (let i = x0; i <= x1; i++) {
-        const d = Math.hypot((i - L.x) / L.r, (j - L.y) / ry);
-        if (d >= 1) continue;
-        const f = Math.floor((1 - d) * (1 - d * 0.35) * this.steps + bayer(i, j)) / this.steps;
-        if (f <= 0) continue;
-        const o = (j * VW + i) * 3;
-        buf[o] += (L.c[0] - a[0]) * f * k;
-        buf[o + 1] += (L.c[1] - a[1]) * f * k;
-        buf[o + 2] += (L.c[2] - a[2]) * f * k;
-      }
+    const dc: RGB = [Math.max(0, L.c[0] - a[0]) * k, Math.max(0, L.c[1] - a[1]) * k, Math.max(0, L.c[2] - a[2]) * k];
+    const ry = L.ry ?? L.r;
+    x.save();
+    x.globalCompositeOperation = 'lighter';
+    x.setTransform(LM_RES, 0, 0, LM_RES * (ry / L.r), L.x * LM_RES, L.y * LM_RES);
+    const g = x.createRadialGradient(0, 0, 0, 0, 0, L.r);
+    for (const d of [0, 0.25, 0.5, 0.75, 1]) g.addColorStop(d, rgbCss(dc, 0.5 * (1 - d) * (1 - d * 0.35)));
+    x.fillStyle = g;
+    x.beginPath();
+    if (L.cone) {
+      // a beam: a wedge with soft (feathered) sides, brightest along its axis
+      const { ang, spread } = L.cone;
+      x.moveTo(0, 0);
+      x.arc(0, 0, L.r, ang - spread, ang + spread);
+      x.closePath();
+      x.fill();
+      x.globalAlpha = 0.5;
+      x.beginPath();
+      x.moveTo(0, 0);
+      x.arc(0, 0, L.r * 0.9, ang - spread * 1.35, ang + spread * 1.35);
+      x.closePath();
+    } else x.arc(0, 0, L.r, 0, Math.PI * 2);
+    x.fill();
+    x.restore();
   }
   apply(x: Ctx, dyn: Lamp[], flickK = 1, darken = 1): void {
-    const cur = this.cur;
-    cur.set(this.base);
-    if (this.flick && flickK !== 0) {
-      const f = this.flick;
-      for (let i = 0; i < cur.length; i++) cur[i] += f[i] * flickK;
+    const c = this.cur.getContext('2d');
+    if (!c) return;
+    c.globalCompositeOperation = 'copy';
+    c.globalAlpha = 1;
+    c.drawImage(this.base, 0, 0);
+    c.globalCompositeOperation = 'lighter';
+    if (this.flick && flickK > 0) {
+      c.globalAlpha = Math.min(1, flickK);
+      c.drawImage(this.flick, 0, 0);
+      c.globalAlpha = 1;
     }
-    for (const L of dyn) this.add(cur, L, 1);
-    const img = x.getImageData(0, 0, VW, VH);
-    const d = img.data;
-    for (let p = 0, q = 0; p < d.length; p += 4, q += 3) {
-      d[p] = Math.min(255, d[p] * Math.max(0, cur[q]) * darken);
-      d[p + 1] = Math.min(255, d[p + 1] * Math.max(0, cur[q + 1]) * darken);
-      d[p + 2] = Math.min(255, d[p + 2] * Math.max(0, cur[q + 2]) * darken);
+    for (const L of dyn) this.add(c, L, 1);
+    if (darken < 1) {
+      c.globalCompositeOperation = 'multiply';
+      const v = Math.round(255 * Math.max(0, darken));
+      c.fillStyle = `rgb(${v},${v},${v})`;
+      c.fillRect(0, 0, this.cur.width, this.cur.height);
     }
-    x.putImageData(img, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    const cv = x.canvas;
+    x.save();
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.globalAlpha = 1;
+    x.imageSmoothingEnabled = true;
+    x.globalCompositeOperation = 'multiply';
+    x.drawImage(this.cur, 0, 0, cv.width, cv.height);
+    x.globalCompositeOperation = 'lighter';
+    x.drawImage(cv, 0, 0);
+    x.restore();
   }
+}
+function rgbCss(c: RGB, k: number): string {
+  const f = (v: number) => Math.max(0, Math.min(255, Math.round(v * k * 255)));
+  return `rgb(${f(c[0])},${f(c[1])},${f(c[2])})`;
 }
 
 // Additive soft glow (bolts, neon, muzzle flashes): stepped ellipses in 'lighter' mode.

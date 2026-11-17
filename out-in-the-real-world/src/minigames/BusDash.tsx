@@ -6,9 +6,9 @@ import { useRef, useState } from 'react';
 import { playerPerson, type Person } from '../art/people.ts';
 import { INK, rect, text, textWidth } from '../art/px.ts';
 import { sfx } from '../ui/audio.ts';
-import { drawBackdrop, drawBranch, drawBus, drawCoffee, drawDog, drawHydrant, drawLadder, drawPigeon, drawPuddle, drawSign, drawSprinkler, drawStop, drawStroller, GROUND, passerby, STREET, type ObKind } from './busArt.ts';
-import { drawRunner, shadow } from './busRunner.ts';
-import { ctxOf, MiniHud, motes, PixelCanvas, TouchPad, useInput, useLoop, vignette, type MiniProps } from './kit.tsx';
+import { drawBackdropHd, drawBranch, drawBusHd, drawCoffee, drawDog, drawHydrant, drawLadder, drawPigeon, drawPuddle, drawSign, drawSprinkler, drawStop, drawStroller, GROUND, passerby, STREET, type ObKind } from './busArt.ts';
+import { drawRunnerHd, shadowHd } from './busRunner.ts';
+import { ctxOf, MiniHud, motes, PixelCanvas, TouchPad, useInput, useLoop, type MiniProps } from './kit.tsx';
 import { centered, COUNT_TIME, countLabel, drawBanner, drawCount, Fx, hit, outlined, pick, rnd, type HudItem } from './shiftKit.ts';
 import './shift.css';
 
@@ -412,13 +412,13 @@ export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
       const [ox, oy] = fx.offset();
       x.save();
       x.translate(ox, oy);
-      drawBackdrop(x, cam, t);
+      drawBackdropHd(x, cam, t);
       // the stop and the bus
       drawStop(x, Math.round(COURSE + 30 - cam));
       const busScreen = r.busX - cam;
       if (busScreen > -10 && busScreen < 192 + 80) {
         const sign = r.phase === 'run' ? `0:${String(Math.ceil(r.left)).padStart(2, '0')}` : r.phase === 'count' ? ' 12' : r.phase === 'board' ? 'BYE!' : ' 12';
-        drawBus(x, Math.round(busScreen), STREET, r.door, sign, t);
+        drawBusHd(x, busScreen, STREET, r.door, sign, t);
       }
       // obstacles, back to front
       for (const o of r.obs) {
@@ -473,7 +473,7 @@ export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
       const boardU = r.made ? Math.min(1, r.endT / 0.45) : 0;
       if (!(r.made && r.endT > 0.5)) {
         const lift = Math.round(r.alt + (GROUND - STREET) * boardU);
-        if (!r.made) shadow(x, RX + 7, GROUND + 1, r.alt);
+        if (!r.made) shadowHd(x, RX + 7, GROUND + 1, r.alt);
         const blink = r.invuln > 0 && Math.floor(t * 16) % 2 === 0;
         if (!blink) {
           let pose: 'run' | 'jump' | 'duck' | 'stand' = 'run';
@@ -482,7 +482,7 @@ export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
           else if (r.duck) pose = 'duck';
           if (r.stun > 0 && r.grounded) pose = 'stand';
           if (r.made) pose = 'jump';
-          drawRunner(x, r.me, RX, GROUND - 30 - lift, pose, r.runPh, 1, r.stun > 0);
+          drawRunnerHd(x, r.me, RX, GROUND - 30 - lift, pose, r.runPh, 1, r.stun > 0);
           // backpack
           const by = GROUND - 30 - lift + (pose === 'duck' ? 8 : 0);
           rect(x, RX - 1, by + 12, 4, 8, INK);
@@ -506,7 +506,7 @@ export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
       x.restore();
       // morning air: drifting pollen in the sunlight, then a soft vignette
       if (!reducedMotion) motes(x, t, { x: 0, y: 20, w: 192, h: 70 }, 18, '#fff3c4', -14 - r.speed * 0.25, -2);
-      vignette(x, 192, 108, 0.28, '40,20,30');
+      // (the soft vignette comes from the HD post pass)
 
       // progress strip
       rect(x, 4, 3, 184, 9, 'rgba(28,20,36,0.72)');
@@ -539,6 +539,7 @@ export function BusDash({ s, onDone, reducedMotion }: MiniProps) {
       <MiniHud items={hud} />
       <PixelCanvas
         canvasRef={canvas}
+            hd={{ reducedMotion, post: { bloom: 0.25, threshold: 0.85, warmth: 0.2 } }}
         onPointer={(_px, _py, k) => {
           if (k === 'down') {
             r.jumpBuf = 0.13;

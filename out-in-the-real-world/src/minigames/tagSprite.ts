@@ -5,6 +5,7 @@
 import { cached, INK, mix, rect, shade, type Ctx } from '../art/px.ts';
 import type { Person } from '../art/people.ts';
 import { pline } from './tagFx.ts';
+import { hdSprite, softShadow } from './hdFx.ts';
 
 export type Facing = 'down' | 'up' | 'side';
 export type Pose = 'run' | 'idle';
@@ -365,20 +366,21 @@ export function drawChibi(x: Ctx, p: Person, key: string, cx: number, fy: number
   const img = chibi(p, key, dir, frame, pose, vest, v);
   const px = Math.round(cx) - 8;
   const py = Math.round(fy) - 22;
+  // HD: the pixel chibi is rounded off (Scale3x) and given a soft key light + violet rim
+  const hd = hdSprite(img, CHIBI_LIT);
   if (flip) {
     x.save();
     x.translate(px + SW, py);
     x.scale(-1, 1);
-    x.drawImage(img, 0, 0);
+    x.drawImage(hd, 0, 0, img.width, img.height);
     x.restore();
-  } else x.drawImage(img, px, py);
+  } else x.drawImage(hd, px, py, img.width, img.height);
 }
+const CHIBI_LIT = { light: 0.24, shadow: 0.34, rim: '#c8a8ff' };
 
 // A soft oval shadow under the feet.
 export function footShadow(x: Ctx, cx: number, fy: number, w = 12): void {
-  x.fillStyle = 'rgba(6,2,14,0.45)';
-  x.fillRect(Math.round(cx - w / 2) + 1, Math.round(fy), w - 2, 2);
-  x.fillRect(Math.round(cx - w / 2), Math.round(fy) + 1 - 1, w, 1);
+  softShadow(x, cx, fy + 0.8, w * 0.6, 2.2, 0.6, '6,2,14');
 }
 
 // Where the vest lights sit for a pose (screen coords), so they can glow after the light pass.

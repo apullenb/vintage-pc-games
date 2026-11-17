@@ -2,12 +2,13 @@
 // with a crosswalk, and a parallel park at the end, with an instructor marking a clipboard.
 import { useRef, useState } from 'react';
 import { drawPerson, HAIRS, playerPerson, SKINS, type Person } from '../art/people.ts';
-import { glow, INK, rect, shade, text, type Ctx } from '../art/px.ts';
+import { INK, rect, shade, text, type Ctx } from '../art/px.ts';
+import { softShadow } from './hdFx.ts';
 import { sfx } from '../ui/audio.ts';
 import { PASS } from '../content/minigames/roadtest.ts';
 import { clamp, Fx, PadBtn, StartOverlay } from './driveKit.tsx';
 import { BLUE_D, drawEnd, drawRoad, limitAt, MPH, newRoad, PK, scoreOf, SS, stepRoad, SZ0, SZ1, TL, totalPts, VH, VW, type RoadSim, type SayKind } from './driveRoad.ts';
-import { ctxOf, MiniHud, PixelCanvas, useInput, useLoop, vignette, type MiniProps } from './kit.tsx';
+import { ctxOf, MiniHud, PixelCanvas, useInput, useLoop, type MiniProps } from './kit.tsx';
 
 export const INSTRUCTOR: { name: string; p: Person } = {
   name: 'Mr. Okafor',
@@ -177,10 +178,10 @@ export function RoadTest({ s, onDone, reducedMotion }: MiniProps) {
         for (let k = 0; k < 2; k++) {
           const cy = ((g.t * 9 + k * 110) % (VH + 80)) - 40;
           const cx = 40 + k * 100 + Math.sin(g.t * 0.2 + k) * 20;
-          glow(x, cx, cy, 46, 20, '#1c1424', 0.22);
+          softShadow(x, cx, cy, 52, 24, 0.2, '28,20,36');
         }
         f.drawFlash(x, VW, VH);
-        vignette(x, VW, VH, 0.22);
+        // (vignette comes from the HD post pass)
         if (g.phase === 'drive' || g.phase === 'park') drawCourse(x, g);
         drawEnd(x, g, me.current, INSTRUCTOR.p);
       }
@@ -227,7 +228,7 @@ export function RoadTest({ s, onDone, reducedMotion }: MiniProps) {
           </div>
         </div>
         <div className="drive-canvas-wrap">
-          <PixelCanvas canvasRef={canvas} width={VW} height={VH} />
+          <PixelCanvas canvasRef={canvas} width={VW} height={VH} hd={{ reducedMotion }} />
           <StartOverlay
             t={hud.t}
             title="Driving Test"
