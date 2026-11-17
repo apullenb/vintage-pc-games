@@ -811,7 +811,8 @@ function apartment(night: boolean): Spec {
       });
       // TV picture
       const f = frameOf(t, 4);
-      const tvC = ['#5a8ad8', '#6aa0e8', '#4a7ac8', '#e8a060'][Math.floor(f / 6) % 4];
+      const tvI = Math.floor(f / 6) % 4;
+      const tvC = ['#5a8ad8', '#6aa0e8', '#4a7ac8', '#e8a060'][Number.isFinite(tvI) ? (tvI + 4) % 4 : 0];
       rect(x, 164, 46, 20, 13, tvC);
       rect(x, 164, 46 + (f % 13), 20, 1, shade(tvC, 1.2));
       rect(x, 167, 52, 6, 6, shade(tvC, 0.7));
