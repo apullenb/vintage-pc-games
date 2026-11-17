@@ -1,6 +1,6 @@
 // Opening scenes, first day at work (benefits!), chapter intros.
 import { CHAPTERS } from '../chapters.ts';
-import { log, money, num, setFlag, unlock } from '../../engine/core.ts';
+import { log, money, num, scene, setFlag, unlock } from '../../engine/core.ts';
 import type { GameState } from '../../engine/types.ts';
 import type { Scene } from '../types.ts';
 
@@ -41,7 +41,7 @@ export const STORY: Scene[] = [
         text: (s) =>
           `Hollis Hall, room 214. Your roommate has already claimed the good bed. Your parents hug you in the parking lot.\n\n“We’re proud of you, ${s.name}. Your meal plan is paid for this term. Everything else—books, your phone, fun—is on you now. Don’t forget the FAFSA!”`,
         speaker: 'mom',
-        choices: [{ label: 'Bye… (don’t cry, don’t cry)', next: 'rae' }],
+        choices: [{ label: 'Bye… (don’t cry, don’t cry)', next: 'rae', do: (s) => scene(s, 'col-major') }],
       },
       rae: raeStep,
     },

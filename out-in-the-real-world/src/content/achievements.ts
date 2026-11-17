@@ -34,6 +34,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'auditor', name: 'Read Every Line', desc: 'Caught a mistake on a bill or a paycheck.', icon: 'docs' },
   { id: 'lockeddown', name: 'Locked Down', desc: 'Froze your credit after identity theft.', icon: 'shield' },
   { id: 'depositback', name: 'Spotless Record', desc: 'Got your whole security deposit back.', icon: 'home' },
+  { id: 'deanslist', name: 'Dean’s List', desc: 'Earned a 3.5 GPA or better for a semester.', icon: 'star' },
+  { id: 'intern', name: 'Hired Intern', desc: 'Landed a summer internship.', icon: 'work' },
   { id: 'selfemployed', name: 'Self-Employed', desc: 'Paid your gig taxes on time.', icon: 'money' },
 ];
 

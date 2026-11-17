@@ -2,6 +2,7 @@
 import { charge, energy, inc, log, minigame, money, num, rep, scene, xp } from '../engine/core.ts';
 import type { GameState, SlotId } from '../engine/types.ts';
 import type { Activity } from './types.ts';
+import { COLLEGE_ACTIVITIES } from './college.ts';
 
 const ANY: SlotId[] = ['weekday', 'evening', 'saturday', 'sunday'];
 const FREE: SlotId[] = ['evening', 'saturday', 'sunday'];
@@ -330,6 +331,7 @@ const LIST: Activity[] = [
     run: (s) => scene(s, 'task-career'),
   },
 ];
+LIST.push(...COLLEGE_ACTIVITIES); // office hours
 
 export const ACTIVITIES: Record<string, Activity> = Object.fromEntries(LIST.map((a) => [a.id, a]));
 

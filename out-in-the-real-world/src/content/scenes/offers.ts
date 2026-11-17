@@ -2,7 +2,6 @@
 import { achieve, charge, creditScore, energy, inc, log, money, num, rep, round2, save, schedule, setFlag, unlock, xp } from '../../engine/core.ts';
 import { missWork } from '../../engine/core.ts';
 import type { GameState } from '../../engine/types.ts';
-import { CAREER_NEED } from '../chapters.ts';
 import type { Choice, Scene } from '../types.ts';
 import { medCost } from './events.ts';
 import { monthlyGross } from './tasks.ts';
@@ -872,62 +871,6 @@ export const OFFER_SCENES: Scene[] = [
       },
     },
   },
-  {
-    id: 'beat-finals',
-    title: 'Finals week',
-    art: 'library',
-    kind: 'story',
-    steps: {
-      start: {
-        text: (s) =>
-          `Finals start tomorrow. Your progress: ${s.stats.xp}/${CAREER_NEED.college.xp}. Energy: ${s.stats.energy}.\n\nThe night before…`,
-        speaker: 'advisor',
-        choices: [
-          {
-            label: 'Pull an all-nighter',
-            hint: '✓ +8 progress · ✗ −25 energy (tired brains make mistakes)',
-            bot: (s) => (s.stats.xp + 8 >= CAREER_NEED.college.xp && s.stats.xp < CAREER_NEED.college.xp && s.stats.energy > 40 ? 3 : -1),
-            do: (s) => {
-              xp(s, 8);
-              energy(s, -25);
-            },
-            next: 'exam',
-          },
-          {
-            label: 'Review once, then sleep 8 hours',
-            hint: '✓ Well rested · +2 progress',
-            bot: 2,
-            do: (s) => {
-              xp(s, 2);
-              energy(s, 10);
-            },
-            next: 'exam',
-          },
-        ],
-      },
-      exam: {
-        text: 'Pencils down. Grades post a week later…',
-        choices: [
-          {
-            label: 'Check your grades',
-            do: (s, d) => {
-              d.pass = s.stats.xp >= CAREER_NEED.college.xp && s.stats.energy >= 10 ? 1 : 0;
-              if (d.pass) {
-                setFlag(s, 'careerDone');
-                achieve(s, 'levelup');
-              } else {
-                setFlag(s, 'scholarshipCut');
-              }
-            },
-            result: (_s, d) =>
-              d.pass
-                ? 'B+ average! Scholarship renewed. You screenshot the grades and send them to your parents, Rae, and Grandma.'
-                : 'C average. Your scholarship gets cut for next year. You’ll need to take on more loans.',
-          },
-        ],
-      },
-    },
-  },
 ];
 
 const OFFER_LIST = [
@@ -961,7 +904,6 @@ export function beatsFor(s: GameState): string[] {
   if (s.week === 2 && s.path === 'college' && once('off-books')) out.push('off-books');
   if (s.week === 26 && once('beat-curveball')) out.push('beat-curveball');
   if (s.week === 32 && once('beat-roadtrip')) out.push('beat-roadtrip');
-  if (s.week === 35 && s.path === 'college' && once('beat-finals')) out.push('beat-finals');
   if (s.flags.weakBattery && s.car && s.week % 3 === 0 && once('ev-deadbattery')) out.push('ev-deadbattery');
   if (ownPlace(s) && s.week === 21 && once('ev-breakin') && (s.seed & 1) === 0) out.push('ev-breakin');
   return out;
