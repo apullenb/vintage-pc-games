@@ -6,6 +6,7 @@ import { drawPerson, type Person } from '../art/people.ts';
 import { bayer, cached, disc, hash, INK, line, rect, shade, text, textWidth, type Ctx } from '../art/px.ts';
 import { banks, baseSpeed, finishLine, LEN, MAX_WIPES, PY, RH, RW, airHeight, zoneAt, zoneWeight, type ItemKind, type RiverSim, type Tube, type Zone } from './riverSim.ts';
 import { outlined } from './shiftKit.ts';
+import { drawHd, glow, hdLayer, rgba, rrect, softShadow, sparkle, sphere, tone } from './hdFx.ts';
 
 // ---------- color + noise helpers ----------
 function u32(hex: string): number {
@@ -96,9 +97,25 @@ const B = {
 };
 
 // ---------- the water + banks shader ----------
+// Runs at the logical resolution into a scratch canvas, then gets bilinear-filtered up onto the HD
+// canvas, so the water reads as smooth gradients rather than pixel steps.
 let IMG: ImageData | null = null;
+let WATER_C: HTMLCanvasElement | null = null;
+const lerpU = (a: number, b: number, f: number): number => {
+  const r = (a & 255) + ((b & 255) - (a & 255)) * f;
+  const gg = ((a >> 8) & 255) + (((b >> 8) & 255) - ((a >> 8) & 255)) * f;
+  const bb = ((a >> 16) & 255) + (((b >> 16) & 255) - ((a >> 16) & 255)) * f;
+  return (255 << 24) | ((bb & 255) << 16) | ((gg & 255) << 8) | (r & 255);
+};
 export function paintRiver(x: Ctx, g: RiverSim, t: number): void {
-  if (!IMG || IMG.width !== RW) IMG = x.createImageData(RW, RH);
+  if (!WATER_C) {
+    WATER_C = document.createElement('canvas');
+    WATER_C.width = RW;
+    WATER_C.height = RH;
+  }
+  const wx = WATER_C.getContext('2d');
+  if (!wx) return;
+  if (!IMG || IMG.width !== RW) IMG = wx.createImageData(RW, RH);
   const buf = new Uint32Array(IMG.data.buffer);
   const c = g.c;
   const fp = t * 46;
@@ -140,10 +157,13 @@ export function paintRiver(x: Ctx, g: RiverSim, t: number): void {
         if (edge < refl && wo < th) v -= 0.32;
         let idx = Math.floor(v * 5 + th);
         idx = idx < 0 ? 0 : idx > 5 ? 5 : idx;
-        col = pal.water[idx];
+        const vv = v * 5 + 0.5 < 0 ? 0 : v * 5 + 0.5 > 5 ? 5 : v * 5 + 0.5;
+        const v0 = Math.floor(vv);
+        col = v0 >= 5 ? pal.water[5] : lerpU(pal.water[v0], pal.water[v0 + 1], vv - v0);
         // caustic net: thin contour lines of a fine ripple field, brightest where the streaks are
         const n3 = nz(px * 0.85 + 5, (d - fp * 1.5) * 0.42 + t * 0.6);
-        if (Math.abs(n3 - 0.5) < 0.02) col = n1 > 0.68 && ws < th ? pal.hi : pal.water[Math.min(5, idx + 1)];
+        const cw = 1 - Math.abs(n3 - 0.5) / 0.04;
+        if (cw > 0) col = lerpU(col, n1 > 0.68 && ws < th ? pal.hi : pal.water[Math.min(5, idx + 1)], cw * 0.55);
         // rapids: white streaks churn through
         if (wr > 0 && n1 + n2 * 0.3 > 0.95 - 0.38 * wr) col = pal.foam[n2 > 0.55 ? 1 : 0];
         else if (wr > 0 && n1 + n2 * 0.3 > 0.88 - 0.38 * wr) col = pal.water[5];
@@ -184,7 +204,12 @@ export function paintRiver(x: Ctx, g: RiverSim, t: number): void {
       buf[row + px] = col;
     }
   }
-  x.putImageData(IMG, 0, 0);
+  wx.putImageData(IMG, 0, 0);
+  x.save();
+  x.imageSmoothingEnabled = true;
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(WATER_C, 0, 0, RW, RH);
+  x.restore();
 }
 
 function bankColor(zone: Zone, dist: number, n: number, h: number, beach: boolean, d: number, trip: boolean): number {
@@ -227,61 +252,113 @@ export const sy = (g: RiverSim, d: number, par = 1): number => PY - (d - g.camD)
 const onScreen = (y: number, m = 30): boolean => y > -m && y < RH + m;
 
 // ---------- small shaded shapes ----------
+// HD versions: smooth lit spheres, soft-edged ellipses, thin smooth ripple rings.
 function ball(x: Ctx, cx: number, cy: number, r: number, c: string, outline = true): void {
-  if (outline) disc(x, cx, cy, r + 1, INK);
-  disc(x, cx, cy, r, shade(c, 0.78));
-  disc(x, cx - 0.5, cy - 0.5, Math.max(0, r - 1), c);
-  if (r >= 2) disc(x, cx - r * 0.35, cy - r * 0.35, Math.max(0, Math.floor(r * 0.35)), shade(c, 1.2));
+  if (outline) {
+    x.fillStyle = 'rgba(16,10,24,0.55)';
+    x.beginPath();
+    x.arc(cx, cy, r + 0.6, 0, Math.PI * 2);
+    x.fill();
+  }
+  sphere(x, cx, cy, r, c, -0.45, -0.5, r >= 2 ? 0.28 : 0);
 }
 function ellipse(x: Ctx, cx: number, cy: number, rx: number, ry: number, c: string): void {
-  x.fillStyle = c;
-  for (let j = -Math.floor(ry); j <= ry; j++) {
-    const w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (j / (ry + 0.3)) ** 2)));
-    if (w > 0) x.fillRect(Math.round(cx - w), Math.round(cy + j), w * 2, 1);
-  }
+  if (rx <= 0 || ry <= 0) return;
+  x.save();
+  x.translate(cx, cy);
+  x.scale(1, ry / rx);
+  const g = x.createRadialGradient(0, 0, 0, 0, 0, rx);
+  g.addColorStop(0, c);
+  g.addColorStop(0.7, rgba(c, 0.85));
+  g.addColorStop(1, rgba(c, 0));
+  x.fillStyle = g;
+  x.beginPath();
+  x.arc(0, 0, rx, 0, Math.PI * 2);
+  x.fill();
+  x.restore();
 }
 function ringDots(x: Ctx, cx: number, cy: number, r: number, c: string, step = 0.5, ry = r): void {
-  x.fillStyle = c;
-  for (let a = 0; a < Math.PI * 2; a += step / Math.max(2, r) * 2) x.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * ry), 1, 1);
+  void step;
+  x.strokeStyle = c;
+  x.lineWidth = 0.7;
+  x.beginPath();
+  x.ellipse(cx, cy, Math.max(0.1, r), Math.max(0.1, ry), 0, 0, Math.PI * 2);
+  x.stroke();
 }
 
-// ---------- the tube (cached, rotation invariant: light from the top left) ----------
-function tubeRing(color: string, R: number, under = false): HTMLCanvasElement {
+// ---------- the tube: a smooth-shaded torus with a wet specular streak ----------
+const TUBES = new Map<string, HTMLCanvasElement>();
+function tubeHd(color: string, R: number, under = false): HTMLCanvasElement {
   const size = R * 2 + 3;
-  return cached(`rr-ring|${color}|${R}|${under}`, size, size, (x) => {
-    const c = R + 1;
-    const inner = R * 0.46;
-    const ramp = under ? [shade(color, 0.35), shade(color, 0.48), shade(color, 0.6), shade(color, 0.7)] : [shade(color, 0.55), shade(color, 0.78), color, shade(color, 1.22)];
-    for (let j = 0; j < size; j++)
-      for (let i = 0; i < size; i++) {
-        const dx = i - c + 0.5;
-        const dy = j - c + 0.5;
-        const r = Math.hypot(dx, dy);
-        if (r > R + 1 || r < inner - 1) continue;
-        if (r > R || r < inner) {
-          x.fillStyle = INK;
-          x.fillRect(i, j, 1, 1);
-          continue;
-        }
-        // torus cross-section normal, lit from the top-left
-        const k = (r - inner) / (R - inner);
-        const a = (k - 0.5) * Math.PI;
-        const nx = (dx / r) * Math.sin(a);
-        const ny = (dy / r) * Math.sin(a);
-        const nzv = Math.cos(a);
-        const lam = -0.55 * nx - 0.6 * ny + 0.58 * nzv;
-        const q = lam + (bayer(i, j) - 0.5) * 0.18;
-        let col = q > 0.62 ? ramp[3] : q > 0.25 ? ramp[2] : q > -0.15 ? ramp[1] : ramp[0];
-        if (!under && lam > 0.86) col = '#ffffff';
-        x.fillStyle = col;
-        x.fillRect(i, j, 1, 1);
-      }
-    if (!under) {
-      // valve stem
-      x.fillStyle = INK;
-      x.fillRect(c + Math.round(R * 0.62), c - Math.round(R * 0.62), 2, 2);
-    }
-  });
+  const k = `${color}|${R}|${under}`;
+  let c = TUBES.get(k);
+  if (c) return c;
+  const L = hdLayer(size, size, 3);
+  const x = L.x;
+  const cx = size / 2;
+  const cy = size / 2;
+  const inner = R * 0.46;
+  const base = under ? tone(color, -0.35) : color;
+  // body: dark at both edges of the cross-section, bright along the crown
+  const g = x.createRadialGradient(cx, cy, inner, cx, cy, R);
+  g.addColorStop(0, tone(base, -0.6));
+  g.addColorStop(0.45, tone(base, 0.12));
+  g.addColorStop(0.7, base);
+  g.addColorStop(1, tone(base, -0.55));
+  x.fillStyle = g;
+  x.beginPath();
+  x.arc(cx, cy, R, 0, Math.PI * 2);
+  x.arc(cx, cy, inner, 0, Math.PI * 2, true);
+  x.fill('evenodd');
+  // directional light from the top-left
+  x.save();
+  x.clip('evenodd');
+  const d = x.createLinearGradient(cx - R, cy - R, cx + R, cy + R);
+  d.addColorStop(0, 'rgba(255,248,230,0.42)');
+  d.addColorStop(0.45, 'rgba(255,248,230,0)');
+  d.addColorStop(0.6, 'rgba(10,20,40,0)');
+  d.addColorStop(1, 'rgba(10,20,40,0.45)');
+  x.fillStyle = d;
+  x.fillRect(cx - R, cy - R, R * 2, R * 2);
+  x.restore();
+  if (!under) {
+    // wet specular streak along the crown
+    x.strokeStyle = 'rgba(255,255,255,0.85)';
+    x.lineCap = 'round';
+    x.lineWidth = Math.max(0.5, R * 0.13);
+    x.beginPath();
+    x.arc(cx, cy, (R + inner) / 2 + R * 0.05, -2.75, -1.75);
+    x.stroke();
+    x.lineWidth = Math.max(0.35, R * 0.07);
+    x.strokeStyle = 'rgba(255,255,255,0.45)';
+    x.beginPath();
+    x.arc(cx, cy, (R + inner) / 2, 0.55, 0.95);
+    x.stroke();
+    // valve stem
+    x.fillStyle = '#1a1424';
+    x.beginPath();
+    x.arc(cx + R * 0.66, cy - R * 0.62, Math.max(0.5, R * 0.1), 0, Math.PI * 2);
+    x.fill();
+  }
+  // crisp thin outline
+  x.strokeStyle = 'rgba(16,10,24,0.75)';
+  x.lineWidth = 0.45;
+  x.beginPath();
+  x.arc(cx, cy, R, 0, Math.PI * 2);
+  x.stroke();
+  x.beginPath();
+  x.arc(cx, cy, inner, 0, Math.PI * 2);
+  x.stroke();
+  c = L.c;
+  TUBES.set(k, c);
+  return c;
+}
+// Draw a tube centred at (cx,cy). `w` squashes it horizontally (the flip animation).
+function drawRing(x: Ctx, color: string, R: number, under: boolean, cx: number, cy: number, w?: number): void {
+  const size = R * 2 + 3;
+  const img = tubeHd(color, R, under);
+  const ww = w ?? size;
+  x.drawImage(img, cx - ww / 2, cy - size / 2, ww, size);
 }
 
 export interface TuberLook {
@@ -303,26 +380,29 @@ export function drawTuber(x: Ctx, L: TuberLook, cx: number, cy: number, tb: Tube
   const P = (f: number, q: number): [number, number] => [cx + (q * ca + f * sa) * s, cy + (-f * ca + q * sa) * s];
   const bob = Math.sin(t * 3 + cx * 0.1) * 0.4;
   cy += bob;
-  const ring = tubeRing(L.tube, R);
-  x.drawImage(ring, Math.round(cx - R - 1), Math.round(cy - R - 1));
+  // reflection of the tube on the water + contact shadow
+  softShadow(x, cx + 1.2, cy + 1.6, R + 1.5, R * 0.9 + 1, 0.32, '4,18,26');
+  drawRing(x, L.tube, R, false, cx, cy);
   const lean = tb.lean * 1.2;
   const skin = L.p.skin;
-  const skinD = shade(skin, 0.8);
   // legs over the front rim (splayed and dragging when braking)
   const splay = tb.brake ? 1.8 : 0;
   for (const q of [-1, 1]) {
     const [hx, hy] = P(1.5, q * 1.6 + lean * 0.3);
     const [kx, ky] = P(6, q * (2.2 + splay * 0.6));
     const [fx, fy] = P(9.2 + (tb.brake ? -0.5 : 0), q * (2.6 + splay));
-    thick(x, hx, hy, kx, ky, L.suit, s);
-    thick(x, kx, ky, fx, fy, skin, s);
-    disc(x, fx, fy, Math.max(1, Math.round(s)), skinD);
+    limb(x, hx, hy, kx, ky, L.suit, 2.1 * s);
+    limb(x, kx, ky, fx, fy, skin, 1.7 * s);
+    sphere(x, fx, fy, 1.05 * s, skin, -0.4, -0.5, 0);
   }
-  // torso
+  // torso: a lit ball with a soft shadow where it sits in the tube
   const [tx, ty] = P(-0.6, lean);
-  disc(x, tx, ty, Math.round(3.6 * s), INK);
-  disc(x, tx, ty, Math.round(2.8 * s), shade(L.p.shirt, 0.82));
-  disc(x, tx - 0.5, ty - 0.5, Math.round(2.2 * s), L.p.shirt);
+  softShadow(x, tx + 0.8, ty + 1, 4 * s, 3.4 * s, 0.35);
+  x.fillStyle = 'rgba(16,10,24,0.6)';
+  x.beginPath();
+  x.arc(tx, ty, 3.4 * s, 0, Math.PI * 2);
+  x.fill();
+  sphere(x, tx, ty, 3 * s, L.p.shirt, -0.45, -0.5, 0.22);
   // arms: one paddles (reach forward, sweep back), the other rests on the rim
   for (const q of [-1, 1]) {
     const active = tb.stroke > 0 && q === tb.strokeSide;
@@ -331,8 +411,12 @@ export function drawTuber(x: Ctx, L: TuberLook, cx: number, cy: number, tb: Tube
     const out = active ? 8.4 : 6.8;
     const [sx0, sy0] = P(-1.8, q * 2.8 + lean);
     const [hx, hy] = P(reach, q * out + lean * 0.5);
-    thick(x, sx0, sy0, hx, hy, skin, s);
-    disc(x, hx, hy, Math.max(1, Math.round(1.1 * s)), skinD);
+    limb(x, sx0, sy0, hx, hy, skin, 1.5 * s);
+    sphere(x, hx, hy, 1.15 * s, skin, -0.4, -0.5, 0.15);
+    if (active && ph > 0.2 && ph < 0.8) {
+      // paddle splash at the hand
+      glow(x, hx, hy, 3 * s, '#e8fffb', 0.35);
+    }
   }
   // held snack in the left hand
   if (opts.held) {
@@ -341,20 +425,48 @@ export function drawTuber(x: Ctx, L: TuberLook, cx: number, cy: number, tb: Tube
   }
   // head: hair from above, a bit of face toward the front, sunglasses
   const [hx, hy] = P(-4.2, lean * 1.1);
-  disc(x, hx, hy, Math.round(3.2 * s), INK);
-  disc(x, hx, hy, Math.round(2.6 * s), L.p.hair);
-  const [fx, fy] = P(-2.7, lean * 1.1);
-  disc(x, fx, fy, Math.max(1, Math.round(1.3 * s)), skin);
-  const [g1x, g1y] = P(-2.4, lean * 1.1 - 1.3);
-  const [g2x, g2y] = P(-2.4, lean * 1.1 + 1.3);
-  rect(x, g1x, g1y, 1, 1, L.shades);
-  rect(x, g2x, g2y, 1, 1, L.shades);
-  const [hlx, hly] = P(-5, lean * 1.1 - 1);
-  rect(x, hlx - 0.5, hly - 0.5, 1, 1, shade(L.p.hair, 1.35));
+  x.fillStyle = 'rgba(16,10,24,0.6)';
+  x.beginPath();
+  x.arc(hx, hy, 3.2 * s, 0, Math.PI * 2);
+  x.fill();
+  sphere(x, hx, hy, 2.8 * s, L.p.hair, -0.45, -0.55, 0.3);
+  const [fx, fy] = P(-2.4, lean * 1.1);
+  sphere(x, fx, fy, 1.5 * s, skin, -0.4, -0.5, 0.12);
+  const [g1x, g1y] = P(-2.1, lean * 1.1 - 1.15);
+  const [g2x, g2y] = P(-2.1, lean * 1.1 + 1.15);
+  for (const [gx, gy] of [
+    [g1x, g1y],
+    [g2x, g2y],
+  ]) {
+    x.fillStyle = L.shades;
+    x.beginPath();
+    x.arc(gx, gy, 0.75 * s, 0, Math.PI * 2);
+    x.fill();
+    x.fillStyle = 'rgba(255,255,255,0.8)';
+    x.beginPath();
+    x.arc(gx - 0.25 * s, gy - 0.3 * s, 0.25 * s, 0, Math.PI * 2);
+    x.fill();
+  }
 }
-function thick(x: Ctx, x0: number, y0: number, x1: number, y1: number, c: string, s: number): void {
-  line(x, x0, y0, x1, y1, c);
-  if (s >= 1) line(x, x0 + 0.6, y0 + 0.6, x1 + 0.6, y1 + 0.6, c);
+// A rounded limb: a capsule stroke with a lit edge on the light side.
+function limb(x: Ctx, x0: number, y0: number, x1: number, y1: number, c: string, w: number): void {
+  x.lineCap = 'round';
+  x.strokeStyle = 'rgba(16,10,24,0.55)';
+  x.lineWidth = w + 0.7;
+  x.beginPath();
+  x.moveTo(x0, y0);
+  x.lineTo(x1, y1);
+  x.stroke();
+  x.strokeStyle = tone(c, -0.18);
+  x.lineWidth = w;
+  x.stroke();
+  x.strokeStyle = tone(c, 0.22);
+  x.lineWidth = w * 0.45;
+  x.beginPath();
+  x.moveTo(x0 - w * 0.18, y0 - w * 0.18);
+  x.lineTo(x1 - w * 0.18, y1 - w * 0.18);
+  x.stroke();
+  x.lineCap = 'butt';
 }
 
 // The water around a floating tube: shadow, ripple rings, a wake when moving through the water.
@@ -370,13 +482,24 @@ export function drawWaterAround(x: Ctx, cx: number, cy: number, R: number, t: nu
   }
   if (rel > 14) {
     // V wake trailing behind (down the screen when facing up)
-    const n = Math.min(10, Math.floor(rel / 6));
-    for (let i = 2; i < n + 2; i++) {
-      const spread = i * 1.6;
-      const yy = cy + R + i * 1.6;
-      if ((i + Math.floor(t * 12)) % 3 === 0) continue;
-      rect(x, cx - R * 0.6 - spread + Math.sin(ang) * i, yy, 1, 1, '#e6fbf6');
-      rect(x, cx + R * 0.6 + spread + Math.sin(ang) * i, yy, 1, 1, '#e6fbf6');
+    // V wake: two smooth foam lines fading out behind
+    const n = Math.min(10, rel / 6) + 2;
+    for (const q of [-1, 1]) {
+      const x0 = cx + q * R * 0.6;
+      const y0 = cy + R * 0.7;
+      const x1 = cx + q * (R * 0.6 + n * 1.6) + Math.sin(ang) * n;
+      const y1 = cy + R + n * 1.6;
+      const gr = x.createLinearGradient(x0, y0, x1, y1);
+      gr.addColorStop(0, 'rgba(240,255,252,0.9)');
+      gr.addColorStop(1, 'rgba(240,255,252,0)');
+      x.strokeStyle = gr;
+      x.lineWidth = 0.9;
+      x.lineCap = 'round';
+      x.beginPath();
+      x.moveTo(x0, y0);
+      x.quadraticCurveTo((x0 + x1) / 2 + q * 0.8, (y0 + y1) / 2 + Math.sin(t * 9 + q) * 0.4, x1, y1);
+      x.stroke();
+      x.lineCap = 'butt';
     }
   }
 }
@@ -498,8 +621,13 @@ export function drawRock(x: Ctx, cx: number, cy: number, r: number, seed: number
     rect(x, cx + i, yy + (f > 0.3 ? 1 : 0), 1, 1, f > -0.4 ? '#f4fffb' : '#bfe6de');
   }
   const spr = rockSprite(seed, r);
-  x.drawImage(spr, Math.round(cx - spr.width / 2), Math.round(cy - spr.height / 2));
+  softShadow(x, cx + 1.5, cy + 2, r * 1.25, r * 0.95, 0.4, '4,18,26');
+  drawHd(x, spr, Math.round(cx - spr.width / 2), Math.round(cy - spr.height / 2), false, ROCK_LIT);
+  // a wet glint that drifts a little with the light on the water
+  sparkle(x, cx - r * 0.38, cy - r * 0.5, 1.1 + 0.4 * Math.sin(t * 3 + seed), 0.7);
 }
+const ROCK_LIT = { light: 0.25, shadow: 0.35, rim: '#bfe8ff' };
+const TREE_LIT = { light: 0.28, shadow: 0.4, rim: '#e8ffb0' };
 
 export function drawLog(x: Ctx, cx: number, cy: number, len: number, ang: number, fixed: boolean, t: number): void {
   const ca = Math.cos(ang);
@@ -801,20 +929,21 @@ function drawGroundProps(x: Ctx, g: RiverSim, t: number): void {
 }
 function drawRockShore(x: Ctx, cx: number, cy: number, r: number, seed: number): void {
   const spr = rockSprite(seed, Math.round(r));
-  x.drawImage(spr, Math.round(cx - spr.width / 2), Math.round(cy - spr.height / 2));
+  softShadow(x, cx + 1.5, cy + 1.5, r * 1.2, r * 0.8, 0.35);
+  drawHd(x, spr, Math.round(cx - spr.width / 2), Math.round(cy - spr.height / 2), false, ROCK_LIT);
 }
 
 function drawCanopies(x: Ctx, g: RiverSim, t: number): void {
   propsInView(g, 1.22, (p, px, py, h) => {
-    const sway = Math.round(Math.sin(t * 0.9 + px * 0.05) * 0.6);
+    const sway = Math.sin(t * 0.9 + px * 0.05) * 0.6;
     if (p === 'pine') {
       const r = 8 + Math.floor(h * 5);
       const s = pineSprite(r, Math.floor(h * 6));
-      x.drawImage(s, Math.round(px - s.width / 2) + sway, Math.round(py - s.height / 2));
+      drawHd(x, s, Math.round(px - s.width / 2) + sway, Math.round(py - s.height / 2), false, TREE_LIT);
     } else if (p === 'willow') {
       const r = 10 + Math.floor(h * 4);
       const s = willowSprite(r, Math.floor(h * 6));
-      x.drawImage(s, Math.round(px - s.width / 2) + sway, Math.round(py - s.height / 2));
+      drawHd(x, s, Math.round(px - s.width / 2) + sway, Math.round(py - s.height / 2), false, TREE_LIT);
     } else if (p === 'juniper') {
       ball(x, px + sway, py, 4 + Math.floor(h * 2), '#4a6a3a');
       rect(x, px - 1 + sway, py - 2, 1, 1, '#8aa070');
@@ -885,7 +1014,7 @@ function drawRope(x: Ctx, g: RiverSim, t: number, tuber?: { L: TuberLook; tb: Tu
     }
     // the tree itself (canopy drawn big)
     const s = willowSprite(15, 2);
-    x.drawImage(s, Math.round(trunkX - s.width / 2), Math.round(y - 14 - s.height / 2));
+    drawHd(x, s, Math.round(trunkX - s.width / 2), Math.round(y - 14 - s.height / 2), false, TREE_LIT);
   }
 }
 
@@ -1026,18 +1155,15 @@ function drawWipeout(x: Ctx, L: TuberLook, tb: Tube, cx: number, cy: number, t: 
   if (u < 0.22) {
     // the tube flips over: squash it like a coin
     const k = Math.cos((u / 0.22) * Math.PI);
-    const ring = tubeRing(L.tube, 7, k < 0);
-    const w = Math.max(2, Math.round(ring.width * Math.abs(k)));
-    x.drawImage(ring, Math.round(cx - w / 2), Math.round(cy - ring.height / 2), w, ring.height);
-    rect(x, cx - 2, cy - 12 - u * 20, 4, 4, L.p.hair);
+    drawRing(x, L.tube, 7, k < 0, cx, cy, Math.max(2, 17 * Math.abs(k)));
+    sphere(x, cx, cy - 10 - u * 20, 2.2, L.p.hair, -0.4, -0.5, 0.25);
     return;
   }
   // upside-down tube, you underwater: a dark shape and bubbles, then a hand grabs back on
   x.globalAlpha = 0.45;
   ellipse(x, cx + 3, cy + 6, 5, 7, '#04121a');
   x.globalAlpha = 1;
-  const ring = tubeRing(L.tube, 7, true);
-  x.drawImage(ring, Math.round(cx - 8), Math.round(cy - 8));
+  drawRing(x, L.tube, 7, true, cx, cy);
   for (let i = 0; i < 4; i++) {
     const ph = (t * 1.6 + i * 0.27) % 1;
     ringDots(x, cx + 3 + Math.sin(i * 2 + t * 5) * 2, cy + 6 - ph * 6, 1 + (i % 2), '#e8fffb', 2);
@@ -1092,16 +1218,60 @@ export function drawLight(x: Ctx, g: RiverSim, t: number): void {
     x.globalAlpha = 1;
   }
   x.globalCompositeOperation = 'source-over';
-  if (L.strength > 0) {
-    // low sun glow from the top of the screen, stepped bands
+  // distance haze downstream (the top of the screen is "ahead")
+  const hz = x.createLinearGradient(0, 0, 0, RH * 0.4);
+  hz.addColorStop(0, rgba(L.glow, 0.22 + L.strength * 0.8));
+  hz.addColorStop(1, rgba(L.glow, 0));
+  x.fillStyle = hz;
+  x.fillRect(0, 0, RW, RH * 0.4);
+  // the sun: a big soft glow off the top of the screen, warmer and lower as the day goes on
+  glow(x, RW * 0.62, -RH * 0.12, RH * (0.55 + L.strength * 1.6), L.glow, 0.12 + L.strength * 1.7, 0.75);
+  // golden hour: the low sun lays a shimmering path of light down the water
+  const sunK = Math.max(0, Math.min(1, (L.strength - 0.05) / 0.1));
+  const sunX = RW * 0.62;
+  if (sunK > 0) {
+    x.save();
     x.globalCompositeOperation = 'lighter';
-    x.fillStyle = L.glow;
-    for (let k = 0; k < 12; k++) {
-      x.globalAlpha = L.strength * 0.09;
-      x.fillRect(0, 0, RW, 8 + k * 8);
+    const col = x.createLinearGradient(0, 0, 0, RH * 0.85);
+    col.addColorStop(0, rgba(L.glow, 0.42 * sunK));
+    col.addColorStop(0.5, rgba(L.glow, 0.16 * sunK));
+    col.addColorStop(1, rgba(L.glow, 0));
+    x.restore();
+    // a soft column of reflected light, then broken glints scattered along it
+    glow(x, sunX, RH * 0.3, 22, L.glow, 0.3 * sunK, 5.5);
+    x.save();
+    x.globalCompositeOperation = 'lighter';
+    x.fillStyle = col;
+    for (let yy = 2; yy < RH * 0.85; yy += 2.2) {
+      const row = Math.floor(yy / 2.2);
+      const h1 = hash(row * 13 + Math.floor(t * 1.5 + hash(row) * 3));
+      if (h1 < 0.35) continue;
+      const spread = 5 + (yy / RH) * 26;
+      const len = 1.5 + h1 * (3 + (yy / RH) * 9);
+      const cx0 = sunX + (hash(row * 7 + 1) - 0.5) * spread * 2 + Math.sin(yy * 0.21 - t * 1.4) * 3;
+      x.globalAlpha = (0.35 + 0.65 * Math.abs(Math.sin(yy * 0.9 + t * 3 + h1 * 6))) * (1 - Math.abs(cx0 - sunX) / (spread * 1.3));
+      if (x.globalAlpha <= 0) continue;
+      rrect(x, cx0 - len / 2, yy, len, 0.9, 0.45);
+      x.fill();
     }
     x.globalAlpha = 1;
-    x.globalCompositeOperation = 'source-over';
+    x.restore();
+  }
+  // sparkles on the water: glints that bloom and fade (more of them, warmer, at golden hour)
+  const ws = zoneWeight(g.camD, 'sunset');
+  const N = 9 + Math.round(L.strength * 60 + ws * 8);
+  const sun = L.strength > 0.08 ? L.glow : '#ffffff';
+  for (let i = 0; i < N; i++) {
+    const cyc = t * 0.8 + hash(i * 3 + 1);
+    const k = Math.floor(cyc);
+    const ph = cyc - k;
+    const yy = 16 + hash(i * 17 + k * 131) * (RH - 20);
+    const d = g.camD + PY - yy;
+    const [bl, br] = banks(g.c, d);
+    if (br - bl < 14) continue;
+    const xx = sunK > 0 && i % 2 ? Math.max(bl + 4, Math.min(br - 4, sunX + (hash(i * 29 + k * 7) - 0.5) * (10 + yy * 0.25))) : bl + 5 + hash(i * 29 + k * 7) * (br - bl - 10);
+    const a = Math.sin(ph * Math.PI);
+    sparkle(x, xx, yy, 0.6 + a * 1.3, a * 0.75, sun);
   }
   // dappled light under the forest canopy
   const wf = zoneWeight(g.camD, 'forest');
@@ -1127,8 +1297,7 @@ export function drawHud(x: Ctx, g: RiverSim, t: number, looks: RiverLooks): void
   // lives: little tubes
   for (let i = 0; i < MAX_WIPES; i++) {
     const alive = i < MAX_WIPES - g.wipes;
-    const ring = tubeRing(alive ? looks.me.tube : '#5a5068', 3, !alive);
-    x.drawImage(ring, 3 + i * 10, 2);
+    drawRing(x, alive ? looks.me.tube : '#5a5068', 3, !alive, 3 + i * 10 + 4.5, 6.5);
   }
   // river map: you, Rae, the take-out
   const m0 = 36;

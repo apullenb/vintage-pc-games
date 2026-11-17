@@ -8,6 +8,7 @@ import { bayer, cached, disc, hash, INK, line, outlineRect, rect, shade, text, t
 import { drawVehicle } from './driveKit.tsx';
 import { BAG_CAP, CELL, CUT, cutFrac, GH, GW, LH, LW, TALL, TRIM, type Dog, type LawnSim, type Mower, type Solid, type Sprinkler, type Yard } from './lawnYard.ts';
 import { outlined } from './shiftKit.ts';
+import { drawHd, glow, grain, rgba, rrect, softBlit, softShadow, sparkle, sphere, tone } from './hdFx.ts';
 
 function u32(hex: string): number {
   const n = parseInt(hex.slice(1, 7), 16);
@@ -19,12 +20,21 @@ const ih = (n: number): number => {
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return (t ^ (t >>> 14)) >>> 0;
 };
+// Soft-edged ellipse (shadows, puddles): a radial falloff instead of pixel rows.
 function ellipse(x: Ctx, cx: number, cy: number, rx: number, ry: number, c: string): void {
-  x.fillStyle = c;
-  for (let j = -Math.floor(ry); j <= ry; j++) {
-    const w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (j / (ry + 0.3)) ** 2)));
-    if (w > 0) x.fillRect(Math.round(cx - w), Math.round(cy + j), w * 2, 1);
-  }
+  if (rx <= 0 || ry <= 0) return;
+  x.save();
+  x.translate(cx, cy);
+  x.scale(1, ry / rx);
+  const g = x.createRadialGradient(0, 0, 0, 0, 0, rx);
+  g.addColorStop(0, c);
+  g.addColorStop(0.7, rgba(c, 0.85));
+  g.addColorStop(1, rgba(c, 0));
+  x.fillStyle = g;
+  x.beginPath();
+  x.arc(0, 0, rx, 0, Math.PI * 2);
+  x.fill();
+  x.restore();
 }
 
 // ---------- neighbors ----------
@@ -155,9 +165,17 @@ function drawTufts(x: Ctx, g: LawnSim, layer: LawnLayer, t: number): void {
     const px = i * CELL;
     const py = j * CELL;
     const w = Math.sin(t * 1.8 + px * 0.06 + py * 0.035);
-    const off = w > 0.45 ? 1 : w < -0.45 ? -1 : 0;
-    x.fillStyle = (k & 3) === 0 ? '#8ad060' : '#62ae44';
-    x.fillRect(px + off, py - 1, 1, 2);
+    // a little fan of curved blades, swaying smoothly
+    x.lineWidth = 0.45;
+    x.lineCap = 'round';
+    for (let b = -1; b <= 1; b++) {
+      x.strokeStyle = (k + b) & 1 ? '#8ad060' : '#62ae44';
+      x.beginPath();
+      x.moveTo(px + 1 + b * 0.8, py + 2);
+      x.quadraticCurveTo(px + 1 + b * 1.1 + w * 0.6, py, px + 1 + b * 1.5 + w * 1.3, py - 1.8 + Math.abs(b) * 0.6);
+      x.stroke();
+    }
+    x.lineCap = 'butt';
   }
 }
 
@@ -390,34 +408,67 @@ function drawPool(x: Ctx, s: Solid, t: number, splash: number): void {
   x.globalAlpha = 0.3;
   ellipse(x, cx + 2, cy + 3, r + 1, r, '#0a1a08');
   x.globalAlpha = 1;
-  disc(x, cx, cy, r + 1, INK);
-  // inflatable rim: striped segments, lit from the top-left
-  for (let j = -r; j <= r; j++)
-    for (let i = -r; i <= r; i++) {
-      const d = Math.hypot(i, j);
-      if (d > r || d < r - 3) continue;
-      const a = Math.atan2(j, i);
-      const seg = Math.floor(((a + Math.PI) / (Math.PI * 2)) * 12) % 2;
-      const lit = -(i + j) / (r * 1.4);
-      const base = seg ? '#f4f4f8' : '#3a8ae0';
-      x.fillStyle = d > r - 1 ? shade(base, 0.75) : lit > 0.3 ? shade(base, 1.15) : base;
-      x.fillRect(Math.round(cx + i), Math.round(cy + j), 1, 1);
+  // inflatable rim: twelve striped segments, a tube lit from the top-left
+  x.fillStyle = 'rgba(16,10,24,0.85)';
+  x.beginPath();
+  x.arc(cx, cy, r + 0.6, 0, Math.PI * 2);
+  x.fill();
+  for (let k = 0; k < 12; k++) {
+    x.fillStyle = k % 2 ? '#f4f4f8' : '#3a8ae0';
+    x.beginPath();
+    x.arc(cx, cy, r, (k / 12) * Math.PI * 2, ((k + 1) / 12) * Math.PI * 2);
+    x.arc(cx, cy, r - 3, ((k + 1) / 12) * Math.PI * 2, (k / 12) * Math.PI * 2, true);
+    x.closePath();
+    x.fill();
+  }
+  const tube = x.createRadialGradient(cx, cy, r - 3, cx, cy, r);
+  tube.addColorStop(0, 'rgba(10,20,50,0.35)');
+  tube.addColorStop(0.45, 'rgba(255,255,255,0.15)');
+  tube.addColorStop(1, 'rgba(10,20,50,0.4)');
+  x.fillStyle = tube;
+  x.beginPath();
+  x.arc(cx, cy, r, 0, Math.PI * 2);
+  x.arc(cx, cy, r - 3, 0, Math.PI * 2, true);
+  x.fill('evenodd');
+  x.strokeStyle = 'rgba(255,255,255,0.75)';
+  x.lineWidth = 0.6;
+  x.lineCap = 'round';
+  x.beginPath();
+  x.arc(cx, cy, r - 1.3, -2.7, -1.8);
+  x.stroke();
+  x.lineCap = 'butt';
+  // water: deep-to-shallow gradient, moving caustic highlights, glints
+  const wr = r - 3;
+  const wg = x.createRadialGradient(cx - wr * 0.3, cy - wr * 0.3, 0, cx, cy, wr);
+  wg.addColorStop(0, '#b8ecff');
+  wg.addColorStop(0.6, '#6ac4ec');
+  wg.addColorStop(1, '#3a90c8');
+  x.fillStyle = wg;
+  x.beginPath();
+  x.arc(cx, cy, wr, 0, Math.PI * 2);
+  x.fill();
+  x.save();
+  x.clip();
+  x.strokeStyle = 'rgba(230,250,255,0.55)';
+  x.lineWidth = 0.5;
+  for (let k = 0; k < 4; k++) {
+    x.beginPath();
+    for (let i = -wr; i <= wr; i += 1) {
+      const yy = cy - wr + k * (wr * 0.6) + Math.sin(i * 0.7 + t * 3 + k) * 1.2;
+      if (i === -wr) x.moveTo(cx + i, yy);
+      else x.lineTo(cx + i, yy);
     }
-  // water
-  for (let j = -(r - 3); j <= r - 3; j++)
-    for (let i = -(r - 3); i <= r - 3; i++) {
-      if (Math.hypot(i, j) > r - 3) continue;
-      const w = Math.sin(i * 0.8 + t * 3) + Math.cos(j * 0.9 - t * 2.4);
-      x.fillStyle = w > 1.3 ? '#d8f6ff' : w > 0.4 ? '#8ad8f4' : '#6ac4ec';
-      x.fillRect(Math.round(cx + i), Math.round(cy + j), 1, 1);
-    }
+    x.stroke();
+  }
+  x.restore();
+  sparkle(x, cx - wr * 0.35, cy - wr * 0.4, 1.2 + Math.sin(t * 4) * 0.4, 0.8);
   // rubber duck
-  const dx = Math.round(cx + Math.cos(t * 0.7) * 4);
-  const dy = Math.round(cy + Math.sin(t * 0.9) * 3 - (splash > 0 ? 3 : 0));
-  rect(x, dx - 2, dy - 1, 5, 3, INK);
-  rect(x, dx - 1, dy - 1, 3, 2, '#f2d030');
-  rect(x, dx + 1, dy - 2, 2, 2, '#f2d030');
-  rect(x, dx + 3, dy - 1, 1, 1, '#ff8a2a');
+  const dx = cx + Math.cos(t * 0.7) * 4;
+  const dy = cy + Math.sin(t * 0.9) * 3 - (splash > 0 ? 3 : 0);
+  softShadow(x, dx + 0.6, dy + 1.2, 2.8, 1.4, 0.35, '10,40,70');
+  sphere(x, dx - 0.2, dy, 2.1, '#f2d030', -0.4, -0.5, 0.35);
+  sphere(x, dx + 1.4, dy - 1.4, 1.3, '#f2d030', -0.4, -0.5, 0.3);
+  sphere(x, dx + 2.7, dy - 1.2, 0.6, '#ff8a2a', -0.4, -0.5, 0);
 }
 
 function drawBin(x: Ctx, s: Solid, open: number, full: boolean, t: number): void {
@@ -519,64 +570,81 @@ function drawCanopy(x: Ctx, s: Solid, t: number, under: boolean): void {
         c.fillRect(i, j, 1, 1);
       }
   });
-  const sway = Math.round(Math.sin(t * 0.8 + s.seed) * 0.6);
+  const sway = Math.sin(t * 0.8 + s.seed) * 0.6;
   if (under) x.globalAlpha = 0.5;
-  x.drawImage(spr, Math.round(s.x - R - 2 + sway), Math.round(s.y - R - 2 - 6));
+  drawHd(x, spr, Math.round(s.x - R - 2) + sway, Math.round(s.y - R - 2 - 6), false, CANOPY_LIT);
   x.globalAlpha = 1;
 }
+const CANOPY_LIT = { light: 0.3, shadow: 0.42, rim: '#e8ffb8' };
+const BACK_LIT = { light: 0, shadow: 0 };
 
 // ---------- the mower and you ----------
 export interface MowerLook {
   p: Person;
   deck: string;
 }
-export function drawMower(x: Ctx, m: Mower, L: MowerLook, t: number, wet: number): void {
+// HD mower: a glossy rounded deck lit from the top-left with a chrome engine cap, rubber wheels,
+// a canvas bag that bulges as it fills, tubular handles, and you as rounded, lit shapes.
+export function drawMowerHd(x: Ctx, m: Mower, L: MowerLook, t: number, wet: number): void {
+  const fill = m.bag / BAG_CAP;
+  const vib = Math.hypot(m.vx, m.vy) > 3 && Math.floor(t * 30) % 2 ? 0.25 : 0;
   const hx = Math.cos(m.ang);
   const hy = Math.sin(m.ang);
-  const rx = -hy;
-  const ry = hx;
-  const P = (f: number, q: number): [number, number] => [m.x + hx * f + rx * q, m.y + hy * f + ry * q];
-  const fill = m.bag / BAG_CAP;
-  const vib = Math.hypot(m.vx, m.vy) > 3 && Math.floor(t * 30) % 2 ? 0.3 : 0;
-  // shadow
-  x.globalAlpha = 0.28;
-  const [sx, sy] = P(-4, 0);
-  ellipse(x, sx + 2, sy + 2, 9, 7, '#0a1a08');
-  x.globalAlpha = 1;
-  // feet (walking), then the body behind the handle
+  const P = (f: number, q: number): [number, number] => [m.x + hx * f - hy * q, m.y + hy * f + hx * q];
+  // soft shadow (screen-space, cast down-right)
+  const [sx, sy] = P(-6, 0);
+  softShadow(x, sx + 2, sy + 2.5, 15, 10, 0.4, '10,26,8');
+  // feet
   const st = Math.sin(m.step * 2.2);
   for (const [q, ph] of [
     [-2.2, st],
     [2.2, -st],
   ] as const) {
     const [fx, fy] = P(-18 + ph * 3, q);
-    rect(x, fx - 1, fy - 1, 3, 3, INK);
-    rect(x, fx - 0.5, fy - 0.5, 2, 2, L.p.shoes ?? '#2a2a33');
+    sphere(x, fx, fy, 1.4, L.p.shoes ?? '#2a2a33', -0.4, -0.5, 0.2);
   }
-  // the bag, bulging as it fills
+  // everything else in the mower's local frame
+  x.save();
+  x.translate(m.x, m.y);
+  x.rotate(m.ang);
+  // bag: a capsule that swells as it fills
   const bw = 3 + fill * 2.5;
-  pixelShape(x, m, -12, -5.5, bw, (lf, lq) => {
-    const e = Math.abs(lq) / bw;
-    return lf < -11.2 || e > 0.86 ? INK : e > 0.55 ? '#3e4a2c' : lf > -8 ? '#5a6a3a' : '#6e7e46';
-  });
-  // handle
-  for (const q of [-4.5, 4.5]) {
-    const [a1, b1] = P(-5, q * 0.8);
-    const [a2, b2] = P(-14.5, q);
-    line(x, a1, b1, a2, b2, INK);
-    line(x, a1 + 0.5, b1 + 0.5, a2 + 0.5, b2 + 0.5, '#a8acb4');
+  rrect(x, -12.2, -bw, 7.2, bw * 2, bw * 0.9);
+  const bgr = x.createLinearGradient(0, -bw, 0, bw);
+  bgr.addColorStop(0, '#8a9a5a');
+  bgr.addColorStop(0.45, '#6a7a42');
+  bgr.addColorStop(1, '#3a4626');
+  x.fillStyle = bgr;
+  x.fill();
+  x.strokeStyle = 'rgba(16,10,24,0.8)';
+  x.lineWidth = 0.5;
+  x.stroke();
+  // handle bars (tubes)
+  x.lineCap = 'round';
+  for (const [a, b] of [
+    [-3.6, -4.5],
+    [3.6, 4.5],
+  ]) {
+    x.strokeStyle = 'rgba(16,10,24,0.85)';
+    x.lineWidth = 1.2;
+    x.beginPath();
+    x.moveTo(-5, a);
+    x.lineTo(-14.5, b);
+    x.stroke();
+    x.strokeStyle = '#c8ccd6';
+    x.lineWidth = 0.55;
+    x.stroke();
   }
-  const [c1x, c1y] = P(-14.5, -5);
-  const [c2x, c2y] = P(-14.5, 5);
-  line(x, c1x, c1y, c2x, c2y, INK);
-  // the deck (rounded rect), shaded from the top-left in screen space
-  pixelShape(x, m, -5.5, 6.5, 5.6, (lf, lq, dx, dy) => {
-    const corner = Math.abs(lq) > 4.4 && (lf > 5.3 || lf < -4.3);
-    if (corner && Math.hypot(Math.abs(lq) - 4.4, lf > 0 ? lf - 5.3 : lf + 4.3) > 1.2) return null;
-    if (Math.abs(lq) > 4.8 || lf > 5.9 || lf < -4.9) return INK;
-    const lit = -(dx + dy) / 9;
-    return lit > 0.35 ? shade(L.deck, 1.25) : lit > -0.25 ? L.deck : shade(L.deck, 0.72);
-  }, vib);
+  x.strokeStyle = 'rgba(16,10,24,0.85)';
+  x.lineWidth = 1.3;
+  x.beginPath();
+  x.moveTo(-14.5, -5);
+  x.lineTo(-14.5, 5);
+  x.stroke();
+  x.strokeStyle = '#30303a';
+  x.lineWidth = 0.8;
+  x.stroke();
+  x.lineCap = 'butt';
   // wheels
   for (const [f, q] of [
     [4.8, -5.8],
@@ -584,35 +652,81 @@ export function drawMower(x: Ctx, m: Mower, L: MowerLook, t: number, wet: number
     [-3.8, -5.8],
     [-3.8, 5.8],
   ] as const) {
-    const [wx, wy] = P(f, q);
-    rect(x, wx - 1.5, wy - 1.5, 3, 3, INK);
-    rect(x, wx - 0.5, wy - 0.5, 1, 1, '#5a5a62');
+    rrect(x, f - 1.7, q - 1.1, 3.4, 2.2, 1);
+    x.fillStyle = '#16141c';
+    x.fill();
+    x.fillStyle = '#6a6a76';
+    x.fillRect(f - 0.5, q - 0.35, 1, 0.7);
   }
-  // engine
+  // deck
+  x.translate(vib, 0);
+  rrect(x, -5, -5.3, 11, 10.6, 2.6);
+  x.fillStyle = 'rgba(16,10,24,0.9)';
+  x.fill();
+  x.restore();
+  // deck shading in screen space (light stays top-left whatever the heading)
+  const [dx, dy] = P(0.5 + vib, 0);
+  x.save();
+  x.translate(m.x, m.y);
+  x.rotate(m.ang);
+  x.translate(vib, 0);
+  rrect(x, -4.5, -4.8, 10, 9.6, 2.2);
+  x.restore();
+  const dg = x.createRadialGradient(dx - 3, dy - 3, 0.5, dx, dy, 8);
+  dg.addColorStop(0, tone(L.deck, 0.45));
+  dg.addColorStop(0.45, L.deck);
+  dg.addColorStop(1, tone(L.deck, -0.5));
+  x.fillStyle = dg;
+  x.fill();
+  // engine: chrome cap with a hot specular
   const [ex, ey] = P(0.5 + vib, 0);
-  disc(x, ex, ey, 3, INK);
-  disc(x, ex, ey, 2, '#3a3a44');
-  rect(x, ex - 1, ey - 1, 2, 1, '#c8ccd4');
-  rect(x, ex - 1, ey - 1, 1, 1, '#ffffff');
-  // you: shoulders + head, arms to the handlebar
-  const [bx, by] = P(-17.5, 0);
+  sphere(x, ex, ey, 2.7, '#3a3a46', -0.45, -0.55, 0.15);
+  sphere(x, ex, ey, 1.5, '#c8ccd8', -0.45, -0.55, 0.85);
+  // you: arms to the handlebar, shoulders, head
   for (const q of [-1, 1]) {
     const [shx, shy] = P(-17, q * 3.4);
     const [hx2, hy2] = P(-14.5, q * 4.2);
-    line(x, shx, shy, hx2, hy2, INK);
-    line(x, shx + 0.4, shy + 0.4, hx2 + 0.4, hy2 + 0.4, L.p.skin);
+    x.lineCap = 'round';
+    x.strokeStyle = 'rgba(16,10,24,0.6)';
+    x.lineWidth = 1.6;
+    x.beginPath();
+    x.moveTo(shx, shy);
+    x.lineTo(hx2, hy2);
+    x.stroke();
+    x.strokeStyle = L.p.skin;
+    x.lineWidth = 1.05;
+    x.stroke();
+    x.lineCap = 'butt';
   }
-  pixelShape(x, { ...m, x: bx, y: by } as Mower, -2.2, 2.2, 4.4, (lf, lq) => {
-    const e = (lf / 2.4) ** 2 + (lq / 4.4) ** 2;
-    if (e > 1) return null;
-    if (e > 0.72) return INK;
-    return lq < -1.5 ? shade(L.p.shirt, 1.18) : lq > 2 ? shade(L.p.shirt, 0.8) : L.p.shirt;
-  });
+  const [bx, by] = P(-17.5, 0);
+  x.save();
+  x.translate(bx, by);
+  x.rotate(m.ang);
+  x.fillStyle = 'rgba(16,10,24,0.7)';
+  x.beginPath();
+  x.ellipse(0, 0, 2.8, 4.9, 0, 0, Math.PI * 2);
+  x.fill();
+  x.restore();
+  const sg = x.createRadialGradient(bx - 1.5, by - 1.8, 0.3, bx, by, 5);
+  sg.addColorStop(0, tone(L.p.shirt, 0.4));
+  sg.addColorStop(0.5, L.p.shirt);
+  sg.addColorStop(1, tone(L.p.shirt, -0.45));
+  x.save();
+  x.translate(bx, by);
+  x.rotate(m.ang);
+  x.beginPath();
+  x.ellipse(0, 0, 2.3, 4.4, 0, 0, Math.PI * 2);
+  x.restore();
+  x.fillStyle = sg;
+  x.fill();
   const [hdx, hdy] = P(-17.8, 0);
-  disc(x, hdx, hdy, 3, INK);
-  disc(x, hdx, hdy, 2, L.p.hair);
-  rect(x, hdx - 1, hdy - 1, 1, 1, shade(L.p.hair, 1.35));
-  if (wet > 0.3) for (let k = 0; k < 3; k++) rect(x, hdx - 3 + k * 3, hdy - 4 - ((t * 20 + k * 3) % 4), 1, 1, '#bfe8ff');
+  x.fillStyle = 'rgba(16,10,24,0.65)';
+  x.beginPath();
+  x.arc(hdx, hdy, 2.9, 0, Math.PI * 2);
+  x.fill();
+  sphere(x, hdx, hdy, 2.4, L.p.hair, -0.45, -0.55, 0.3);
+  if (wet > 0.3)
+    for (let k = 0; k < 3; k++) sphere(x, hdx - 3 + k * 3, hdy - 4 - ((t * 20 + k * 3) % 4), 0.6, '#bfe8ff', -0.3, -0.3, 0.5);
 }
 
 // Paint a shape in the mower's local frame (forward f in [f0,f1], half-width qw) pixel by pixel.
@@ -770,10 +884,17 @@ function drawYardLight(x: Ctx, g: LawnSim): void {
     x.globalAlpha = 1;
   }
   x.globalCompositeOperation = 'source-over';
-  // the house throws a shadow onto the top of the lawn (longer late in the day)
-  x.globalAlpha = 0.16 + g.ix * 0.04;
-  rect(x, 0, g.y.houseH + 4, LW, 4 + g.ix * 4, '#0a1420');
-  x.globalAlpha = 1;
+  // the house throws a soft shadow onto the top of the lawn (longer late in the day)
+  const top = g.y.houseH + 2;
+  const len = 8 + g.ix * 6;
+  const sh = x.createLinearGradient(0, top, 0, top + len);
+  sh.addColorStop(0, `rgba(10,20,32,${(0.3 + g.ix * 0.05).toFixed(3)})`);
+  sh.addColorStop(1, 'rgba(10,20,32,0)');
+  x.fillStyle = sh;
+  x.fillRect(0, top, LW, len);
+  // sunlight: a broad warm glow from the sun's side (low and orange late in the day)
+  const sunX = [LW * 0.1, LW * 0.5, LW * 0.95][g.ix] ?? LW * 0.5;
+  glow(x, sunX, -20, LH * 0.9, L.a > 0 ? L.glow : '#fff8e0', 0.14 + L.a * 0.5, 0.8);
 }
 
 // ---------- the whole yard ----------
@@ -783,9 +904,12 @@ export interface YardFx {
   poolSplash: number;
 }
 export function drawYard(x: Ctx, g: LawnSim, layer: LawnLayer, t: number, look: MowerLook, fx: YardFx): void {
-  x.drawImage(backdrop(g.y), 0, 0);
+  // HD: the backdrop is rounded off (Scale3x) once per yard; the lawn texture is filtered up
+  // smoothly so the mowing stripes read as soft bands, with blade grain laid over it.
+  drawHd(x, backdrop(g.y), 0, 0, false, BACK_LIT);
   layer.update(g);
-  x.drawImage(layer.canvas, 0, 0);
+  softBlit(x, layer.canvas, 0, 0, LW, LH);
+  grain(x, 0, g.y.houseH, LW, LH - g.y.houseH, 0.42, 'blades', 0, 0, 18);
   drawTufts(x, g, layer, t);
   // when nearly done, the stragglers blink so you can find them
   if (g.phase === 'play' && cutFrac(g) >= 0.9 && Math.floor(t * 3) % 2 === 0) {
@@ -809,7 +933,7 @@ export function drawYard(x: Ctx, g: LawnSim, layer: LawnLayer, t: number, look: 
   for (const s of g.y.solids) if (s.kind === 'gnome') items.push({ y: s.y, draw: () => drawGnome(x, s, t, fx.knock.get(s) ?? 1) });
   const dog = g.y.dog;
   if (dog) items.push({ y: dog.y, draw: () => drawDog(x, dog, t) });
-  items.push({ y: g.m.y, draw: () => drawMower(x, g.m, look, t, g.wet) });
+  items.push({ y: g.m.y, draw: () => drawMowerHd(x, g.m, look, t, g.wet) });
   items.sort((a, b) => a.y - b.y).forEach((i) => i.draw());
   // canopies over everything (see-through when you're underneath)
   for (const s of g.y.solids) if (s.kind === 'tree') drawCanopy(x, s, t, Math.hypot(g.m.x - s.x, g.m.y - s.y + 6) < 20);

@@ -2075,6 +2075,10 @@ html.big-text .chart .ax {
   user-select: none;
   -webkit-user-select: none;
 }
+/* HD mini-game canvases render above display resolution (or through the post pass): smooth scaling. */
+.mini-canvas.hd {
+  image-rendering: auto;
+}
 .mini-hud {
   display: flex;
   flex-wrap: wrap;

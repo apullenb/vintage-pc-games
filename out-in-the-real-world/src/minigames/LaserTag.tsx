@@ -6,13 +6,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { castFor, HAIRS, playerPerson, type Person } from '../art/people.ts';
 import { INK, rect, type Ctx } from '../art/px.ts';
-import { useInput, useLoop, type MiniProps } from './kit.tsx';
+import { hdScale, useInput, useLoop, type MiniProps } from './kit.tsx';
 import { ARENAS, LIVES, MODE_INFO, newMatch, points, POWER_INFO, standings, stepMatch, tagScore, los, type Agent, type Crew, type Match, type Mode } from './tagArena.ts';
 import { arenaBg, arenaGlow, buildLights, drawBolt, drawFlag, drawGuide, drawOb, drawPad, drawPower, drawReticle, emitOb, lampC } from './tagArenaArt.ts';
 import { audioInit, audioStop, bloom, centered, COUNT_TIME, countLabel, drawBanner, drawCount, Fx, Groove, outlined, snd, VH, VW, type Lamp, type LightMap } from './tagFx.ts';
 import { angDiff, clamp, dist } from './tagMath.ts';
 import { bobOf, chibi, drawBlaster, drawChibi, facingOf, footShadow, vestLights } from './tagSprite.ts';
 import { GameCanvas, newPtr, newStick, ResultCard, Stick, TagHud, type BoardRow, type HudCell } from './tagUi.tsx';
+import { drawHd, hdSprite } from './hdFx.ts';
+import type { PostOpts } from './kit.tsx';
+
+// HD: neon wants a strong, low-threshold bloom; the flat pixel backdrop is only rounded off, not relit.
+const TAG_POST: PostOpts = { bloom: 0.75, threshold: 0.55, radius: 1.2, saturation: 1.18, warmth: 0, vignette: 0.38, smooth: 0.3 };
+const FLAT = { light: 0, shadow: 0 };
+const CHIBI_LIT = { light: 0.24, shadow: 0.34, rim: '#c8a8ff' };
 
 const BOLT_H = 8; // bolts fly at chest height: drawn this far above their floor position
 const MODES: Mode[] = ['ffa', 'flag', 'lms'];
@@ -422,13 +429,14 @@ export function LaserTag({ s, data, onDone, reducedMotion }: MiniProps) {
   const draw = (): void => {
     const cv = canvas.current;
     if (!cv) return;
-    const x = cv.getContext('2d', { willReadFrequently: true });
+    const x = cv.getContext('2d');
+    const S = hdScale(cv);
     if (!x) return;
     x.imageSmoothingEnabled = false;
     if (!g.emit) {
       g.emit = document.createElement('canvas');
-      g.emit.width = VW;
-      g.emit.height = VH;
+      g.emit.width = VW * S;
+      g.emit.height = VH * S;
     }
     const e = g.emit.getContext('2d');
     if (!e) return;
@@ -438,9 +446,9 @@ export function LaserTag({ s, data, onDone, reducedMotion }: MiniProps) {
     const [ox, oy] = fx.offset();
 
     // ---------- lit pass ----------
-    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.setTransform(S, 0, 0, S, 0, 0);
     x.globalCompositeOperation = 'source-over';
-    x.drawImage(arenaBg(m.arena, g.arenaIdx), 0, 0);
+    drawHd(x, arenaBg(m.arena, g.arenaIdx), 0, 0, false, FLAT);
     x.translate(ox, oy);
 
     type D = { y: number; ob?: (typeof m.arena.obs)[number]; a?: Agent; flag?: boolean };
@@ -480,7 +488,7 @@ export function LaserTag({ s, data, onDone, reducedMotion }: MiniProps) {
     fx.drawParts(x, false);
 
     // ---------- light pass ----------
-    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.setTransform(S, 0, 0, S, 0, 0);
     const dyn: Lamp[] = [];
     if (!me.out) dyn.push({ x: me.x, y: me.y - 8, r: 34, ry: 28, c: [1.2, 1.2, 1.25] });
     for (const a of m.agents) {
@@ -503,11 +511,11 @@ export function LaserTag({ s, data, onDone, reducedMotion }: MiniProps) {
     g.light.apply(x, dyn);
 
     // ---------- glow pass (with bodies cut out so depth reads) ----------
-    e.setTransform(1, 0, 0, 1, 0, 0);
+    e.setTransform(S, 0, 0, S, 0, 0);
     e.globalCompositeOperation = 'source-over';
     e.clearRect(0, 0, VW, VH);
     e.translate(ox, oy);
-    e.drawImage(arenaGlow(m.arena, g.arenaIdx), 0, 0);
+    drawHd(e, arenaGlow(m.arena, g.arenaIdx), 0, 0, false, FLAT);
     if (m.mode === 'flag') {
       drawPad(e, m.pad.x, m.pad.y, t, m.flag.carrier === 0);
       if (m.flag.carrier === 0) drawGuide(e, me.x, me.y, m.pad.x, m.pad.y, t);
@@ -537,9 +545,9 @@ export function LaserTag({ s, data, onDone, reducedMotion }: MiniProps) {
           e.save();
           e.translate(px + 16, py);
           e.scale(-1, 1);
-          e.drawImage(img, 0, 0);
+          e.drawImage(hdSprite(img, CHIBI_LIT), 0, 0, img.width, img.height);
           e.restore();
-        } else e.drawImage(img, px, py);
+        } else e.drawImage(hdSprite(img, CHIBI_LIT), px, py, img.width, img.height);
         e.globalCompositeOperation = 'source-over';
         const lit = a.dim <= 0;
         const lc = lit ? a.color : Math.floor(t * 4) % 2 ? '#5a1a2a' : '#2a1020';
@@ -560,8 +568,8 @@ export function LaserTag({ s, data, onDone, reducedMotion }: MiniProps) {
         }
       }
     }
-    e.setTransform(1, 0, 0, 1, 0, 0);
-    x.drawImage(g.emit, 0, 0);
+    e.setTransform(S, 0, 0, S, 0, 0);
+    x.drawImage(g.emit, 0, 0, VW, VH);
 
     // ---------- additive glows ----------
     x.translate(ox, oy);
@@ -633,7 +641,7 @@ export function LaserTag({ s, data, onDone, reducedMotion }: MiniProps) {
       for (let i = 0; i < 12; i++) if (i / 12 < k) rect(x, Math.round(me.x + Math.cos((i / 12) * Math.PI * 2 - Math.PI / 2) * 5), Math.round(me.y - 31 + Math.sin((i / 12) * Math.PI * 2 - Math.PI / 2) * 5), 1, 1, '#ff7a8a');
     }
     fx.drawPops(x);
-    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.setTransform(S, 0, 0, S, 0, 0);
 
     // aim: reticle for the mouse, a dotted sight line for sticks and keys
     if (g.phase === 'play' || g.phase === 'count') {
@@ -690,7 +698,7 @@ export function LaserTag({ s, data, onDone, reducedMotion }: MiniProps) {
     <div className="mini tag-game">
       <TagHud cells={hud.cells} chips={hud.chips} />
       <div className="tag-wrap">
-        <GameCanvas canvasRef={canvas} ptr={ptr} onDown={onDownAny} />
+        <GameCanvas canvasRef={canvas} ptr={ptr} onDown={onDownAny} hd={{ reducedMotion, post: TAG_POST }} />
         {board && (
           <ResultCard
             title={`${mi.name} - SCOREBOARD`}

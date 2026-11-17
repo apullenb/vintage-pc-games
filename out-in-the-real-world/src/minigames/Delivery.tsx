@@ -304,6 +304,7 @@ export function Delivery({ s, data, onDone, reducedMotion }: MiniProps) {
         <div className="drive-canvas-wrap">
           <PixelCanvas
             canvasRef={canvas}
+            hd={{ reducedMotion }}
             width={VW}
             height={VH}
             onPointer={(px, py, k) => {

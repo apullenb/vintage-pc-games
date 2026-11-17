@@ -2,6 +2,7 @@
 // thumb sticks for phones, the arcade HUD strip, and the end-of-round results card.
 import { useRef, type ReactNode } from 'react';
 import { VH, VW } from './tagFx.ts';
+import { useHdCanvas, type HdProp } from './kit.tsx';
 import './tag.css';
 
 export interface Ptr {
@@ -21,19 +22,19 @@ export interface StickState {
 }
 export const newStick = (): StickState => ({ x: 0, y: 0, active: false });
 
-export function GameCanvas({ canvasRef, ptr, onDown }: { canvasRef: React.RefObject<HTMLCanvasElement | null>; ptr: Ptr; onDown?: () => void }) {
+export function GameCanvas({ canvasRef, ptr, onDown, hd }: { canvasRef: React.RefObject<HTMLCanvasElement | null>; ptr: Ptr; onDown?: () => void; hd?: HdProp }) {
   const at = (e: React.PointerEvent<HTMLCanvasElement>): void => {
     const r = e.currentTarget.getBoundingClientRect();
     ptr.x = ((e.clientX - r.left) / r.width) * VW;
     ptr.y = ((e.clientY - r.top) / r.height) * VH;
   };
+  const { key, className, style, ...cv } = useHdCanvas(canvasRef, VW, VH, hd);
   return (
     <canvas
-      ref={canvasRef}
-      className="mini-canvas tag-canvas"
-      width={VW}
-      height={VH}
-      style={{ aspectRatio: `${VW} / ${VH}` }}
+      key={key}
+      {...cv}
+      className={`mini-canvas tag-canvas ${className}`.trim()}
+      style={{ aspectRatio: `${VW} / ${VH}`, ...style }}
       onPointerDown={(e) => {
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);

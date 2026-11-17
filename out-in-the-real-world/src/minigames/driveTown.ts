@@ -9,8 +9,9 @@
 // Mid-shift there is either a rain shower (slick roads, bigger tips) or a dinner rush (more
 // orders and traffic), and the light fades from afternoon to dusk with headlights.
 import { drawPerson, type Person } from '../art/people.ts';
-import { disc, dither, glow, hash, INK, mix, outlineRect, rect, shade, text, type Ctx } from '../art/px.ts';
-import { bigText, clamp, drawVehicle, Fx, lerp, outlinedText, smooth, type VehicleLook } from './driveKit.tsx';
+import { disc, dither, hash, INK, mix, outlineRect, rect, shade, text, type Ctx } from '../art/px.ts';
+import { bigText, clamp, drawHeadlights, drawVehicle, Fx, lerp, outlinedText, smooth, type VehicleLook } from './driveKit.tsx';
+import { glow as hglow, grain, hdLayer, softBlit, softShadow, sphere, tone } from './hdFx.ts';
 
 export const VW = 192;
 export const VH = 144;
@@ -1138,6 +1139,12 @@ export function reviewFor(g: TownSim): string {
 // ======================= RENDERING =======================
 const MAPS = new WeakMap<TownSim, HTMLCanvasElement>();
 
+// The town is painted once at 1x (the pixel "texture"), then baked into an HD map: the texture is
+// filtered up smoothly, round lit trees with soft shadows go on top, a sun gradient and surface grain
+// finish it. Per frame it's one crisp sub-rect blit.
+export const MAP_SCALE = 3;
+let TREES: [number, number, number, number, boolean][] | null = null; // recording (x, y, r, tint, bush)
+let ROOF_REC: [number, number, number, number][] | null = null; // recording roof rects
 function mapCanvas(g: TownSim): HTMLCanvasElement {
   const hitC = MAPS.get(g);
   if (hitC) return hitC;
@@ -1146,12 +1153,62 @@ function mapCanvas(g: TownSim): HTMLCanvasElement {
   c.height = TH;
   const x = c.getContext('2d')!;
   x.imageSmoothingEnabled = false;
+  TREES = [];
+  ROOF_REC = [];
   paintMap(x, g);
-  MAPS.set(g, c);
-  return c;
+  const trees = TREES;
+  const roofs = ROOF_REC;
+  TREES = null;
+  ROOF_REC = null;
+  const L = hdLayer(TW, TH, MAP_SCALE);
+  const h = L.x;
+  softBlit(h, c, 0, 0, TW, TH);
+  grain(h, 0, 0, TW, TH, 0.4, 'fine', 0, 0, 30);
+  // roofs get volume: light falling across from the top-left, a lit leading edge, a shaded trailing one
+  for (const [bx, by, w, hh] of roofs) {
+    const lg = h.createLinearGradient(bx, by, bx + w, by + hh);
+    lg.addColorStop(0, 'rgba(255,246,220,0.32)');
+    lg.addColorStop(0.45, 'rgba(255,246,220,0)');
+    lg.addColorStop(1, 'rgba(24,12,40,0.3)');
+    h.fillStyle = lg;
+    h.fillRect(bx, by, w, hh);
+    h.fillStyle = 'rgba(255,250,235,0.5)';
+    h.fillRect(bx, by, w, 0.6);
+    h.fillRect(bx, by, 0.6, hh);
+    h.fillStyle = 'rgba(16,8,28,0.45)';
+    h.fillRect(bx, by + hh - 0.6, w, 0.6);
+    h.fillRect(bx + w - 0.6, by, 0.6, hh);
+  }
+  // the sun gradient sells the light direction across the whole town
+  const sun = h.createLinearGradient(0, 0, TW, TH);
+  sun.addColorStop(0, 'rgba(255,240,200,0.12)');
+  sun.addColorStop(0.5, 'rgba(255,240,200,0)');
+  sun.addColorStop(1, 'rgba(30,20,60,0.12)');
+  h.fillStyle = sun;
+  h.fillRect(0, 0, TW, TH);
+  for (const [tx, ty, r, tint, isBush] of trees) {
+    if (isBush) {
+      softShadow(h, tx + 1, ty + 1.3, 3, 2.4, 0.4, '10,30,12');
+      sphere(h, tx, ty, 2.2, ['#3f8a3e', '#4a9a46'][tint % 2], -0.5, -0.6, 0.1);
+      continue;
+    }
+    const base = ['#2f6a32', '#3a6a2a', '#2a5e44'][tint % 3];
+    softShadow(h, tx + r * 0.45, ty + r * 0.6, r * 1.3, r * 1.05, 0.42, '10,30,12');
+    if (r >= 5) {
+      sphere(h, tx + r * 0.35, ty + r * 0.25, r * 0.66, base, -0.5, -0.6, 0);
+      sphere(h, tx - r * 0.38, ty + r * 0.2, r * 0.62, base, -0.5, -0.6, 0);
+    }
+    sphere(h, tx - r * 0.05, ty - r * 0.22, r * (r >= 5 ? 0.74 : 1), tone(base, 0.12), -0.5, -0.6, 0.12);
+  }
+  MAPS.set(g, L.c);
+  return L.c;
 }
 
 function tree(x: Ctx, cx: number, cy: number, r = 6, tint = 0): void {
+  if (TREES) {
+    TREES.push([cx, cy, r, tint, false]);
+    return;
+  }
   const base = ['#2f6a32', '#3a6a2a', '#2a5e44'][tint % 3];
   disc(x, cx + 2, cy + 3, r, 'rgba(10,30,10,0.35)');
   disc(x, cx, cy, r, shade(base, 0.8));
@@ -1162,6 +1219,10 @@ function tree(x: Ctx, cx: number, cy: number, r = 6, tint = 0): void {
 }
 
 function bush(x: Ctx, cx: number, cy: number, c = '#3f8a3e'): void {
+  if (TREES) {
+    TREES.push([cx, cy, 2, c === '#3f8a3e' ? 0 : 1, true]);
+    return;
+  }
   disc(x, cx + 1, cy + 1, 2, 'rgba(10,30,10,0.3)');
   disc(x, cx, cy, 2, c);
   rect(x, cx - 1, cy - 1, 1, 1, shade(c, 1.5));
@@ -1435,6 +1496,7 @@ function paintHouse(x: Ctx, s: Slot, windows: Town['windows']): void {
   for (let k = 0; k < 4; k++) rect(x, bx + 1 + k * 2, up ? s.dy + 3 : s.dy - 4, 1, 1, ['#ff6a8a', '#ffd23a', '#c07aff', '#ffffff'][(s.i + k) % 4]);
   // shadow + hip roof with light from the top-left
   rect(x, bx + 3, by + 3, w, h, 'rgba(10,20,10,0.35)');
+  ROOF_REC?.push([bx, by, w, h]);
   const half = Math.floor(h / 2);
   const R = s.roof;
   rect(x, bx, by, w, h, shade(R, 0.85));
@@ -1475,6 +1537,7 @@ function paintApartment(x: Ctx, b: Box, face: -1 | 1, ss: Slot[], windows: Town[
   const bx = b.x + 5;
   const by = up ? b.y + 7 : b.y + b.h - 7 - h;
   rect(x, bx + 4, by + 4, w, h, 'rgba(10,20,10,0.4)');
+  ROOF_REC?.push([bx, by, w, h]);
   // flat roof: gravel, parapet, AC units, roof door
   rect(x, bx, by, w, h, '#8a8694');
   dither(x, bx + 2, by + 2, w - 4, h - 4, '#8a8694', '#7e7a88');
@@ -1526,6 +1589,7 @@ function paintTowers(x: Ctx, b: Box, face: -1 | 1, ss: Slot[], windows: Town['wi
     const c = TOWER_C[(seed + k) % TOWER_C.length];
     // long shadow: towers are tall
     rect(x, hv.bx + 6, by + 6, hv.w, h, 'rgba(10,10,20,0.4)');
+    ROOF_REC?.push([hv.bx, by, hv.w, h]);
     rect(x, hv.bx, by, hv.w, h, c);
     rect(x, hv.bx, by, hv.w, 2, shade(c, 1.3));
     rect(x, hv.bx, by, 2, h, shade(c, 1.15));
@@ -1566,7 +1630,8 @@ function paintRestaurant(x: Ctx, s: Slot): void {
   const ly1 = up ? by + h + 2 : s.dy - 1;
   rect(x, bx - 2, ly0, w + 4, ly1 - ly0, '#bcb4a8');
   rect(x, bx + 3, by + 3, w, h, 'rgba(10,20,10,0.4)');
-  rect(x, bx, by, w, h, '#b8b0c0');
+  rect(x, bx + 3, by + 3, w, h, 'rgba(10,20,10,0.4)');
+  ROOF_REC?.push([bx, by, w, h]);
   dither(x, bx + 2, by + 2, w - 4, h - 4, '#b8b0c0', '#a8a0b0');
   rect(x, bx, by, w, 1, '#d8d0e0');
   rect(x, bx + w - 1, by, 1, h, '#8a8294');
@@ -1620,39 +1685,53 @@ function darkCanvas(): CanvasRenderingContext2D | null {
   return DARK.getContext('2d');
 }
 
-// A soft pool of light punched out of the darkness layer (three stepped rings).
+// A soft pool of light punched out of the darkness layer (smooth radial falloff).
 function hole(d: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number, a: number): void {
-  for (let k = 0; k < 3; k++) {
-    d.globalAlpha = a * 0.4;
-    d.beginPath();
-    d.ellipse(cx, cy, rx * (1 - k * 0.28), ry * (1 - k * 0.28), 0, 0, Math.PI * 2);
-    d.fill();
-  }
-  d.globalAlpha = 1;
+  d.save();
+  d.translate(cx, cy);
+  d.scale(1, ry / rx);
+  const gr = d.createRadialGradient(0, 0, 0, 0, 0, rx);
+  gr.addColorStop(0, `rgba(0,0,0,${a.toFixed(3)})`);
+  gr.addColorStop(0.5, `rgba(0,0,0,${(a * 0.6).toFixed(3)})`);
+  gr.addColorStop(1, 'rgba(0,0,0,0)');
+  d.fillStyle = gr;
+  d.beginPath();
+  d.arc(0, 0, rx, 0, Math.PI * 2);
+  d.fill();
+  d.restore();
 }
 
 function beam(d: CanvasRenderingContext2D, cx: number, cy: number, ang: number, len: number, spread: number, a: number): void {
   const sn = Math.sin(ang);
   const cs = Math.cos(ang);
-  for (let k = 0; k < 2; k++) {
-    const L = len * (1 - k * 0.35);
-    const S = spread * (1 - k * 0.35);
-    d.globalAlpha = a * 0.5;
-    d.beginPath();
-    d.moveTo(cx + sn * 4, cy - cs * 4);
-    d.lineTo(cx + sn * L - cs * S, cy - cs * L - sn * S);
-    d.lineTo(cx + sn * L + cs * S, cy - cs * L + sn * S);
-    d.closePath();
-    d.fill();
-  }
-  d.globalAlpha = 1;
+  const gr = d.createRadialGradient(cx, cy, 2, cx, cy, len);
+  gr.addColorStop(0, `rgba(0,0,0,${a.toFixed(3)})`);
+  gr.addColorStop(0.6, `rgba(0,0,0,${(a * 0.65).toFixed(3)})`);
+  gr.addColorStop(1, 'rgba(0,0,0,0)');
+  d.fillStyle = gr;
+  d.beginPath();
+  d.moveTo(cx + sn * 3 - cs * 3, cy - cs * 3 - sn * 3);
+  d.lineTo(cx + sn * len - cs * spread, cy - cs * len - sn * spread);
+  d.quadraticCurveTo(cx + sn * len * 1.12, cy - cs * len * 1.12, cx + sn * len + cs * spread, cy - cs * len + sn * spread);
+  d.lineTo(cx + sn * 3 + cs * 3, cy - cs * 3 + sn * 3);
+  d.closePath();
+  d.fill();
+}
+
+// Unrounded camera for drawing (sub-pixel smooth scrolling on the HD canvas).
+function camF(g: TownSim): [number, number] {
+  const lx = clamp(g.p.vx * 0.35, -24, 24);
+  const ly = clamp(g.p.vy * 0.3, -18, 18);
+  return [clamp(g.p.x + lx - VW / 2, 0, TW - VW), clamp(g.p.y + ly - VH / 2, 0, TH - VH)];
 }
 
 export function drawTown(x: Ctx, g: TownSim, o: TownDrawOpts): void {
-  const [cx, cy] = camOf(g);
+  const [cx, cy] = camF(g);
   const T = g.town;
-  x.drawImage(mapCanvas(g), cx, cy, VW, VH, 0, 0, VW, VH);
-  const S = (wx: number, wy: number): [number, number] => [Math.round(wx - cx), Math.round(wy - cy)];
+  const map = mapCanvas(g);
+  const ms = map.width / TW;
+  x.drawImage(map, cx * ms, cy * ms, VW * ms, VH * ms, 0, 0, VW, VH);
+  const S = (wx: number, wy: number): [number, number] => [wx - cx, wy - cy];
   const vis = (sx: number, sy: number, m = 20): boolean => sx > -m && sy > -m && sx < VW + m && sy < VH + m;
   const pulse = o.reduced ? 0.5 : (Math.sin(g.t * 6) + 1) / 2;
   const rain = g.ev.on && g.ev.kind === 'rain';
@@ -1696,7 +1775,7 @@ export function drawTown(x: Ctx, g: TownSim, o: TownDrawOpts): void {
     const tr = T.trap;
     const [sx, sy] = S(tr.copX, tr.copY);
     if (vis(sx, sy)) {
-      drawVehicle(x, { kind: 'police', body: '#1c1c2a' }, sx, sy, 0, { siren: g.sirenT > 0, t: g.t });
+      drawVehicle(x, { kind: 'police', body: '#1c1c2a' }, sx, sy, 0, { siren: g.sirenT > 0, t: g.t, hd: true });
       if (g.phase === 'play' && !o.reduced && Math.floor(g.t * 2) % 2 === 0) {
         const [zx, zy] = S(tr.x, tr.y);
         x.globalAlpha = 0.22;
@@ -1704,7 +1783,7 @@ export function drawTown(x: Ctx, g: TownSim, o: TownDrawOpts): void {
         rect(x, zx, zy + tr.h - 1, tr.w, 1, '#ff4040');
         x.globalAlpha = 1;
       }
-      if (g.sirenT > 0) glow(x, sx, sy, 20, 12, Math.floor(g.t * 8) % 2 ? '#ff4040' : '#4060ff', 0.5);
+      if (g.sirenT > 0) hglow(x, sx, sy, 22, Math.floor(g.t * 8) % 2 ? '#ff4040' : '#4060ff', 0.6, 0.6);
     }
   }
 
@@ -1730,7 +1809,7 @@ export function drawTown(x: Ctx, g: TownSim, o: TownDrawOpts): void {
     if (!vis(sx, sy, 30)) continue;
     const focus = fo === od;
     const hurry = od.t < 6;
-    glow(x, sx, sy, 12 + pulse * 3, 8 + pulse * 2, od.color, focus ? 0.7 : 0.4);
+    hglow(x, sx, sy, 13 + pulse * 3, od.color, focus ? 0.75 : 0.45, 0.66);
     const r = 6 + Math.round(pulse * 2);
     for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) rect(x, sx + Math.cos(a + g.t) * r, sy + Math.sin(a + g.t) * r * 0.6, 1, 1, od.color);
     const bob = o.reduced ? 0 : Math.round(Math.sin(g.t * 5 + od.id) * 1.5);
@@ -1788,7 +1867,7 @@ export function drawTown(x: Ctx, g: TownSim, o: TownDrawOpts): void {
   for (const a of g.ai) {
     const [sx, sy] = S(a.x, a.y);
     if (!vis(sx, sy)) continue;
-    drawVehicle(x, a.look, sx, sy, (a.dir * Math.PI) / 2, { brake: a.v < a.vt - 6 });
+    drawVehicle(x, a.look, sx, sy, (a.dir * Math.PI) / 2, { brake: a.v < a.vt - 6, hd: true });
     if (a.honk > 0.5) outlinedText(x, 'HONK', sx - 7, sy - 14, '#ffe070');
   }
 
@@ -1796,7 +1875,7 @@ export function drawTown(x: Ctx, g: TownSim, o: TownDrawOpts): void {
   {
     const [sx, sy] = S(g.p.x, g.p.y);
     const blinkHit = g.p.stun > 0 && Math.floor(g.t * 20) % 2 === 0;
-    glow(x, sx, sy, 10, 10, '#fff6c0', 0.3);
+    hglow(x, sx, sy, 12, '#fff6c0', 0.25);
     if (g.phase === 'play' && (g.gt < 6 || Math.hypot(g.p.vx, g.p.vy) < 3) && !o.reduced) {
       const r = 9 + Math.round(((g.t * 2) % 1) * 4);
       for (let a = 0; a < Math.PI * 2; a += Math.PI / 10) rect(x, sx + Math.cos(a) * r, sy + Math.sin(a) * r, 1, 1, '#fff3c4');
@@ -1808,7 +1887,7 @@ export function drawTown(x: Ctx, g: TownSim, o: TownDrawOpts): void {
       for (let k = 0; k < 3; k++) rect(x, sx - sn * (8 + k * 2) + (Math.random() - 0.5) * 2, sy + cs * (8 + k * 2), 2, 2, k ? '#fff3c4' : fl);
     }
     if (g.phase === 'play' && g.gt < 3) outlinedText(x, 'YOU', sx - 5, sy + 10, '#fff3c4');
-    if (!blinkHit) drawVehicle(x, o.look, sx, sy, g.p.ang, { brake: Math.hypot(g.p.vx, g.p.vy) < 6 });
+    if (!blinkHit) drawVehicle(x, o.look, sx, sy, g.p.ang, { brake: Math.hypot(g.p.vx, g.p.vy) < 6, hd: true });
     const carried = g.orders.filter((od) => od.state === 'carry');
     carried.forEach((od, k) => {
       rect(x, sx - 5 + k * 4, sy - 13, 3, 3, od.color);
@@ -1868,21 +1947,33 @@ export function drawTown(x: Ctx, g: TownSim, o: TownDrawOpts): void {
         const [sx, sy] = S(a.x, a.y);
         if (vis(sx, sy, 40)) beam(d, sx, sy, (a.dir * Math.PI) / 2, 32, 11, 0.8);
       }
-      x.drawImage(DARK, 0, 0);
-      // light colors on top
+      // the darkness is low-res: filter it up so every light falls off smoothly
+      x.save();
+      x.imageSmoothingEnabled = true;
+      x.drawImage(DARK, 0, 0, VW, VH);
+      x.restore();
+      // light colors on top: warm windows, sodium lamp pools, headlight beams (all additive)
       x.globalAlpha = dusk;
       for (const w of T.windows) {
         const [sx, sy] = S(w.x, w.y);
-        if (vis(sx, sy, 4) && hash(w.x * 3 + w.y) > 0.25) rect(x, sx, sy, w.x % 2 ? 4 : 3, 2, '#ffd870');
+        if (vis(sx, sy, 4) && hash(w.x * 3 + w.y) > 0.25) {
+          rect(x, sx, sy, w.x % 2 ? 4 : 3, 2, '#ffd870');
+          hglow(x, sx + 2, sy + 1, 5, '#ffc860', 0.35 * dusk);
+        }
       }
       for (const l of T.lamps) {
         const [sx, sy] = S(l.x, l.y);
-        if (vis(sx, sy, 4)) rect(x, sx, sy, 2, 2, '#fff3a0');
+        if (!vis(sx, sy, 24)) continue;
+        hglow(x, sx + 1, sy + 1, 17, '#ffb860', 0.22 * dusk, 0.75);
+        hglow(x, sx + 1, sy + 1, 4, '#fff3c0', 0.9 * dusk);
+        rect(x, sx, sy, 2, 2, '#fff8d0');
       }
-      x.globalAlpha = dusk * 0.18;
-      x.fillStyle = '#fff0a0';
-      beam(x, px, py, g.p.ang, g.bike ? 30 : 42, g.bike ? 9 : 14, 1);
       x.globalAlpha = 1;
+      drawHeadlights(x, o.look, px, py, g.p.ang, dusk, g.bike ? 30 : 42);
+      for (const a of g.ai) {
+        const [sx, sy] = S(a.x, a.y);
+        if (vis(sx, sy, 40)) drawHeadlights(x, a.look, sx, sy, (a.dir * Math.PI) / 2, dusk * 0.8, 32);
+      }
     }
   }
 

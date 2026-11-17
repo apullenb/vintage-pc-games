@@ -280,6 +280,7 @@ export function Lawn({ s, onDone, reducedMotion }: MiniProps) {
       <div className="lg-canvas-wrap">
         <PixelCanvas
           canvasRef={canvas}
+            hd={{ reducedMotion }}
           width={LW}
           height={LH}
           onPointer={(px, py, k) => {
