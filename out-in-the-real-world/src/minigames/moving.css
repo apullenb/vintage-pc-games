@@ -76,7 +76,7 @@
   flex-wrap: nowrap;
   gap: 6px;
 }
-@media (hover: none), (pointer: coarse) {
+@media (hover: none), (pointer: coarse), (max-width: 760px) {
   .mv-keys {
     display: none;
   }

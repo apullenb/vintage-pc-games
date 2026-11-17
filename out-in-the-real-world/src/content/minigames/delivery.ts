@@ -9,7 +9,7 @@ export const delivery: MiniGameDef = {
   id: 'delivery',
   title: (_s, d) => (d.vehicle === 'bike' ? 'Bike Delivery Rush' : 'Delivery Rush'),
   how: (_s, d) =>
-    `${d.vehicle === 'bike' ? 'Ride' : 'Drive'} with the arrow keys or WASD (or the on-screen pad, or hold your finger on the map). Pick up orders at the glowing restaurant and drop them at the matching door before the timer runs out. Hold SPACE / SLOW through the cop’s 15 mph zone. Watch out for traffic and potholes.${d.vehicle === 'bike' ? ' Bikes can cut through the park.' : ''}`,
+    `${d.vehicle === 'bike' ? 'Ride' : 'Drive'} with the arrow keys or WASD (or the on-screen pad, or hold your finger on the map). Follow the dotted GPS line to the restaurant, then to the matching door. 🤝 orders want you to STOP at the door until the ring fills. Customers rate every drop 1–5 stars: fast, hot and no spills earns the big tips. Hold SPACE / SLOW in the cop’s 15 zone, and don’t go the wrong way on the one-way street. ${d.vehicle === 'bike' ? 'Hold SHIFT / SPRINT to sprint (it tires you out), especially up the hill. Bikes can cut through the park.' : 'SHIFT / BOOST gives you a burst of speed, three times a shift.'} The town is different every shift.`,
   stakes: 'You get paid per delivery, and faster deliveries mean bigger tips. Speeding risks a ticket. Every trip costs gas and wear.',
   art: 'street',
   apply: (s, r, d) => {
@@ -30,7 +30,8 @@ export const delivery: MiniGameDef = {
     if (ticket) charge(s, fine, 'Speeding ticket');
     const delivered = r.stats?.delivered;
     const mood = r.score >= 0.7 ? 'Hot food, happy customers.' : r.score >= 0.4 ? 'A few cold fries, but not bad.' : 'Rough shift. Lots of “where is my order??” texts.';
-    const count = r.played && delivered !== undefined ? ` ${delivered} deliver${delivered === 1 ? 'y' : 'ies'}.` : '';
+    const rating = r.played && r.stats?.rating ? ` Customers rated you ${r.stats.rating.toFixed(1)}★.` : '';
+    const count = r.played && delivered !== undefined ? ` ${delivered} deliver${delivered === 1 ? 'y' : 'ies'}.${rating}` : '';
     const ticketText = ticket
       ? `\n\nAnd the flashing lights in your mirror: a ${money(fine)} ticket for speeding through the slow zone${bike ? ' (yes, bikes get tickets too)' : ''}. That ate ${fine >= tips ? 'the whole shift' : 'a big chunk of the shift'}.`
       : '';

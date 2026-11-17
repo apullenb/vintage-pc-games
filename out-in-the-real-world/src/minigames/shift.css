@@ -25,7 +25,7 @@
 .mini .sr-touch-note {
   display: none;
 }
-@media (hover: none) and (pointer: coarse) {
+@media (hover: none) and (pointer: coarse), (max-width: 760px) {
   .mini .sr-key-note {
     display: none;
   }

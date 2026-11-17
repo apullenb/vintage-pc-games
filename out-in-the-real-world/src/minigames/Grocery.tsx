@@ -2,7 +2,7 @@
 // dodge the impulse-buy displays and the Sunday crowd, then check out.
 import { useRef, useState, type CSSProperties } from 'react';
 import { HAIRS, playerPerson, SHIRTS, SKINS, drawPerson, type Person } from '../art/people.ts';
-import { dither, disc, INK, mix, rect, shade, stipple, type Ctx } from '../art/px.ts';
+import { dither, disc, glow, INK, mix, rect, shade, stipple, type Ctx } from '../art/px.ts';
 import { sfx } from '../ui/audio.ts';
 import {
   AISLE_SECTIONS,
@@ -23,12 +23,12 @@ import {
 } from './groceryData.ts';
 import { dollars, Fx, say } from './groceryHaggleFx.ts';
 import { GhPad } from './groceryHagglePad.tsx';
-import { ctxOf, MiniHud, PixelCanvas, useInput, useLoop, type Input, type MiniProps } from './kit.tsx';
+import { ctxOf, MiniHud, PixelCanvas, useInput, useLoop, vignette, type Input, type MiniProps } from './kit.tsx';
 import './groceryHaggle.css';
 
 const W = 240;
 const H = 160;
-const TIME = 80;
+const TIME = 72;
 const SPEED = 62;
 const HALF = 10; // half-width of the cart+shopper footprint
 const FOOT = 6;
@@ -1032,6 +1032,16 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   x.save();
   x.translate(ox, oy);
   x.drawImage(g.bg, 0, 0);
+  // Fluorescent light pools on the floor (one tube flickers, like every real store).
+  for (const [lx, ly, k] of [
+    [64, 78, 0],
+    [176, 78, 1],
+    [64, 128, 2],
+    [176, 128, 3],
+  ]) {
+    const flick = k === 2 && !g.fx.reduced && Math.sin(t * 23) > 0.93 ? 0.08 : 0.28;
+    glow(x, lx, ly, 34, 9, '#fffbe0', flick);
+  }
 
   // Time bar along the top of the back wall.
   const tf = g.time / TIME;
@@ -1210,6 +1220,7 @@ function draw(x: Ctx, g: G, touch: boolean): void {
   g.fx.drawParts(x);
   g.fx.drawFloats(x, W);
   x.restore();
+  vignette(x, W, H, 0.22);
   g.fx.drawFlash(x, W, H);
 
   if (g.phase === 'pick' && g.pick) drawPicker(x, g, touch);
@@ -1362,11 +1373,12 @@ export function Grocery({ s, onDone, reducedMotion }: MiniProps) {
       />
       <ul className="gh-list" aria-label="Shopping list">
         {g.list.map((l) => (
-          <li key={l.def.id} className={l.got >= 0 ? 'got' : ''}>
+          <li key={l.def.id} className={l.got >= 0 ? 'got' : ''} style={{ borderLeftColor: SECTION_COLOR[l.def.sec] }} title={`In ${SECTION_SIGN[l.def.sec]}`}>
             <span className="gh-check" aria-hidden="true">
               {l.got >= 0 ? '✓' : ''}
             </span>
             {l.def.name}
+            {l.got < 0 && <small>{SECTION_SIGN[l.def.sec]}</small>}
             {l.got >= 0 && <em>{dollars(l.opts[l.got as 0 | 1].price)}</em>}
           </li>
         ))}

@@ -33,6 +33,14 @@
   align-items: center;
   gap: 4px;
 }
+.gh-list li {
+  border-left-width: 6px;
+}
+.gh-list li small {
+  font: 9px var(--font-ui);
+  color: var(--muted);
+  margin-left: 2px;
+}
 .gh-list .gh-check {
   display: inline-block;
   width: 13px;
@@ -134,13 +142,32 @@
   font-size: 17px;
 }
 /* Desktop with a mouse: keyboard hint instead of the pad. Touch: the pad instead of the hint. */
-@media (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) and (min-width: 761px) {
   .gh-pad {
     display: none;
   }
 }
-@media (pointer: coarse), (hover: none) {
+@media (pointer: coarse), (hover: none), (max-width: 760px) {
   .gh-keys {
+    display: none;
+  }
+}
+/* phones: a compact two-column list so the store stays on screen */
+@media (max-width: 560px) {
+  .gh-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+  }
+  .gh-list li {
+    font-size: 15px;
+    padding: 1px 4px 2px 2px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gh-list li small {
     display: none;
   }
 }
