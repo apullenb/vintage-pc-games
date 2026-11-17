@@ -1,6 +1,7 @@
 // Shared juice for the Flashcard Cram and Moving Day mini-games: chiptune blips, particles, big pixel text.
 import { loadMeta } from '../ui/save.ts';
-import { rect, text, type Ctx } from '../art/px.ts';
+import type { Ctx } from '../art/px.ts';
+import { bigWord, FONT, label, rad, rgba, tint } from './hd2Kit.tsx';
 
 // ---------- sound ----------
 // The app's sfx() covers menu sounds; action games want pitched combo notes and noise crashes,
@@ -133,7 +134,23 @@ export function stepParticles(ps: Particle[], dt: number): void {
 }
 
 export function drawParticles(x: Ctx, ps: Particle[]): void {
-  for (const p of ps) rect(x, p.x, p.y, p.size, p.size, p.c);
+  x.save();
+  x.globalCompositeOperation = 'lighter';
+  for (const p of ps) {
+    const a = Math.min(1, (p.life / p.max) * 1.6);
+    const r = p.size * 2.2;
+    x.fillStyle = rad(x, p.x, p.y, 0, r, [rgba(p.c, 0.45 * a), rgba(p.c, 0)]);
+    x.fillRect(p.x - r, p.y - r, r * 2, r * 2);
+  }
+  x.restore();
+  for (const p of ps) {
+    x.globalAlpha = Math.min(1, (p.life / p.max) * 2);
+    x.fillStyle = p.c;
+    x.beginPath();
+    x.arc(p.x, p.y, p.size * 0.7, 0, Math.PI * 2);
+    x.fill();
+  }
+  x.globalAlpha = 1;
 }
 
 // Floating "+150" style labels.
@@ -153,39 +170,28 @@ export function stepFloaters(fs: Floater[], dt: number): void {
 }
 export function drawFloaters(x: Ctx, fs: Floater[]): void {
   for (const f of fs) {
-    if (f.life < 0.25 && Math.floor(f.life * 20) % 2) continue;
-    outlined(x, f.s, f.x - (f.s.length * 4 - 1) / 2, f.y, f.c);
+    x.globalAlpha = Math.min(1, f.life / 0.3);
+    label(x, f.s, f.x, f.y + 2.6, 7, f.c, '#1c1424', 'center', 900);
   }
+  x.globalAlpha = 1;
 }
 
-// 3x5 text with a 1px dark outline so it reads over any background.
+// Smooth outlined text, top-left anchored like the old 3x5 pixel font so layouts carry over.
 export function outlined(x: Ctx, s: string, px: number, py: number, c: string, o = '#1c1424'): void {
-  for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [1, 1]]) text(x, s, px + dx, py + dy, o);
-  text(x, s, px, py, c);
+  label(x, s, px, py + 2.6, 6.2, c, o, 'left', 900);
 }
 
-// Big chunky text: the 3x5 font scaled up by whole pixels, centered on cx, with a drop outline.
-const BIG = new Map<string, HTMLCanvasElement>();
-export function bigText(x: Ctx, s: string, cx: number, y: number, scale: number, c: string, o = '#1c1424'): void {
-  const key = `${s}|${c}|${o}`;
-  let cv = BIG.get(key);
-  const w = s.length * 4 + 1;
-  if (!cv) {
-    cv = document.createElement('canvas');
-    cv.width = w + 2;
-    cv.height = 8;
-    const t = cv.getContext('2d');
-    if (t) {
-      for (const [dx, dy] of [[0, 1], [2, 1], [1, 0], [1, 2], [2, 2]]) text(t, s, dx, dy, o);
-      text(t, s, 1, 1, c);
-    }
-    BIG.set(key, cv);
-  }
-  x.imageSmoothingEnabled = false;
-  x.drawImage(cv, Math.round(cx - ((w + 2) * scale) / 2), Math.round(y), (w + 2) * scale, 8 * scale);
+// Big rounded gradient lettering centered on cx; y is the top, scale matches the old pixel sizes.
+export function bigText(x: Ctx, s: string, cx: number, y: number, scale: number, c: string): void {
+  let size = 7.4 * scale;
+  x.save();
+  x.font = `900 ${size}px ${FONT}`;
+  const fit = ((s.length * 4 + 3) * scale) / Math.max(1, x.measureText(s).width);
+  x.restore();
+  if (fit < 1) size *= fit;
+  bigWord(x, s, cx, y + 3.4 * scale, size, c, tint(c, 0.62));
 }
 
-// Seeded RNG so a run is stable within itself (restart reshuffles).
 export function rng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
