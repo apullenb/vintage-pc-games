@@ -1,6 +1,6 @@
 // Flashcard Cram deck: short card labels and one-line clues for every Adulting Handbook entry,
 // plus path-flavored study cards (college intro classes, electrical trade, warehouse, pharmacy tech).
-import { HANDBOOK } from '../content/handbook.ts';
+import { ALL_HANDBOOK as HANDBOOK } from '../content/handbook.ts';
 import type { GameState, MajorId, PathId } from '../engine/types.ts';
 import { shuffle } from './cardsFx.ts';
 import { COURSE_BY_ID } from '../content/courses.ts';
@@ -55,6 +55,20 @@ export const HANDBOOK_CARDS: Record<string, [string, string]> = {
   repossession: ['Repossession', 'The lender takes your car after missed payments.'],
   taxes: ['Filing taxes', 'Reporting last year’s income to the IRS every spring.'],
   refund: ['Tax refund', 'Extra withholding sent back to you. Your money, not a bonus.'],
+  'lifestyle-creep': ['Lifestyle creep', 'Spending rises to match every raise.'],
+  'credit-report': ['Credit report', 'The record your score is built from. Free to check.'],
+  depreciation: ['Depreciation', 'How fast a car loses value. New cars drop fastest.'],
+  'dealer-addons': ['Dealer add-ons', 'Pricey extras rolled into your car loan. Say no.'],
+  'grace-period': ['Grace period', 'Six months after school before loan payments start.'],
+  'rent-vs-buy': ['Rent vs. buy', 'Buying usually wins only if you stay 5+ years.'],
+  preapproval: ['Pre-approval', 'A lender says how much they\u2019ll lend you.'],
+  dti: ['Debt-to-income', 'Monthly debt payments divided by gross income.'],
+  mortgage: ['Mortgage', 'A 30-year loan to buy a home.'],
+  pmi: ['PMI', 'Insurance you pay with under 20% down.'],
+  'closing-costs': ['Closing costs', 'About 3% in fees on top of the down payment.'],
+  escrow: ['Escrow', 'Your lender pays your property tax and insurance.'],
+  'home-inspection': ['Home inspection', 'A pro checks the house before you buy.'],
+  'roth-ira': ['Roth IRA', 'Retirement account that grows tax-free.'],
   pests: ['Pest repairs', 'Usually the landlord\u2019s job to fix. Ask in writing.'],
   scams: ['Scam', 'A fake text about a prize or package that wants your info.'],
   'jury-duty': ['Jury duty', 'Civic duty to serve at a trial. Ignoring the summons risks a fine.'],

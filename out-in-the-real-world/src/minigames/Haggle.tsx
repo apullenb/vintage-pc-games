@@ -97,7 +97,7 @@ export function Haggle({ s, data, onDone, reducedMotion }: MiniProps) {
       gain: 0,
       used: new Set(),
       tell: null,
-      line: side.opener,
+      line: isRaise ? side.opener : side.opener.replace('$2,400', wholeDollars(price)),
       you: '',
       hi: 0,
       pick: null,
