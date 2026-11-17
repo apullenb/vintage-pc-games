@@ -431,7 +431,61 @@ export function smoothUp(src: HTMLCanvasElement, dst: HTMLCanvasElement): void {
   dx.putImageData(out, 0, 0);
 }
 
-export type SpriteShade ='body' | 'ball' | 'box' | 'flat' | 'cyl';
+// Draws a pixel-art call (in the caller's logical coordinates) smoothed: it is rendered at 1x into a
+// small scratch canvas covering the box (bx, by, w, h), Scale2x'd, and drawn back filtered. For a
+// handful of small animated sprites per frame; pass a key to cache the result when it is static.
+const LIVE_SRC = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+const LIVE_DST = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+const LIVE_CACHE = new Map<string, HTMLCanvasElement>();
+export function liveSmooth(x: Ctx, bx: number, by: number, w: number, h: number, draw: (g: Ctx) => void, key?: string): void {
+  bx = Math.floor(bx);
+  by = Math.floor(by);
+  w = Math.ceil(w);
+  h = Math.ceil(h);
+  if (w <= 0 || h <= 0 || !LIVE_SRC || !LIVE_DST) return;
+  const sm = x.imageSmoothingEnabled;
+  x.imageSmoothingEnabled = true;
+  const hit = key ? LIVE_CACHE.get(key) : undefined;
+  if (hit) {
+    x.drawImage(hit, bx, by, w, h);
+    x.imageSmoothingEnabled = sm;
+    return;
+  }
+  if (LIVE_SRC.width < w || LIVE_SRC.height < h) {
+    LIVE_SRC.width = Math.max(LIVE_SRC.width, w);
+    LIVE_SRC.height = Math.max(LIVE_SRC.height, h);
+  }
+  if (LIVE_DST.width < w * 2 || LIVE_DST.height < h * 2) {
+    LIVE_DST.width = Math.max(LIVE_DST.width, w * 2);
+    LIVE_DST.height = Math.max(LIVE_DST.height, h * 2);
+  }
+  const g = LIVE_SRC.getContext('2d', { willReadFrequently: true });
+  const d = LIVE_DST.getContext('2d', { willReadFrequently: true });
+  if (!g || !d) return;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, w, h);
+  g.imageSmoothingEnabled = false;
+  g.translate(-bx, -by);
+  draw(g);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const img = g.getImageData(0, 0, w, h);
+  const up = scale2x(new Uint32Array(img.data.buffer), w, h);
+  const out = d.createImageData(w * 2, h * 2);
+  out.data.set(new Uint8ClampedArray(up.buffer));
+  d.putImageData(out, 0, 0);
+  if (key) {
+    if (LIVE_CACHE.size > 300) LIVE_CACHE.clear();
+    const c = document.createElement('canvas');
+    c.width = w * 2;
+    c.height = h * 2;
+    c.getContext('2d')?.drawImage(LIVE_DST, 0, 0, w * 2, h * 2, 0, 0, w * 2, h * 2);
+    LIVE_CACHE.set(key, c);
+  }
+  x.drawImage(LIVE_DST, 0, 0, w * 2, h * 2, bx, by, w, h);
+  x.imageSmoothingEnabled = sm;
+}
+
+export type SpriteShade = 'body' | 'ball' | 'box' | 'flat' | 'cyl';
 interface SpriteOpts {
   shade?: SpriteShade;
   pad?: number;

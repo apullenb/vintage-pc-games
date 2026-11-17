@@ -1,10 +1,13 @@
 // Thrift Hunt art: three hand-shaded settings (thrift store, flea market, garage-sale street),
 // their props, the living deals (googly eyes, scurrying legs) and the junk (stains, bugs, flies),
 // walking shoppers, the tag gun, reticle and price-tag projectile. Everything is drawn in world space.
-import { drawPerson, type Person } from '../art/people.ts';
-import { bayer, cached, dither, INK, mix, rect, rgbOf, shade, stipple, type Ctx } from '../art/px.ts';
+import type { Person } from '../art/people.ts';
+import { bayer, cached, dither, INK, mix, rect, shade, stipple, type Ctx } from '../art/px.ts';
 import { FLOOR_Y, WH, WW, type Defect, type ItemDef, type MapDef, type Prop, type Shape } from './thriftData.ts';
-import { centered, outlined, ptext, ptw } from './thriftPhishFx.ts';
+import { centered, outlined, ptext, ptw, stext } from './thriftPhishFx.ts';
+import { ball, ell, layer, lin, pool, rad, rgba, sbox, shadow as softShadow, smoothUp } from './hd2Kit.tsx';
+import { person } from './hd2Person.ts';
+const shadow2 = softShadow;
 
 const hash = (n: number): number => {
   let t = (n + 0x6d2b79f5) | 0;
@@ -23,9 +26,7 @@ function blk(x: Ctx, px: number, py: number, w: number, h: number, c: string, ou
   rect(x, px + w - 1, py + 1, 1, h - 1, shade(c, 0.8));
 }
 function shadowBlob(x: Ctx, cx: number, cy: number, w: number, h = 3, a = 0.3): void {
-  x.fillStyle = `rgba(16,8,28,${a})`;
-  x.fillRect(Math.round(cx - w / 2), Math.round(cy - h / 2), Math.round(w), Math.round(h));
-  x.fillRect(Math.round(cx - w / 2 + 2), Math.round(cy - h / 2 - 1), Math.round(w - 4), Math.round(h + 2));
+  softShadow(x, cx, cy, w / 2 + 1.5, h * 0.75 + 0.8, a * 1.4);
 }
 
 const CLOTH = ['#e0503c', '#3f7fd8', '#3caa6a', '#f2b632', '#9a5ad0', '#ef7fae', '#2fb5b0', '#eeeae0', '#5a4a3a', '#c86a3a', '#6a7ab8', '#d8c8a0'];
@@ -74,6 +75,63 @@ export function worldLayer(m: MapDef, key: string): HTMLCanvasElement {
     else if (m.theme === 'flea') fleaLot(g, m);
     else yardStreet(g, m);
   });
+}
+// The same world, Scale2x-smoothed once so it draws back texture-filtered on the HD canvas.
+const WORLD_HD = new Map<string, HTMLCanvasElement>();
+export function worldLayerHd(m: MapDef, key: string): HTMLCanvasElement {
+  let c = WORLD_HD.get(key);
+  if (!c) {
+    c = document.createElement('canvas');
+    smoothUp(worldLayer(m, key), c);
+    WORLD_HD.set(key, c);
+  }
+  return c;
+}
+
+// Smooth HD lighting, cached per map: thrift = dim, cool corners and warm pools under the ceiling
+// lights; outdoors = soft sun from the upper left. Drawn in two passes: shade (multiply-ish), light (add).
+export function lightLayerHd(m: MapDef, key: string): { shade: HTMLCanvasElement; light: HTMLCanvasElement } {
+  const thrift = m.theme === 'thrift';
+  const lamps: [number, number][] = thrift ? [[56, 70], [136, 60], [216, 70], [76, 136], [196, 136]] : [];
+  const shadeL = layer(`th-shade-hd-${key}`, WW, WH, (g) => {
+    const dark = thrift ? '#140c28' : '#1a2840';
+    g.save();
+    g.translate(WW / 2, WH / 2);
+    g.scale(1, WH / WW);
+    g.fillStyle = rad(g, 0, 0, WW * 0.3, WW * 0.75, [rgba(dark, thrift ? 0.12 : 0), rgba(dark, thrift ? 0.35 : 0.12), rgba(dark, thrift ? 0.6 : 0.35)]);
+    g.fillRect(-WW, -WW, WW * 2, WW * 2);
+    g.restore();
+    if (!thrift) {
+      g.fillStyle = lin(g, 0, 0, WW, WH, ['rgba(26,40,64,0)', 'rgba(26,40,64,0)', 'rgba(26,40,64,0.18)']);
+      g.fillRect(0, 0, WW, WH);
+    }
+    // the lamps punch holes in the gloom
+    g.globalCompositeOperation = 'destination-out';
+    for (const [lx, ly] of lamps) {
+      g.save();
+      g.translate(lx, ly);
+      g.scale(1.4, 1);
+      g.fillStyle = rad(g, 0, 0, 0, 62, ['rgba(0,0,0,0.9)', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0)']);
+      g.fillRect(-62, -62, 124, 124);
+      g.restore();
+    }
+  });
+  const lightL = layer(`th-light-hd-${key}`, WW, WH, (g) => {
+    const warm = thrift ? '#ffd890' : '#fff0c0';
+    if (!thrift) {
+      g.fillStyle = rad(g, -20, -30, 10, WW * 0.9, [rgba(warm, 0.3), rgba(warm, 0.1), rgba(warm, 0)]);
+      g.fillRect(0, 0, WW, WH);
+    }
+    for (const [lx, ly] of lamps) {
+      g.save();
+      g.translate(lx, ly);
+      g.scale(1.4, 1);
+      g.fillStyle = rad(g, 0, 0, 0, 58, [rgba(warm, 0.3), rgba(warm, 0.12), rgba(warm, 0)]);
+      g.fillRect(-58, -58, 116, 116);
+      g.restore();
+    }
+  });
+  return { shade: shadeL, light: lightL };
 }
 
 function thriftRoom(g: Ctx, m: MapDef): void {
@@ -227,44 +285,6 @@ function yardStreet(g: Ctx, m: MapDef): void {
   ptext(g, m.name, 6, WH - 21, '#7a7264');
 }
 
-// Lighting overlay, cached per map: thrift = dim corners + warm pools under ceiling lights;
-// outdoors = soft sun from the upper left with a gentle vignette.
-export function lightLayer(m: MapDef, key: string): HTMLCanvasElement {
-  return cached(`th-light-${key}`, WW, WH, (g) => {
-    const img = g.createImageData(WW, WH);
-    const lamps: [number, number][] = m.theme === 'thrift' ? [[56, 70], [136, 60], [216, 70], [76, 136], [196, 136]] : [];
-    const warm = rgbOf(m.theme === 'thrift' ? '#ffd890' : '#fff0c0');
-    const dark = rgbOf(m.theme === 'thrift' ? '#1a1030' : '#203048');
-    for (let j = 0; j < WH; j++)
-      for (let i = 0; i < WW; i++) {
-        const nx = (i - WW / 2) / (WW / 2);
-        const ny = (j - WH / 2) / (WH / 2);
-        let light = m.theme === 'thrift' ? 0.15 : 0.55 - (nx + ny) * 0.12;
-        for (const [lx, ly] of lamps) {
-          const d = Math.hypot((i - lx) / 1.4, j - ly);
-          light += Math.max(0, 1 - d / 62) * 0.7;
-        }
-        const vig = Math.max(0, Math.hypot(nx, ny) - 0.75);
-        light -= vig * 0.8;
-        // hard-edged light steps (no dither: reads as pools of light, not grain)
-        const q = Math.max(0, Math.min(4, Math.floor(light * 4 + 0.5)));
-        const o = (j * WW + i) * 4;
-        if (q <= 1) {
-          img.data[o] = dark[0];
-          img.data[o + 1] = dark[1];
-          img.data[o + 2] = dark[2];
-          img.data[o + 3] = q === 0 ? 80 : 40;
-        } else if (q >= 3) {
-          img.data[o] = warm[0];
-          img.data[o + 1] = warm[1];
-          img.data[o + 2] = warm[2];
-          img.data[o + 3] = q === 4 ? 40 : 20;
-        }
-      }
-    g.putImageData(img, 0, 0);
-  });
-}
-
 // Foreground parallax: hanging sale signs indoors, a string of bunting flags outdoors.
 // offX is the camera x scaled up, so this layer slides faster than the floor.
 export function drawForeground(x: Ctx, m: MapDef, offX: number, t: number, vw: number): void {
@@ -316,11 +336,10 @@ export function propBox(p: Prop): { x: number; y: number; w: number; h: number }
 export function propShadow(x: Ctx, p: Prop, outdoor: boolean): void {
   const foot = p.y + p.h;
   if (outdoor) {
-    // sun from the upper left: shadows fall down-right
-    x.fillStyle = 'rgba(16,8,40,0.28)';
+    // sun from the upper left: soft shadows fall down-right
     const w = p.kind === 'tree' || p.kind === 'umbrella' ? 26 : p.w;
     const cx = p.x + p.w / 2;
-    for (let k = 0; k < 4; k++) x.fillRect(Math.round(cx - w / 2 + 3 + k), Math.round(foot - 2 + k), Math.round(w - k), 1);
+    softShadow(x, cx + 3.5, foot + 1, w / 2 + 2, 3.2, 0.4, '#10082a');
   } else shadowBlob(x, p.x + p.w / 2, foot, p.w + 4, 3, 0.26);
 }
 
@@ -850,104 +869,108 @@ function drawDefect(x: Ctx, d: Defect, L: number, T: number, w: number, h: numbe
 // Price tag hanging off a corner of an item.
 export function drawPriceTag(x: Ctx, s: string, px: number, py: number, junk: boolean): void {
   const w = ptw(s) + 4;
-  rect(x, px - 3, py + 2, 3, 1, '#9a9aa8');
-  rect(x, px - 1, py - 1, w + 2, 9, INK);
-  rect(x, px, py, w, 7, junk ? '#f4e8c8' : '#fffaf0');
-  rect(x, px, py + 6, w, 1, junk ? '#c8b890' : '#d8d0c0');
-  rect(x, px + 1, py + 1, 1, 1, '#9a9aa8');
-  ptext(x, s, px + 2, py + 1, junk ? '#8a5a2a' : '#c0392b');
+  x.strokeStyle = '#9a9aa8';
+  x.lineWidth = 0.5;
+  x.beginPath();
+  x.moveTo(px - 3, py + 3);
+  x.quadraticCurveTo(px - 1.5, py + 1.5, px, py + 2.5);
+  x.stroke();
+  shadow2(x, px + w / 2 + 1, py + 8, w * 0.55, 1.4, 0.3);
+  sbox(x, px - 1, py - 1, w + 2, 9, junk ? '#f4e8c8' : '#fffaf0', { r: 1.6, gloss: 0.4, lw: 0.6 });
+  ball(x, px + 1.2, py + 1.4, 0.6, '#9a9aa8', 0.6, 0.5);
+  stext(x, s, px + 2, py + 1, junk ? '#8a5a2a' : '#c0392b', null);
 }
 
 // ---------- people ----------
-const FX4 = [3, 1, -3, -1];
-const LIFT = [0, 1, 0, 0];
 // Upper body from drawPerson, legs from a walk cycle. (x, y) is the sprite's top-left; feet at y + 30.
 export function drawWalker(x: Ctx, p: Person, px: number, py: number, moving: boolean, phase: number, face: -1 | 1, stunned = false): void {
-  px = Math.round(px);
-  py = Math.round(py);
-  const shoes = p.shoes ?? '#2a2a33';
-  const pd = shade(p.pants, 0.78);
   const f = ((Math.floor(phase) % 4) + 4) % 4;
-  const segs: [number, number, number, number, string][] = [];
-  const leg = (bx: number, dx: number, lift: number, c: string, sc: string): void => {
-    const d = Math.round(dx * 0.6) * face;
-    segs.push([px + bx + Math.round(d / 2), py + 21, 3, 3, c]);
-    segs.push([px + bx + d, py + 24 - lift, 3, 4 - Math.min(1, lift), c]);
-    segs.push([px + bx + d + (face > 0 ? 0 : -1), py + 27 - lift, 4, 2, sc]);
-  };
-  if (moving) {
-    leg(4, FX4[(f + 2) % 4], LIFT[(f + 2) % 4], pd, shade(shoes, 0.85));
-    leg(7, FX4[f], LIFT[f], p.pants, shoes);
-  } else {
-    segs.push([px + 4, py + 21, 3, 6, pd], [px + 7, py + 21, 3, 6, p.pants], [px + 3, py + 27, 4, 2, shade(shoes, 0.85)], [px + 7, py + 27, 4, 2, shoes]);
-  }
-  for (const s of segs) rect(x, s[0] - 1, s[1] - 1, s[2] + 2, s[3] + 2, INK);
-  for (const s of segs) rect(x, s[0], s[1], s[2], s[3], s[4]);
-  const bodyBob = moving && (f === 1 || f === 3) ? -1 : 0;
-  drawPerson(x, p, px, py + bodyBob, 0, false, { clipY: 21, face, blink: stunned });
+  person(x, p, px, py, 0, false, { face, walk: moving ? f : undefined, blink: stunned });
   if (stunned) {
     // little stars circling the head
     for (let k = 0; k < 3; k++) {
       const a = phase * 0.8 + (k * Math.PI * 2) / 3;
-      rect(x, px + 7 + Math.cos(a) * 7, py - 2 + Math.sin(a) * 2, 1, 1, '#ffe27a');
+      const sx = px + 7 + Math.cos(a) * 7;
+      const sy = py - 2 + Math.sin(a) * 2;
+      pool(x, sx, sy, 2.5, 2.5, '#ffe27a', 0.8);
+      ball(x, sx, sy, 0.7, '#fff3a0', 0.7, 0.8);
     }
   }
 }
-
 // The pricing gun in the player's hand, pointing along (dx, dy).
 export function drawGun(x: Ctx, hx: number, hy: number, dx: number, dy: number, kick: number): void {
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
-  const bx = hx - ux * kick;
-  const by = hy - uy * kick;
-  // barrel: a few pixels stepping along the aim
-  for (let i = 0; i <= 6; i++) rect(x, bx + ux * i - 1, by + uy * i - 1, 3, 3, INK);
-  for (let i = 0; i <= 5; i++) rect(x, bx + ux * i, by + uy * i, 2, 2, i > 3 ? '#f2b632' : '#e8781e');
-  rect(x, bx - 1, by + 1, 2, 3, '#3a3a4a');
-  rect(x, bx + ux * 6, by + uy * 6, 1, 1, '#fff3c4');
+  const bx = hx - ux * kick + 0.5;
+  const by = hy - uy * kick + 0.5;
+  x.save();
+  x.lineCap = 'round';
+  x.lineWidth = 3.2;
+  x.strokeStyle = 'rgba(28,20,36,0.9)';
+  x.beginPath();
+  x.moveTo(bx, by);
+  x.lineTo(bx + ux * 6, by + uy * 6);
+  x.stroke();
+  x.lineWidth = 2.2;
+  x.strokeStyle = lin(x, bx - uy, by + ux, bx + uy, by - ux, ['#a8480e', '#ff9a3e', '#e8781e']);
+  x.stroke();
+  x.lineWidth = 0.6;
+  x.strokeStyle = 'rgba(255,240,200,0.8)';
+  x.beginPath();
+  x.moveTo(bx + ux * 1 - uy * 0.5, by + uy * 1 + ux * 0.5);
+  x.lineTo(bx + ux * 5 - uy * 0.5, by + uy * 5 + ux * 0.5);
+  x.stroke();
+  x.restore();
+  sbox(x, bx - 1.2, by + 0.5, 2.2, 3.2, '#3a3a4a', { r: 0.8, gloss: 0.4, lw: 0.4 });
+  pool(x, bx + ux * 6.5, by + uy * 6.5, 2.5, 2.5, '#fff3c4', 0.8);
 }
 
 // The tag flying through the air: a white tag that tumbles.
 export function drawTagShot(x: Ctx, sx: number, sy: number, spin: number): void {
-  const f = Math.floor(spin) % 3;
-  const px = Math.round(sx);
-  const py = Math.round(sy);
-  if (f === 0) {
-    rect(x, px - 3, py - 2, 7, 5, INK);
-    rect(x, px - 2, py - 1, 5, 3, '#fffaf0');
-    rect(x, px - 2, py, 1, 1, '#c0392b');
-  } else if (f === 1) {
-    rect(x, px - 2, py - 3, 5, 7, INK);
-    rect(x, px - 1, py - 2, 3, 5, '#fffaf0');
-    rect(x, px, py - 2, 1, 1, '#c0392b');
-  } else {
-    rect(x, px - 3, py - 3, 6, 6, INK);
-    rect(x, px - 2, py - 2, 4, 4, '#fffaf0');
-    rect(x, px - 2, py - 2, 1, 1, '#c0392b');
-  }
+  pool(x, sx, sy, 5, 5, '#fff8e0', 0.35);
+  x.save();
+  x.translate(sx, sy);
+  x.rotate(spin * 2.1);
+  sbox(x, -3, -2, 6, 4, '#fffaf0', { r: 1, gloss: 0.5, lw: 0.6 });
+  ball(x, -1.8, 0, 0.6, '#c0392b', 0.6, 0.4);
+  x.restore();
 }
 
 // Reticle: corner brackets that snap in and turn gold over a find.
 export function drawReticle(x: Ctx, rx: number, ry: number, t: number, locked: boolean, cooling: number, far = false): void {
-  const px = Math.round(rx);
-  const py = Math.round(ry);
-  const g = locked ? 4 : 6 + Math.round(Math.sin(t * 8));
+  const px = rx + 0.5;
+  const py = ry + 0.5;
+  const g = locked ? 4 : 6 + Math.sin(t * 8);
   const c = far ? '#9a8aa8' : locked ? '#ffe27a' : '#ffffff';
-  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const cx = px + sx * g;
-    const cy = py + sy * g;
-    rect(x, cx - (sx > 0 ? 2 : 0) - 1, cy - 1, 4, 3, INK);
-    rect(x, cx - 1, cy - (sy > 0 ? 2 : 0) - 1, 3, 4, INK);
-  }
-  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const cx = px + sx * g;
-    const cy = py + sy * g;
-    rect(x, cx - (sx > 0 ? 2 : 0), cy, 3, 1, c);
-    rect(x, cx, cy - (sy > 0 ? 2 : 0), 1, 3, c);
-  }
-  rect(x, px - 1, py - 1, 3, 3, INK);
-  rect(x, px, py, 1, 1, cooling > 0 ? '#ff7a5a' : c);
+  if (locked) pool(x, px, py, 9, 9, '#ffe27a', 0.3);
+  const corners = (): void => {
+    x.beginPath();
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const cx = px + sx * g;
+      const cy = py + sy * g;
+      x.moveTo(cx, cy - sy * 2.6);
+      x.lineTo(cx, cy);
+      x.lineTo(cx - sx * 2.6, cy);
+    }
+  };
+  x.save();
+  x.lineCap = 'round';
+  x.lineJoin = 'round';
+  corners();
+  x.lineWidth = 2.2;
+  x.strokeStyle = 'rgba(28,20,36,0.85)';
+  x.stroke();
+  x.lineWidth = 0.9;
+  x.strokeStyle = c;
+  x.stroke();
+  x.restore();
+  ell(x, px, py, 1.3, 1.3);
+  x.fillStyle = 'rgba(28,20,36,0.85)';
+  x.fill();
+  ell(x, px, py, 0.65, 0.65);
+  x.fillStyle = cooling > 0 ? '#ff7a5a' : c;
+  x.fill();
 }
 
 // Inspect card over the thing under your reticle.
@@ -956,22 +979,19 @@ export function drawTooltip(x: Ctx, cx: number, by: number, l1: string, l2: stri
   const h = 17;
   const px = Math.max(2, Math.min(vw - w - 2, Math.round(cx - w / 2)));
   const py = Math.max(21, Math.round(by - h - 3));
-  x.globalAlpha = 0.92;
-  rect(x, px - 1, py - 1, w + 2, h + 2, INK);
-  rect(x, px, py, w, h, '#241a38');
+  shadow2(x, px + w / 2 + 2, py + h + 2, w * 0.55, 3, 0.4);
+  x.globalAlpha = 0.94;
+  sbox(x, px - 1, py - 1, w + 2, h + 2, '#2a1e44', { r: 2.5, gloss: 0.2, lw: 0.7 });
   x.globalAlpha = 1;
-  rect(x, px, py, w, 1, '#4a3a6a');
-  ptext(x, l1, px + 4, py + 3, '#fff3c4');
-  ptext(x, l2, px + 4, py + 10, l2c);
+  stext(x, l1, px + 4, py + 3, '#fff3c4', null);
+  stext(x, l2, px + 4, py + 10, l2c, null);
 }
 
 export function drawWeightBar(x: Ctx, px: number, py: number, w: number, frac: number, warn: boolean): void {
-  rect(x, px - 1, py - 1, w + 2, 5, INK);
-  rect(x, px, py, w, 3, '#3a2e4a');
-  const fw = Math.round(w * Math.min(1, frac));
+  sbox(x, px - 1, py - 1, w + 2, 5, '#3a2e4a', { r: 2.5, gloss: 0.1, lw: 0.6 });
+  const fw = w * Math.min(1, frac);
   const c = frac > 0.85 ? '#ff7a5a' : frac > 0.6 ? '#f2b632' : '#7cf08a';
-  rect(x, px, py, fw, 3, warn ? '#ff4a3a' : c);
-  rect(x, px, py, fw, 1, mix(c, '#ffffff', 0.5));
+  if (fw > 0.5) sbox(x, px, py, Math.max(3, fw), 3, warn ? '#ff4a3a' : c, { r: 1.5, gloss: 0.6, outline: null });
 }
 
 export { centered };
