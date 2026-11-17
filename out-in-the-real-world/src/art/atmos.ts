@@ -21,6 +21,7 @@ const WINDOWS: Partial<Record<ArtId, [number, number, number, number][]>> = {
 const HOMES = new Set<ArtId>(['bedroom', 'dorm', 'apartment']);
 
 export const isOutdoor = (a: ArtId): boolean => OUTDOOR.has(a);
+export const windowsOf = (a: ArtId): [number, number, number, number][] => WINDOWS[a] ?? [];
 export const isHome = (a: ArtId): boolean => HOMES.has(a);
 
 export function seasonOf(week: number): Season {

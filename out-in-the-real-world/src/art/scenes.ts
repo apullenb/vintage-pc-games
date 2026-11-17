@@ -2364,6 +2364,15 @@ function perspFloorRect(x: Ctx, y0: number, x0: number, x1: number, a: string, b
 const HOME: Record<'bedroom' | 'dorm' | 'apartment', (night: boolean) => Spec> = { bedroom, dorm, apartment };
 const DEFS = new Map<string, SceneDef>();
 
+// The raw layer spec behind a scene (used by the HD stage to upscale scenes that
+// don't have an HD painting yet, and to reuse their night lights).
+export type SceneSpec = Spec;
+export const NIGHT_GRADE = { ambient: NIGHT_AMBIENT, fill: FILL };
+export function sceneSpec(id: ArtId, opts: SceneOpts = {}): Spec {
+  const night = !!opts.night && id in HOME;
+  return id in HOME ? HOME[id as keyof typeof HOME](night) : (SCENES_BASE[id as keyof typeof SCENES_BASE] ?? SCENES_BASE.street);
+}
+
 export function sceneDef(id: ArtId, opts: SceneOpts = {}): SceneDef {
   const night = !!opts.night && id in HOME;
   const key = `${id}${night ? ':night' : ''}`;
