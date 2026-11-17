@@ -2265,6 +2265,7 @@ html.big-text .chart .ax {
 .mg-loading {
   min-height: 220px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 6px;

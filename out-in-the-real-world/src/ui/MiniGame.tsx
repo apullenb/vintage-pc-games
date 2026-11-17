@@ -1,7 +1,7 @@
 // Runs an action mini-game like an arcade cabinet: a title card (name, 3-icon controls cheat sheet,
 // what's at stake) -> the game -> a graded run (letter + stars, "Play again?") -> the outcome.
 // Replays happen here, before onFinish: the engine applies the accepted run exactly once.
-import { Suspense, useEffect, useState } from 'react';
+import { Component, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { MINIGAMES } from '../content/minigames/index.ts';
 import { SKIP_SCORE, txt } from '../engine/engine.ts';
 import type { GameState, MiniResult, Step } from '../engine/types.ts';
@@ -128,6 +128,25 @@ function Loading() {
   );
 }
 
+// If a game's chunk can't load (flaky connection), don't take the whole app down with it.
+class LoadGuard extends Component<{ children: ReactNode; onSkip: () => void }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+  render(): ReactNode {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="mg-loading" role="alert">
+        <span>Couldn’t load this mini-game.</span>
+        <button className="btn" onClick={this.props.onSkip}>
+          Skip (auto-play)
+        </button>
+      </div>
+    );
+  }
+}
+
 function Stars({ n }: { n: number }) {
   return (
     <span className="mg-stars" aria-label={`${n} of 3 stars`}>
@@ -209,20 +228,22 @@ export function MiniGameHost({ g, head, onFinish, onContinue }: { g: GameState; 
   if (phase === 'play') {
     return (
       <div className="mini-stage" role="application" aria-label={title}>
-        <Suspense fallback={<Loading />}>
-          <Game
-            key={runKey}
-            s={g}
-            data={data}
-            reducedMotion={reducedMotion()}
-            onDone={(r) => {
-              const gr = gradeOf(r.score);
-              sfx(gr.stars >= 3 ? 'star' : gr.stars >= 2 ? 'good' : 'bad');
-              setRun({ score: r.score, stats: r.stats });
-              setPhase('graded');
-            }}
-          />
-        </Suspense>
+        <LoadGuard onSkip={() => onFinish({ score: SKIP_SCORE, played: false })}>
+          <Suspense fallback={<Loading />}>
+            <Game
+              key={runKey}
+              s={g}
+              data={data}
+              reducedMotion={reducedMotion()}
+              onDone={(r) => {
+                const gr = gradeOf(r.score);
+                sfx(gr.stars >= 3 ? 'star' : gr.stars >= 2 ? 'good' : 'bad');
+                setRun({ score: r.score, stats: r.stats });
+                setPhase('graded');
+              }}
+            />
+          </Suspense>
+        </LoadGuard>
         <div className="mini-actions">
           <button className="btn small ghost" onClick={() => setRunKey((k) => k + 1)}>
             Restart
