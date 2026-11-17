@@ -954,9 +954,10 @@ export function stepTown(g: TownSim, c: TownControls, dt: number): void {
     a.honk = 1.4;
     g.crashes++;
     g.boostT = 0;
+    const full = g.orders.some((o) => o.state === 'carry');
     spill(g, 0.35);
-    g.events.push({ e: 'crash', x: p.x, y: p.y });
-    say(g, 'BONK! The drinks spilled. Customers notice.', 'mark');
+    g.events.push({ e: 'crash', x: p.x, y: p.y, s: full ? 'SPILL!' : 'BONK!' });
+    say(g, full ? 'BONK! The drinks spilled. Customers notice.' : 'BONK! Watch the traffic.', 'mark');
   }
   // ---- potholes ----
   g.holeCd = Math.max(0, g.holeCd - dt);

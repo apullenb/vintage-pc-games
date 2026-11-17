@@ -207,7 +207,7 @@ export function Delivery({ s, data, onDone, reducedMotion }: MiniProps) {
             f.shake(3, 0.3);
             f.flash('#ff4030', 0.12);
             f.burst(ex, ey, 14, ['#ffe070', '#ffffff', '#ff8a1e', '#7ac0ff'], 45, 0.5, 40);
-            f.float(ex, ey - 12, 'SPILL!', '#ffe070');
+            f.float(ex, ey - 12, e.s ?? 'BONK!', '#ffe070');
             break;
           case 'hole':
             sound.thud();
