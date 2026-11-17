@@ -338,6 +338,9 @@ export function ChapterCard({ n, title, subtitle, look, path, onDone }: { n: num
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
+    <>
+    {/* Blocks clicks to the game underneath while the card wipes in and out (clip-path lets clicks through). */}
+    <div className="cc-block" aria-hidden="true" onClick={close} />
     <div className={`chapter-card ${leaving ? 'leaving' : ''}`} role="dialog" aria-modal="true" aria-labelledby="chapter-card-title" onClick={close}>
       <div className="cc-inner pixel-frame">
         <span className="cc-num">Chapter {n + 1}</span>
@@ -360,6 +363,7 @@ export function ChapterCard({ n, title, subtitle, look, path, onDone }: { n: num
         </button>
       </div>
     </div>
+    </>
   );
 }
 

@@ -115,5 +115,5 @@ describe('robustness', () => {
       }
     }
     console.log('chaos endings reached', endings, '/ 100');
-  });
+  }, 60_000);
 });

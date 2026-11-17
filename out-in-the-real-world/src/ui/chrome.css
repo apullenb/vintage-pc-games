@@ -795,6 +795,12 @@
 }
 
 /* ---------- chapter title card ---------- */
+.cc-block {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: transparent;
+}
 .chapter-card {
   position: fixed;
   inset: 0;
