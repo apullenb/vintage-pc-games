@@ -1,5 +1,6 @@
 // Final scoring and the ending you earned.
 import { CHAPTERS } from '../content/chapters.ts';
+import { collegeEpilogue } from '../content/college.ts';
 import { badDebt, creditScore, netWorth, num } from './core.ts';
 import type { GameState } from './types.ts';
 
@@ -57,7 +58,7 @@ function epilogue(s: GameState): string[] {
       out.push(s.housing.kind === 'parents' ? 'You still live at home, and you’ve saved more than almost anyone you know.' : 'You moved out and learned how much toilet paper actually costs.');
       break;
     case 'college': {
-      out.push(career ? 'Sophomore year starts with your scholarship intact and a plan for your major.' : 'Your scholarship shrank, but you’re still enrolled and studying smarter.');
+      out.push(...collegeEpilogue(s));
       const owed = s.loans.filter((l) => l.kind === 'student').reduce((a, l) => a + l.balance, 0);
       out.push(owed > 0 ? `You owe ${usd(owed)} in student loans, and you know exactly what that means now.` : 'You have no student loans. Rare!');
       break;

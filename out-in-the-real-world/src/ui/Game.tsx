@@ -33,8 +33,10 @@ import { BillsPanel, ChapterEndPanel, PaycheckPanel, Planner, ScenePanel, Summar
 import type { Meta } from './save.ts';
 import { Tutorial } from './Tutorial.tsx';
 import { MiniGameHost } from './MiniGame.tsx';
+import { GradesMini, GradesPanel } from './Grades.tsx';
+import { gpaText, liveGpa, majorName } from '../content/college.ts';
 
-type ModalId = 'money' | 'handbook' | 'awards' | 'missions' | 'menu' | null;
+type ModalId = 'money' | 'handbook' | 'awards' | 'missions' | 'menu' | 'grades' | null;
 
 function artFor(s: GameState): { art: ArtId; speaker: NpcId | null; hidePlayer?: boolean } {
   const h = s.queue[0];
@@ -151,7 +153,7 @@ export function Game({ g, setG, meta, setMeta, onQuit, onNewGame }: { g: GameSta
         </section>
         {h?.t !== 'ending' && (
           <aside className="side-col">
-            <Missions g={g} />
+            <Missions g={g} onGrades={() => setModal('grades')} />
           </aside>
         )}
       </div>
@@ -171,7 +173,12 @@ export function Game({ g, setG, meta, setMeta, onQuit, onNewGame }: { g: GameSta
       {modal === 'money' && <MoneyModal g={g} setG={setG} onClose={() => setModal(null)} />}
       {modal === 'missions' && (
         <Modal title={`Chapter ${g.chapter + 1}: ${chapter.title}`} onClose={() => setModal(null)}>
-          <Missions g={g} />
+          <Missions g={g} onGrades={() => setModal('grades')} />
+        </Modal>
+      )}
+      {modal === 'grades' && (
+        <Modal title="Grades" onClose={() => setModal(null)}>
+          <GradesPanel g={g} />
         </Modal>
       )}
       {modal === 'handbook' && <HandbookModal unlocked={[...new Set([...meta.handbook, ...g.handbook])]} fresh={g.handbook} onClose={() => setModal(null)} />}
@@ -223,10 +230,10 @@ export function Game({ g, setG, meta, setMeta, onQuit, onNewGame }: { g: GameSta
 }
 
 // ================= HUD =================
-type TipId = 'week' | 'cash' | 'savings' | 'card' | 'credit' | 'energy' | 'rep' | 'xp';
+type TipId = 'week' | 'cash' | 'savings' | 'card' | 'credit' | 'energy' | 'rep' | 'xp' | 'gpa';
 
 // Plain-language explanations for every number and bar in the HUD.
-function hudTip(id: TipId, g: GameState): { title: string; text: string; money?: boolean } {
+function hudTip(id: TipId, g: GameState): { title: string; text: string; money?: boolean; grades?: boolean } {
   const sc = creditScore(g);
   const ch = Math.min(g.chapter, CHAPTERS.length - 1);
   switch (id) {
@@ -281,6 +288,14 @@ function hudTip(id: TipId, g: GameState): { title: string; text: string; money?:
               ? 'How your boss feels about your work. Showing up and working hard raise it. Skipping work lowers it. If it gets too low, you could get fired.'
               : 'You don’t have a boss yet. Once you get a job, this shows how your boss feels about your work.',
           };
+    case 'gpa': {
+      const v = liveGpa(g);
+      return {
+        title: `GPA: ${gpaText(v)} · ${majorName(g)}`,
+        text: `Your grade point average, from 0.0 to 4.0. Go to class, do your assignments, and study before exams. A 3.5 makes the Dean’s List. Under 3.0 at year end costs your scholarship. Under 2.0 means probation.`,
+        grades: true,
+      };
+    }
     case 'xp':
       return {
         title: `Career progress: ${g.stats.xp}`,
@@ -333,7 +348,7 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
   };
   const hide = (id: TipId): void => setTip((t) => (t?.id === id ? null : t));
   // Mouse: hover shows the tip, click opens Money. Touch: tap toggles the tip. Keyboard: focus shows it.
-  const stat = (id: TipId, opensMoney: boolean) => ({
+  const stat = (id: TipId, opens: boolean | ModalId) => ({
     'aria-expanded': tip?.id === id,
     'aria-describedby': tip?.id === id ? 'hud-tip' : undefined,
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -354,9 +369,9 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
     },
     onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
       const touch = e.detail !== 0 && pointer.current !== 'mouse';
-      if (opensMoney && !touch) {
+      if (opens && !touch) {
         setTip(null);
-        onOpen('money');
+        onOpen(opens === true ? 'money' : opens);
         return;
       }
       sfx('click');
@@ -421,6 +436,12 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
             <Icon name="star" size={12} /> <Bar value={g.stats.xp} max={120} tone="xp" />
           </span>
         </button>
+        {g.path === 'college' && (
+          <button className={`hud-stat gpa ${(liveGpa(g) ?? 4) < 2.5 ? 'low' : ''}`} {...stat('gpa', 'grades')} aria-label={`GPA ${gpaText(liveGpa(g))}. Show grades.`}>
+            <small>GPA</small>
+            <span>{gpaText(liveGpa(g))}</span>
+          </button>
+        )}
       </div>
       <nav className="hud-btns" aria-label="Game menus">
         <button className="icon-btn missions-btn" onClick={() => onOpen('missions')} aria-label="Missions" title="Missions">
@@ -459,6 +480,17 @@ function Hud({ g, onOpen, muted, onMute }: { g: GameState; onOpen: (m: ModalId) 
               Open Money ▶
             </button>
           )}
+          {info.grades && (
+            <button
+              className="btn small"
+              onClick={() => {
+                setTip(null);
+                onOpen('grades');
+              }}
+            >
+              See grades ▶
+            </button>
+          )}
         </div>
       )}
     </header>
@@ -487,7 +519,7 @@ function MissionStrip({ g, onOpen }: { g: GameState; onOpen: () => void }) {
 }
 
 // ================= MISSIONS =================
-function Missions({ g }: { g: GameState }) {
+function Missions({ g, onGrades }: { g: GameState; onGrades?: () => void }) {
   const ch = Math.min(g.chapter, CHAPTERS.length - 1);
   const tasks = taskStatus(g, ch);
   const left = chapterEndWeek(ch) - g.week + 1;
@@ -511,6 +543,7 @@ function Missions({ g }: { g: GameState }) {
           </li>
         ))}
       </ul>
+      {g.path === 'college' && onGrades && <GradesMini g={g} onOpen={onGrades} />}
       {upcoming.length > 0 && (
         <div className="appts">
           <h4>

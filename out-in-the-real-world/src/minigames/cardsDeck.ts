@@ -1,7 +1,7 @@
 // Flashcard Cram deck: short card labels and one-line clues for every Adulting Handbook entry,
 // plus path-flavored study cards (college intro classes, electrical trade, warehouse, pharmacy tech).
 import { HANDBOOK } from '../content/handbook.ts';
-import type { GameState, PathId } from '../engine/types.ts';
+import type { GameState, MajorId, PathId } from '../engine/types.ts';
 import { shuffle } from './cardsFx.ts';
 
 export interface Card {
@@ -78,6 +78,8 @@ export const HANDBOOK_CARDS: Record<string, [string, string]> = {
   'extended-warranty': ['Extended warranty', 'Pricey repair coverage full of exclusions.'],
   'insurance-shopping': ['Insurance quotes', 'Same coverage can cost hundreds more elsewhere. Compare yearly.'],
   'cancel-trap': ['Cancel trap', 'A gym that makes quitting hard. Read the rules first.'],
+  sap: ['Academic progress', 'Keep about a 2.0 GPA and pass your classes, or federal aid stops.'],
+  'academic-probation': ['Probation', 'Warning status when your GPA drops under 2.0.'],
 };
 
 const P = (id: string, label: string, clue: string): Card => ({ id, label, clue, kind: 'path' });
@@ -118,6 +120,58 @@ export const PATH_CARDS: Record<PathId, Card[]> = {
   ],
 };
 
+// College major cards: what each degree's classes actually test (and what exams draw from).
+export const MAJOR_CARDS: Record<MajorId, Card[]> = {
+  nursing: [
+    P('n-femur', 'Femur', 'The longest bone in your body, in your thigh.'),
+    P('n-homeo', 'Homeostasis', 'Your body keeping temperature, water, and sugar steady.'),
+    P('n-vitals', 'Vital signs', 'Pulse, breathing, temperature, and blood pressure.'),
+    P('n-systolic', 'Systolic', 'The top number in a blood pressure reading.'),
+    P('n-pathogen', 'Pathogen', 'A germ that can make you sick.'),
+    P('n-mito', 'Mitochondria', 'Cell part that turns food into energy. Yes, the powerhouse.'),
+    P('n-ph', 'pH', 'Scale from 0 to 14 for acids and bases. Blood is about 7.4.'),
+  ],
+  cs: [
+    P('x-var', 'Variable', 'A named box in code that holds a value.'),
+    P('x-loop', 'Loop', 'Code that repeats until a condition says stop.'),
+    P('x-array', 'Array', 'An ordered list of values, numbered from zero.'),
+    P('x-bug', 'Bug', 'A mistake in code. Hours to find, one character to fix.'),
+    P('x-algo', 'Algorithm', 'A step-by-step recipe for solving a problem.'),
+    P('x-deriv', 'Derivative', 'Calculus: how fast something changes at one instant.'),
+    P('x-bigo', 'Big O', 'How run time grows as the input gets bigger.'),
+  ],
+  business: [
+    P('b-supply', 'Supply & demand', 'Prices rise when lots of people want something scarce.'),
+    P('b-asset', 'Asset', 'Something you own that has value.'),
+    P('b-liab', 'Liability', 'Something you owe, like a loan.'),
+    P('b-infl', 'Inflation', 'Prices rising over time, so each dollar buys less.'),
+    P('b-margin', 'Marginal cost', 'The cost of making just one more.'),
+    P('b-netinc', 'Net income', 'The bottom line after every expense and tax.'),
+    P('b-rev', 'Revenue', 'All the money coming in, before any costs.'),
+  ],
+  education: [
+    P('e-ped', 'Pedagogy', 'The method and craft of teaching.'),
+    P('e-scaff', 'Scaffolding', 'Support you remove bit by bit as a student learns.'),
+    P('e-iep', 'IEP', 'Legal plan that sets supports for a student with a disability.'),
+    P('e-rubric', 'Rubric', 'Scoring guide that shows how work gets graded.'),
+    P('e-growth', 'Growth mindset', 'Believing skills grow with effort and practice.'),
+    P('e-formative', 'Formative check', 'A quick check during learning, not a final grade.'),
+    P('e-pslf', 'PSLF', 'Forgives federal loans after 10 years of public service work.'),
+  ],
+  undeclared: [
+    P('u-thesis', 'Thesis', 'The main claim your whole essay argues.'),
+    P('u-cite', 'Citation', 'Credit for where you got a quote or an idea.'),
+    P('u-plag', 'Plagiarism', 'Passing off someone else’s work as yours.'),
+    P('u-placebo', 'Placebo', 'A fake pill that still makes some people feel better.'),
+    P('u-slope', 'Slope', 'Rise over run.'),
+    P('u-montage', 'Montage', 'Film: a quick series of shots that shows time passing.'),
+  ],
+};
+
+export function majorCards(s: GameState): Card[] {
+  return s.path === 'college' && s.school ? (MAJOR_CARDS[s.school.major] ?? []) : [];
+}
+
 export function handbookCard(id: string, fresh = false): Card | null {
   const e = HANDBOOK_CARDS[id];
   return e ? { id, label: e[0], clue: e[1], kind: 'handbook', fresh } : null;
@@ -131,13 +185,15 @@ export interface Round {
 export const ROUNDS = 14;
 
 // Build a fresh set of rounds: mostly terms the player has unlocked, a few brand-new ones, and path cards.
-export function buildRounds(s: GameState, r: () => number, n = ROUNDS): Round[] {
+// An exam (college midterms and finals) leans on the major's class cards instead.
+export function buildRounds(s: GameState, r: () => number, n = ROUNDS, opts: { exam?: boolean } = {}): Round[] {
   const known = new Set(s.handbook);
   const unlocked = shuffle(HANDBOOK.filter((e) => known.has(e.id)).map((e) => handbookCard(e.id)!), r);
   const fresh = shuffle(HANDBOOK.filter((e) => !known.has(e.id) && HANDBOOK_CARDS[e.id]).map((e) => handbookCard(e.id, true)!), r);
-  const path = shuffle([...(PATH_CARDS[s.path] ?? PATH_CARDS.home)], r);
+  const major = shuffle(majorCards(s), r);
+  const path = opts.exam && major.length ? [...major, ...shuffle([...PATH_CARDS.college], r)] : shuffle([...(PATH_CARDS[s.path] ?? PATH_CARDS.home), ...major], r);
 
-  const nPath = Math.min(path.length, 4);
+  const nPath = Math.min(path.length, opts.exam ? 8 : 4);
   const nFresh = Math.min(fresh.length, unlocked.length >= 6 ? 3 : n - nPath - unlocked.length);
   const answers: Card[] = [...path.slice(0, nPath), ...fresh.slice(0, Math.max(0, nFresh))];
   for (const c of unlocked) if (answers.length < n) answers.push(c);

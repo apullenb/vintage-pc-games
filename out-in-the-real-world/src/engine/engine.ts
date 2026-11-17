@@ -6,6 +6,7 @@ import { SCENES } from '../content/scenes.ts';
 import { MINIGAMES } from '../content/minigames/index.ts';
 import type { Choice, Data, Scene } from '../content/types.ts';
 import { checkAchievements } from '../content/achievements.ts';
+import { collegeWeek } from '../content/college.ts';
 import {
   canPay,
   cardRoom,
@@ -395,20 +396,22 @@ function markSeen(s: GameState, id: string): void {
 
 function runEvents(s: GameState): void {
   const add: Step[] = [];
+  // College: attendance, fees, and whatever is due this week (assignments, exams, report cards).
+  const school = collegeWeek(s);
   // Story beats for this week (chapter openers, mission prompts).
   for (const id of storyBeats(s)) {
     markSeen(s, id);
     add.push({ t: 'scene', id, step: 'start' });
   }
   // One random life event most weeks (skipped if a story beat already happened).
-  if (add.length === 0 && chance(s, 0.72)) {
+  if (add.length === 0 && !school.quiet && chance(s, 0.72)) {
     const e = rollFrom(s, EVENTS);
     if (e) {
       markSeen(s, e.id);
       add.push({ t: 'scene', id: e.id, step: 'start' });
     }
   }
-  s.queue.unshift(...add);
+  s.queue.unshift(...school.steps, ...add);
 }
 
 // ---------- payday ----------

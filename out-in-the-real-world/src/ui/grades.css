@@ -1,0 +1,168 @@
+/* College grades: HUD GPA, sidebar card, and the Grades screen. */
+.hud-stat.gpa {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1;
+  flex: none;
+}
+.hud-stat.gpa small {
+  font: 10px var(--font-ui);
+  color: #8a7ea0;
+}
+.hud-stat.gpa span {
+  font-size: 19px;
+  color: var(--gold);
+}
+.hud-stat.gpa.low span {
+  color: #ff8a73;
+}
+
+.grades-mini {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 2px solid var(--line);
+  font-size: 18px;
+}
+.grades-mini h4 {
+  margin: 0 0 4px;
+}
+.gm-next {
+  color: var(--muted);
+  font-size: 17px;
+  margin-bottom: 6px;
+}
+.gm-warn {
+  color: var(--bad);
+  font-size: 17px;
+}
+
+.grades h4 {
+  margin: 14px 0 6px;
+}
+.grades-top {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.grades-top > div {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel2);
+  border: 2px solid var(--line);
+  padding: 6px 8px;
+  min-width: 0;
+}
+.grades-top small {
+  font: 10px var(--font-ui);
+  color: var(--muted);
+}
+.grades-top strong {
+  font-size: 22px;
+  font-weight: normal;
+  overflow-wrap: anywhere;
+}
+.grades-top .muted {
+  font-size: 16px;
+}
+.grades-note {
+  margin: 8px 0 0;
+  font-size: 18px;
+  color: var(--good);
+}
+.grades-note.warn {
+  color: var(--bad);
+}
+.course-list,
+.due-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.course-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dotted #d8ceb6;
+}
+.course-list li > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.course-list strong {
+  font-weight: normal;
+  font-size: 19px;
+}
+.course-list .muted {
+  font-size: 16px;
+}
+.course-parts {
+  font-size: 16px;
+  color: var(--muted);
+}
+.course-parts > span {
+  white-space: nowrap;
+}
+.course-pct {
+  font-size: 18px;
+  flex: none;
+}
+.grade-letter {
+  flex: none;
+  width: 40px;
+  text-align: center;
+  font: 14px var(--font-ui);
+  border: 2px solid var(--line);
+  padding: 6px 0;
+  background: #fffaf0;
+}
+.grade-letter.a {
+  background: #c9efd6;
+}
+.grade-letter.b {
+  background: #d6e6ff;
+}
+.grade-letter.c {
+  background: #fde9b8;
+}
+.grade-letter.f {
+  background: #f7c4bb;
+}
+.grades-prep {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin: 8px 0 4px;
+  font-size: 18px;
+}
+.due-list li {
+  font-size: 18px;
+  padding: 3px 0;
+}
+.due-list li span {
+  display: inline-block;
+  min-width: 72px;
+  color: var(--muted);
+}
+.due-list li.now {
+  color: var(--accent-dk);
+}
+.past-term {
+  font-size: 18px;
+  padding: 2px 0;
+}
+.past-term strong {
+  font-weight: normal;
+}
+@media (max-width: 600px) {
+  .hud-stat.gpa span {
+    font-size: 17px;
+  }
+  .grades-top strong {
+    font-size: 19px;
+  }
+}

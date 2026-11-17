@@ -2,6 +2,7 @@
 import { badDebt, charge, creditScore, log, money, num, rep } from '../engine/core.ts';
 import type { GameState, PathId } from '../engine/types.ts';
 import type { Chapter, Task } from './types.ts';
+import { gpaText, liveGpa } from './college.ts';
 
 export const CHAPTERS: Chapter[] = [
   {
@@ -336,17 +337,19 @@ export const TASKS: Task[] = [
     title: (s) =>
       ({
         home: 'Land the pharmacy tech job',
-        college: 'Pass finals with a B average',
+        college: 'Finish the year with a 3.0 GPA',
         trade: 'Pass the Year 1 apprentice exam',
         work: 'Earn the Team Lead promotion',
       })[s.path],
     desc: (s) => {
       const n = CAREER_NEED[s.path];
+      if (s.path === 'college') return 'A 3.0 GPA after spring finals keeps your scholarship. Grades post in week 36.';
       return `Needs career progress ${n.xp}+${n.rep ? ` and boss rating ${n.rep}+` : ''}. Then take your shot.`;
     },
-    how: (s) => (s.path === 'college' ? 'Study, go to class, then take finals (week 35)' : 'Build progress, then take the next step (evening or Saturday)'),
+    how: (s) => (s.path === 'college' ? 'Go to class, do assignments well, study before finals (week 35)' : 'Build progress, then take the next step (evening or Saturday)'),
     done: (s) => !!s.flags.careerDone,
-    progress: (s) => `Progress ${s.stats.xp}/${CAREER_NEED[s.path].xp}${CAREER_NEED[s.path].rep ? ` · Boss ${s.stats.rep}/${CAREER_NEED[s.path].rep}` : ''}`,
+    progress: (s) =>
+      s.path === 'college' ? `GPA ${gpaText(liveGpa(s))} / 3.00` : `Progress ${s.stats.xp}/${CAREER_NEED[s.path].xp}${CAREER_NEED[s.path].rep ? ` · Boss ${s.stats.rep}/${CAREER_NEED[s.path].rep}` : ''}`,
     failText: 'Not this time. You’ll get another shot next year.',
   },
   {

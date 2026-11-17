@@ -233,6 +233,55 @@ export interface GameState {
   weekSnap: Record<string, number> | null; // stats when the week started
   over: boolean;
   won: boolean;
+  school?: School; // college path only (older saves may not have it)
+}
+
+// ---------- college ----------
+export type MajorId = 'nursing' | 'cs' | 'business' | 'education' | 'undeclared';
+
+// One class this semester and everything graded in it so far.
+export interface CourseRec {
+  id: string;
+  held: number; // class weeks so far
+  missed: number; // weeks skipped
+  hw: number[]; // assignment scores 0..100
+  mid: number | null;
+  fin: number | null;
+  bonus: number; // office-hours points
+}
+
+export interface TermGrade {
+  id: string;
+  pct: number;
+  letter: string;
+  credits: number;
+}
+
+export interface TermRec {
+  name: string;
+  gpa: number;
+  grades: TermGrade[];
+  attempted: number; // credits taken
+  earned: number; // credits passed (D- or better)
+}
+
+export interface School {
+  major: MajorId;
+  term: number; // 0 = fall, 1 = spring
+  courses: CourseRec[];
+  done: TermRec[]; // finished semesters
+  prepAt: number; // study sessions count at the last assignment
+  examAt: number; // study sessions count at the last exam
+  extraPrep: number; // office hours / cramming since the last exam
+  skipsSeen: number; // the engine's skip counter, last time we looked
+  probation: boolean;
+  failed: number; // classes failed (each one is retaken)
+  lateDeclare?: boolean; // declared after starting undeclared
+  aiCaught?: number;
+  extraCredits?: number; // summer / online classes beyond the regular load
+  honors?: boolean; // invited to the honors program
+  internship?: string; // summer internship lined up
+
 }
 
 export interface Look {

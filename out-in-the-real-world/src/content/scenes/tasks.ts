@@ -19,6 +19,7 @@ import {
 } from '../../engine/core.ts';
 import type { GameState } from '../../engine/types.ts';
 import { CAREER_NEED } from '../chapters.ts';
+import { gpaText, liveGpa } from '../college.ts';
 import type { Choice, Scene } from '../types.ts';
 
 export function loanPayment(principal: number, apr: number, months: number): number {
@@ -1136,7 +1137,10 @@ export const TASK_SCENES: Scene[] = [
           const n = CAREER_NEED[s.path];
           const ready = s.stats.xp >= n.xp && s.stats.rep >= n.rep;
           const req = `Career progress: ${s.stats.xp}/${n.xp}${n.rep ? `\nBoss rating: ${s.stats.rep}/${n.rep}` : ''}`;
-          if (s.path === 'college') return `Your advisor pulls up your grades.\n\n${req}\n\n${ready ? '“You’re on track for finals. Keep it up.”' : '“You need to study more before finals in week 35.”'}`;
+          if (s.path === 'college') {
+            const g = liveGpa(s);
+            return `Your advisor pulls up your grades.\n\nGPA so far: ${gpaText(g)}. Your scholarship needs a 3.0.\n\n${(g ?? 0) >= 3.0 ? '“You’re on track. Don’t coast through finals.”' : '“Get to office hours, and study before finals in week 35.”'}`;
+          }
           return `${req}\n\n${ready ? 'You’re qualified. Time to go for it.' : 'You’re not quite ready. More studying (and showing up) will get you there.'}`;
         },
         speaker: (s: GameState) => (s.path === 'college' ? 'advisor' : 'boss'),
@@ -1161,8 +1165,12 @@ export const TASK_SCENES: Scene[] = [
             label: 'Ask for study tips',
             do: (s) => {
               xp(s, 3);
+              if (s.path === 'college' && s.school) {
+                s.school.extraPrep += 0.5;
+                setFlag(s, 'careerBooked');
+              }
             },
-            result: (s) => (s.path === 'college' ? 'Your advisor shares a study plan. +3 progress.' : 'You get some pointers. +3 progress.'),
+            result: (s) => (s.path === 'college' ? 'Your advisor shares a study plan for finals. +3 progress, and it counts as half a study session.' : 'You get some pointers. +3 progress.'),
           },
         ],
       },

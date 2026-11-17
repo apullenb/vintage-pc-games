@@ -1,6 +1,7 @@
 // Scripted players used by tests (and handy for balancing).
 import { activitiesFor } from '../content/activities.ts';
 import { CAREER_NEED } from '../content/chapters.ts';
+import { MAJORS, coursePct, examPrep, freeSkips, termOf } from '../content/college.ts';
 import { SCENES } from '../content/scenes.ts';
 import { newState } from '../content/paths.ts';
 import { canPay, round2 } from './core.ts';
@@ -49,6 +50,8 @@ export function botPlan(s: GameState, style: Style): Plan {
     plan.slots.evening = broke ? 'rest' : 'friends';
     plan.slots.saturday = 'friends';
     plan.slots.sunday = 'rest';
+    // Class is optional, right? Skips every third week.
+    if (s.path === 'college' && plan.slots.weekday === 'class' && s.week % 3 === 0) plan.slots.weekday = 'rest';
     const foods = foodOptions(s);
     const every = foods.includes('parents') ? 4 : foods.includes('mealplan') ? 2 : 1;
     if (foods.includes('takeout') && !broke && s.week % every === 0) plan.food = 'takeout';
@@ -78,6 +81,19 @@ export function botPlan(s: GameState, style: Style): Plan {
       continue;
     }
     if (s.stats.energy < 45) continue;
+    // College: keep up with exam prep, and hit office hours for a shaky class.
+    const sc = s.path === 'college' && termOf(s.week) !== null ? s.school : undefined;
+    if (sc) {
+      if (ids.includes('study') && !used.has('study') && examPrep(s, sc) < MAJORS[sc.major].need + 0.5) {
+        set(slot, 'study');
+        continue;
+      }
+      const low = Math.min(...sc.courses.map((c) => coursePct(c, freeSkips(sc)) ?? 100));
+      if (slot === 'evening' && ids.includes('officehours') && low < 88 && s.stats.energy > 55) {
+        set(slot, 'officehours');
+        continue;
+      }
+    }
     const behind = s.stats.xp < (need.xp + 8) * Math.min(1, s.week / 32);
     if (ids.includes('study') && ((behind && s.stats.energy > 40) || (s.stats.xp < need.xp + 8 && s.stats.energy > 60 && !used.has('study')))) {
       set(slot, 'study');
