@@ -40,7 +40,9 @@ describe('year one playthroughs', () => {
     it(`${path}: reckless choices cost you`, () => {
       const wise = [];
       const reckless = [];
-      for (let seed = 1; seed <= 20; seed++) {
+      // 40 seeds, not 20: a reckless college run loses about 35–40% of the time, so with 20 seeds the
+      // "under 60%" ceiling sat inside sampling noise (any new random event could tip it).
+      for (let seed = 1; seed <= 40; seed++) {
         wise.push(yearOne(path, seed * 104729, 'wise'));
         reckless.push(yearOne(path, seed * 104729, 'reckless'));
       }
